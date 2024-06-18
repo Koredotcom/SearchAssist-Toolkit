@@ -3,12 +3,12 @@ import argparse
 import copy
 import os
 import json
-import html
 import time
 import re
 import traceback
 import ingest_data as data_ingestion
 import aiofiles
+import aiohttp
 import html
 import urllib.parse
 from bs4 import BeautifulSoup, Tag
@@ -20,6 +20,12 @@ from utils.logger import get_logger
 import variables as config
 logger = get_logger()
 OPENAI_KEY = config.OPENAI_KEY
+Azure_key= config.apiKey
+
+if OPENAI_KEY:
+    llm_used="openai"
+elif Azure_key:
+    llm_used="azure"
 
 open_ai_conf = {
     "API_BASE":"https://api.openai.com/v1/",
@@ -31,19 +37,79 @@ open_ai_conf = {
     "timeout":150,
     "max_retries":0
 }
+azure_open_ai_conf = {
+    "API_BASE": "https://koreopenai.openai.azure.com",
+    "deployment_id": config.deployment,
+    "api_version": config.Apiversion,
+    "API_KEY": Azure_key,
+    "model": "gpt-3.5-turbo-16k",
+    "max_tokens": 7000,
+    "temperature": 0.5,
+    "top_p": 1,
+    "timeout": 150,
+    "max_retries": 0
+}
+
 prompt_json = [
     {
       "role": "system",
       "content": "{{instruction_msg}}\n--------------------------------------------------"
                   "----------------------------------------------------------------------\n\nContent:-{{content}}"
     }
-  ]
+]
+
+azure_prompt=[
+        {
+            "role": "system", 
+            "content": "{{instruction_msg}}"
+        },
+        {
+            "role": "user", 
+            "content": "{{content}}"
+        }
+]
+
 instruction_msg = "Given an markdown for a possible table of content for a document, understand the text and identify table of contents with correct heading and subheadings.  Please note that there may be some extra info in the input text, which may not be needed for the index, use you knowledge to decide what to include in the index.\nFigure out add the parents of each subheading and return a lookup table map, which maps a heading to its hierarchical heading with all the parents appended as prefix.  \nCHILD HEADING SHOULD BE PRESENT IN THE VALUE ALWAYS.\nMap should be like:-\n{\n\"Child heading 1\": \"prefix1 prefix2 Child heading 1\",\n\"Child heading 2\": \" \"<prefix1 prefix2 Child heading 2\",\n...\n}"
 openai_client = AsyncOpenAI(
             base_url= open_ai_conf.get("API_BASE", ""),
             api_key= open_ai_conf.get("API_KEY", ""),
             max_retries=open_ai_conf.get("MAX_RETRIES", 0),
         )
+class AsyncAzureOpenAI:
+    def __init__(self, base_url, deployment_id, api_version, api_key, max_retries):
+        self.base_url = base_url
+        self.deployment_id = deployment_id
+        self.api_version = api_version
+        self.api_key = api_key
+        self.max_retries = max_retries
+
+    async def fetch_azure_response(self, **request_payload):
+        url = f"{self.base_url}/openai/deployments/{self.deployment_id}/chat/completions?api-version={self.api_version}"
+        headers = {
+            "Content-Type": "application/json",
+            "api-key": self.api_key
+        }
+
+        async with aiohttp.ClientSession() as session:
+            for _ in range(self.max_retries + 1):
+                try:
+                    async with session.post(url, headers=headers, json=request_payload) as response:
+                        if response.status == 200:
+                            return await response.json()
+                        else:
+                            response.raise_for_status()
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+                    await asyncio.sleep(1)
+        return None
+
+azure_openai_client = AsyncAzureOpenAI(
+    base_url=azure_open_ai_conf.get("API_BASE", ""),
+    deployment_id=azure_open_ai_conf.get("deployment_id", ""),
+    api_version=azure_open_ai_conf.get("api_version", ""),
+    api_key=azure_open_ai_conf.get("API_KEY", ""),
+    max_retries=azure_open_ai_conf.get("max_retries", 0)
+)
 common_index_tag = "a"
 
 
@@ -262,39 +328,121 @@ class OpenaiResponseHandler:
         }
         return output
 
+class AzureOpenaiResponseHandler:
+    def __init__(self, response):
+        self.response = response
 
-async def get_llm_response(content, instruction_msg):
+    def get_raw_format(self):
+        return self.response
+    def get_json_format(self):
+        chat_id = self.response["id"]
+        completion_usage_dict = self.response["usage"]
+        json_str = json.dumps(completion_usage_dict)
+        choices = []
+        completion_usage_dict = self.response["usage"]
+        json_str = json.dumps(completion_usage_dict)
+        if self.response["choices"]:
+            for choice in self.response["choices"]:
+                choice_data = {
+                    'message': {
+                        'content': choice["message"]["content"],
+                        'role': choice["message"]["role"],
+                    }
+                }
+                choices.append(choice_data)
+        output = {
+            'chat_id': chat_id,
+            'choices': choices,
+            'usage': json_str
+            # Include other fields attributes as needed
+        }
+        return output
+
+async def get_openai_response(content, instruction_msg):
     try:
         if not content:
            raise Exception("Empty TOC encountered")
         curr_prompt = copy.deepcopy(prompt_json)
-        content_template = curr_prompt[0].get("content","")
-        content_template =content_template.replace("{{instruction_msg}}",instruction_msg).replace("{{content}}",content)
+        content_template = curr_prompt[0].get("content", "")
+        content_template = content_template.replace("{{instruction_msg}}", instruction_msg).replace("{{content}}", content)
         curr_prompt[0]["content"] = content_template
         model = open_ai_conf.get("model")
         timeout = open_ai_conf.get("timeout")
         max_tokens = open_ai_conf.get("max_tokens")
         temperature = open_ai_conf.get("temperature")
         top_p = open_ai_conf.get("top_p")
-        request_payload = dict(model=model,
-                               messages=curr_prompt,
-                               temperature=temperature,
-                               max_tokens=max_tokens,
-                               top_p=top_p,
-                               frequency_penalty=open_ai_conf.get('frequency_penalty', 0),
-                               presence_penalty=open_ai_conf.get('presence_penalty', 0),
-                               timeout=timeout)
+        request_payload = dict(
+            model=model,
+            messages=curr_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            timeout=timeout
+        )
         start_time = time.time()
-        completion =  await openai_client.chat.completions.create(**request_payload)
+        completion = await openai_client.chat.completions.create(**request_payload)
         openai_response_handler = OpenaiResponseHandler(completion)
         completion_json_format = openai_response_handler.get_json_format()
-        print("Time taken in one OpenAI call {}".format(time.time()-start_time))
-        print('**Open Ai Response** {}'.format(completion_json_format))
+        print("Time taken in one OpenAI call: {}".format(time.time() - start_time))
+        print('**OpenAI Response** {}'.format(completion_json_format))
     except Exception as e:
         print("Error in fetching LLM response, falling back to empty llm response")
         print(traceback.format_exc())
         completion_json_format = {}
     return completion_json_format
+
+async def get_azure_openai_response(content, instruction_msg):
+    try:
+        if not content:
+           raise Exception("Empty TOC encountered")
+        curr_prompt = copy.deepcopy(azure_prompt)
+        # print(curr_prompt)
+        content_template = curr_prompt[0].get("content", "")
+        content_template1=curr_prompt[1].get("content","")
+        # print("content_template",content_template)
+        content_template = content_template.replace("{{instruction_msg}}", instruction_msg)
+        content_template1=content_template1.replace("{{content}}", content)
+        curr_prompt[0]["content"] = content_template
+        curr_prompt[1]["content"] = content_template1
+        # print(curr_prompt)
+        model = azure_open_ai_conf.get("model")
+        max_tokens = azure_open_ai_conf.get("max_tokens")
+        temperature = azure_open_ai_conf.get("temperature")
+        top_p = azure_open_ai_conf.get("top_p")
+        request_payload = dict(
+            messages=curr_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p
+        )
+        start_time = time.time()
+        completion = await azure_openai_client.fetch_azure_response(**request_payload)
+        azure_response_handler = AzureOpenaiResponseHandler(completion)
+        completion_json_format = azure_response_handler.get_json_format()
+        print("Time taken in one Azure OpenAI call: {}".format(time.time() - start_time))
+        print('**Azure OpenAI Response** {}'.format(completion_json_format))
+    except Exception as e:
+        print("Error in fetching LLM response, falling back to empty llm response")
+        print(traceback.format_exc())
+        completion_json_format = {}
+        
+    return completion_json_format
+
+
+async def get_llm_response(content, instruction_msg):
+    try:
+        if not content:
+           raise Exception("Empty TOC encountered")
+        if llm_used=="openai":
+            llm_response= await get_openai_response(content, instruction_msg)
+        
+        elif llm_used=="azure":
+            llm_response= await get_azure_openai_response(content, instruction_msg)
+    except Exception as e:
+        print("Error in fetching LLM response, falling back to empty llm response")
+    return llm_response
+
+
 
 async def fetch_lookup_from_llm_response(llm_response,toc_html, **kwargs):
     try :

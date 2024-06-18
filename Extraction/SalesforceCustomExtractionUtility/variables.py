@@ -6,6 +6,12 @@ load_dotenv()
 # OpenAI Configuration
 OPENAI_KEY = os.environ.get('OPENAI_KEY')
 
+#azure open ai 
+apiKey= os.environ.get("apiKey")
+userSubDomain=os.environ.get("userSubDomain")
+deployment= os.environ.get("deployment")
+Apiversion=os.environ.get("Apiversion")
+
 # Access Token Configuration
 accessTokenUrl = "https://login.salesforce.com/services/oauth2/token"
 hostUrl = os.environ.get('hostUrl')

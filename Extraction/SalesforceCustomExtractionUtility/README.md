@@ -31,6 +31,12 @@ Follow the steps below to set up and run the Salesforce Custom Extraction Utilit
     ```plaintext
     OPENAI_KEY = "sk-***"
 
+    #Azure Open Ai 
+    apiKey= "***"
+    userSubDomain= "***"
+    deployment= "***"
+    Apiversion= "***"
+
     # Access Token
     hostUrl = "***"
     clientId = "**"
