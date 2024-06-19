@@ -29,13 +29,20 @@ Follow the steps below to set up and run the Salesforce Custom Extraction Utilit
 
 4. **Create a `.env` file and configure the following environment variables**:
     ```plaintext
-    OPENAI_KEY = "sk-***"
 
-    #Azure Open Ai 
-    apiKey= "***"
-    userSubDomain= "***"
-    deployment= "***"
-    Apiversion= "***"
+    # open ai
+    open_ai_key=""
+    openAI_apibase=""
+    openai_model=""
+
+
+    #Azure open ai
+    AZURE_OPENAI_KEY=""
+    API_BASE=""
+    azure_model=""
+    userSubDomain= ""
+    deployment=""
+    Apiversion=""
 
     # Access Token
     hostUrl = "***"
