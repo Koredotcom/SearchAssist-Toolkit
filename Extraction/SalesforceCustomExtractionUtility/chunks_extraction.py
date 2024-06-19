@@ -20,7 +20,7 @@ from utils.logger import get_logger
 import variables as config
 logger = get_logger()
 OPENAI_KEY = config.OPENAI_KEY
-Azure_key= config.apiKey
+Azure_key= config.AZURE_OPENAI_KEY
 
 if OPENAI_KEY:
     llm_used="openai"
@@ -28,8 +28,8 @@ elif Azure_key:
     llm_used="azure"
 
 open_ai_conf = {
-    "API_BASE":"https://api.openai.com/v1/",
-    "model": "gpt-3.5-turbo-16k",
+    "API_BASE":config.openAI_apibase,
+    "model": config.openAI_model,
     "API_KEY":OPENAI_KEY,
     "max_tokens":9000,
     "temperature":0.5,
@@ -38,11 +38,11 @@ open_ai_conf = {
     "max_retries":0
 }
 azure_open_ai_conf = {
-    "API_BASE": "https://koreopenai.openai.azure.com",
+    "API_BASE": config.API_BASE,
     "deployment_id": config.deployment,
     "api_version": config.Apiversion,
     "API_KEY": Azure_key,
-    "model": "gpt-3.5-turbo-16k",
+    "model": config.Azure_model,
     "max_tokens": 7000,
     "temperature": 0.5,
     "top_p": 1,

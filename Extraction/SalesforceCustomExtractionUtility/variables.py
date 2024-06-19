@@ -4,10 +4,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # OpenAI Configuration
-OPENAI_KEY = os.environ.get('OPENAI_KEY')
+OPENAI_KEY =os.environ.get("open_ai_key")
+openAI_model=os.environ.get("openai_model")
+openAI_apibase=os.environ.get("openAI_apibase")
 
 #azure open ai 
-apiKey= os.environ.get("apiKey")
+AZURE_OPENAI_KEY= os.environ.get("AZURE_OPENAI_KEY")
+API_BASE=os.environ.get("API_BASE")
+Azure_model=os.environ.get("azure_model")
 userSubDomain=os.environ.get("userSubDomain")
 deployment= os.environ.get("deployment")
 Apiversion=os.environ.get("Apiversion")
