@@ -1,12 +1,21 @@
 ## Solving Document Structure Issues for Knowledge Extraction Using LLMs
 
-In the realm of knowledge extraction from document repositories, organizations often face challenges related to the structure and organization of content. This article discusses a real-world scenario where our large banking client encountered two specific problems while using a SearchAI platform to retrieve answers from Salesforce knowledge articles.
+Organizations often face problems with the structure and organization of content when extracting knowledge from large document repositories. This article describes a situation where a major banking client encountered difficulties while using the SearchAI platform to retrieve answers from Salesforce knowledge articles.
+
+## Use Case: Bank's Transformation Journey
+
+A top financial institution, dedicated to innovation and customer satisfaction, is on a mission to improve its customer care services using advanced search technologies. The Retail Banking Line of Business (LOB) is leading this effort, aiming to explore the potential of SearchAI for various applications.
+
+The Retail team is spearheading an important project to use SearchAI for better customer care operations. They plan to process a large repository of 11,000 documents, each with an average of 10 pages. This extensive collection of content will serve as a valuable resource to provide accurate and comprehensive support to customers.
 
 ## The Challenges
 
-1. **Missing Hierarchy Information**: The table of contents within the documents had a hierarchical structure, but the parent-child relationship information was not available in every child section. This lack of explicit hierarchical information made it difficult to accurately capture the context and relationships between different sections, leading to potential misinterpretations or incomplete understanding.
+1. **Incorrect Chunking**: When chunking the content based on tokens or other fixed criteria, the section headers might inadvertently include information from the previous section. This led to incorrect or incomplete answers being returned, as the context and boundaries of each section were not properly defined.
+![Incorrect Chunking](https://raw.githubusercontent.com/Koredotcom/SearchAssist-Toolkit/master/Blog/Assets/ChunkHierarchy2.png)
 
-2. **Incorrect Chunking**: When chunking the content based on tokens or other fixed criteria, the section headers might inadvertently include information from the previous section. This led to incorrect or incomplete answers being returned, as the context and boundaries of each section were not properly defined.
+2. **Missing Hierarchy Information**: The table of contents within the documents had a hierarchical structure, but the parent-child relationship information was not available in every child section. This lack of explicit hierarchical information made it difficult to accurately capture the context and relationships between different sections, leading to potential misinterpretations or incomplete understanding.
+
+![Missing Hierarchy Information](https://raw.githubusercontent.com/Koredotcom/SearchAssist-Toolkit/master/Blog/Assets/ChunkHierarchy.png) 
 
 ## The Solution
 
@@ -54,7 +63,7 @@ To extract meaningful chunks of content, we iterate through the modified HTML do
 By leveraging the LLM's capabilities to understand and expand the hierarchical structure of the headers, and subsequently preprocessing the documents with explicit parent-child relationships, we provided the necessary context for accurate knowledge extraction.
 
 ### Implementation and Open-Source Contribution
-The implementation of this solution is available as an open-source project on GitHub: [SearchAssist-Toolkit](https://github.com/Koredotcom/SearchAssist-Toolkit/tree/master/Extraction/PNC_Extraction_Utility). We believe that sharing this approach and code can benefit the broader community working with knowledge extraction and document understanding.
+The implementation of this solution is available as an open-source project on GitHub: [SearchAssist-Toolkit](https://github.com/username/SearchAssist-Toolkit). We believe that sharing this approach and code can benefit the broader community working with knowledge extraction and document understanding.
 
 ### Conclusion
 Dealing with complex document structures and hierarchies can be a significant challenge when extracting knowledge. By leveraging the LLM's capabilities to understand and expand the hierarchical structure, and incorporating explicit parent-child relationships through preprocessing, we can provide the necessary context and significantly improve the accuracy of the extracted information. 
