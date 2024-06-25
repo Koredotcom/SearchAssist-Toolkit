@@ -3,18 +3,16 @@
 
 ## Introduction
 
-In the rapidly evolving world of e-commerce, the efficiency of customer support can significantly impact a company's reputation. Our recent project involved deploying a SearchAI Retrieval-Augmented Generation (RAG) solution for a client. This solution was designed to enhance customer care agents' ability to deliver timely and accurate responses using the vast information from their knowledge repository. By leveraging generative AI, we aimed to maintain high precision in responses. However, despite the impressive accuracy of the model, we encountered a sharp increase in the generative AI operational costs. Here’s an in-depth look at our journey, the challenges we faced, and the solutions that helped us strike a balance between cost-efficiency and accuracy.
+In the competitive world of e-commerce, efficient customer support is crucial for a company's reputation and customer retention. Our recent project involved deploying a cost-effective AI solution to improve this efficiency. Our recent project involved deploying a SearchAI Retrieval-Augmented Generation (RAG) solution for a client. This solution uses advanced language models to understand customer questions and provide relevant answers from our vast knowledge base. This cutting-edge technology allowed our customer service agents to deliver timely and precise responses, significantly improving the overall customer experience. 
 
-## The Challenge
-
-Our target was to handle an anticipated load of 500 million requests per year, approximately translating to 40 million requests per month. The financial implications were daunting—the annual bill for the large language model (LLM) reached a staggering $2 million. This presented a significant challenge for our client. While we had succeeded in improving the accuracy of customer support, the operational costs had become unsustainable. We needed to find a solution that balanced cost-efficiency without compromising the accuracy offered by the generative AI. Here’s how we approached and tackled this complex issue.
 
 ## Initial Implementation
 
-The primary use case was quite straightforward: whenever a customer asked a question to an agent, the SearchAI system would automatically retrieve the most relevant answers from a pre-ingested knowledge base. Our initial setup involved segmenting knowledge articles into HTML chunks and processing these chunks through GPT-3.5-turbo-16k, as it supported the required token limit (approximately 6500 tokens per query). This method achieved an impressive answer accuracy rate of 80%.
+To give you a better understanding of our initial setup, let me walk you through the process. Whenever a customer asked a question, the SearchAI system would automatically retrieve the most relevant answers from our pre-existing knowledge base. This knowledge base consisted of articles and documents that were segmented into smaller chunks of information, called HTML chunks.
+These smaller chunks were then processed through a powerful language model called GPT-3.5-turbo-16k, which had the capability to handle a large number of tokens (roughly equivalent to words) per query. This approach allowed us to achieve an impressive 80% accuracy rate in providing relevant answers to customer queries.
 
 
-## Technical Blueprint
+### Technical Blueprint
 
 Here’s a high-level illustration of our initial SearchAI RAG architecture:
 
@@ -31,91 +29,83 @@ flowchart LR
     A--> F[LLM]-->Answer
 ```
 
+## The Challenge
 
-## The Solution Approaches
+While the initial implementation of the SearchAI system was a success, we soon encountered a significant challenge – the astronomical costs associated with running the powerful language models required for this solution. We anticipated handling an overwhelming 500 million customer requests per year, which translated to a staggering $2 million annual bill for the AI system.
+This exorbitant cost was simply unsustainable for our business, and we found ourselves at a crossroads. We had to find a way to maintain the accuracy and efficiency of our AI-powered customer support while drastically reducing the operational costs. It was a daunting task, but our team was determined to find a solution.
 
-To cut costs in half while maintaining accuracy, we needed to improve chunk retrieval precision and recall. Our retrieval evaluation utilized a test suite with a set of questions and a ranked list of relevant chunks, ensuring any enhancement could be rigorously validated.
+Our journey to find a solution took us through several interesting approaches, each offering unique benefits and tradeoffs. We focused on optimizing every step of our process, from how we prepared our data to how we leveraged different AI models. Let's walk through the key strategies we explored:
 
-Here’s a breakdown of our systematic approach:
+### Our Journey to a Cost-Effective Solution:
 
-### 1. Fine-Tuning Embedding Models
+After identifying the challenges we faced, our team embarked on a journey to find innovative ways to reduce costs while maintaining the quality of our AI-powered customer support. We explored several strategies, each offering unique benefits. Let's walk through these approaches in simple terms:
 
-Fine-tuning an embedding model on our client's dataset emerged as a critical step. We refined the embedding model, leveraging a custom-built utility to fine-tune any embedding model easily. 
+### 1. Exploring Different Embedding Models:
+We began by investigating various embedding models, which are crucial components that help our system interpret and represent text. There are many such models available, each with its own strengths. We experimented with several of these, comparing their performance to find the one that offered the best balance of accuracy and cost-efficiency for our specific needs.
+### 2. Fine-Tuning Our Language Understanding:
+While exploring different models was a good start, we found that off-the-shelf solutions weren't always sufficient for our specific use case. To address this, we employed a technique called "fine-tuning" on the most promising model we had identified. This process involved further training the model on our client's specific data, aiming to make our system even more efficient at understanding and answering customer queries in the context of our client's business. By combining the strengths of existing models with customized training, we hoped to achieve a level of performance that neither approach could deliver on its own.
 
-### 2. Exploring Stock Embedding Models
+### 3. Improving How We Store Information:
+We realized that the way we stored our knowledge base could impact how well our system understood it. We tried converting our information into different formats, such as plain text and a special format called Markdown, to see which worked best with our system.
 
-Different models were experimented with:
+### 4. Optimizing Information Chunks:
+Instead of processing larger documents at once, we broke them down into smaller, more manageable pieces. We experimented with different sizes of these 'chunks' and how many to use for each query, aiming to find the most efficient way to process information.
 
-- **QA MPnet Base (SearchAI default embedding Model)**
-- **E5 Base Model**
-- **Finetuned BGE Base model on eBay dataset**
-- **OpenAI ADA embeddings**
+### 5. Optimizing Prompts for More Relevant Answers
 
-### 3. Document Format Conversion
+We found that the structure of prompts significantly affects the quality of the generated answers. By refining our prompt engineering techniques to include relevant context, specific instructions, and examples, we guided the LLM to produce more accurate and context-appropriate responses. This optimization improved answer relevance, reduced unnecessary token usage, and enhanced overall performance and cost efficiency. Through iterative testing, we significantly improved the quality of our AI-generated customer support responses.
 
-Recognizing that HTML data might not be embedding model-friendly, we explored converting documents into Markdown or Plain Text. This included formats such as:
+## Analysis and Top Solutions:
 
-- Raw HTML
-- Markdown
-- Split Markdown using LangChain MarkdownHeaderTextSplitter
-- Clean Text
+After exploring various approaches, we carefully analyzed their effectiveness in terms of retrieval accuracy and cost efficiency. Our rigorous testing revealed several promising solutions:
 
-### 4. Optimizing Chunking Strategies
+### 1. Clean Text with OpenAI ADA model:
+   - Retrieval accuracy: 59.3%
+   - Used 16 chunks of 200 tokens each
+   - Pros: Highest retrieval accuracy
+   - Cons: Higher computational costs
 
-Chunking the documents effectively is critical for maximizing retrieval accuracy and managing token budgets. Here’s a detailed look into the chunking strategies we explored:
+### 2. Clean Text with OpenAI ADA model (Alternative Configuration):
+   - Retrieval accuracy: 58.7%
+   - Used 8 chunks of 200 tokens each
+   - Pros: High accuracy with fewer chunks
+   - Cons: OpenAI costs remain high
 
-#### Layout-Sensitive Chunking
+### 3. Clean Text with Finetuned BGE model:
+   - Retrieval accuracy: 56.8%
+   - Used 8 chunks of 200 tokens each
+   - Pros: Good accuracy, cost-effective after initial fine-tuning
+   - Cons: Slightly lower accuracy, fine-tuning effort required
 
-We observed that maintaining the relative layout and structure of the original HTML documents led to better contextual understanding and retrieval accuracy. For this, we experimented with various chunk sizes and formats:
+### 4. Markdown with OpenAI ADA model:
+   - Retrieval accuracy: 54%
+   - Used 8 chunks of 400 tokens each
+   - Pros: Decent accuracy, fewer chunks needed
+   - Cons: Larger chunks may lose context, expensive OpenAI usage
+   
+![ebay analysis table](https://github.com/Koredotcom/SearchAssist-Toolkit/assets/59284396/a0652eb9-1d75-4919-9ed6-d0c2be131c1d)
 
-- **Chunk Size and Number**: We experimented with different chunk sizes (e.g., 200 tokens, 400 tokens) and the number of chunks per query (e.g., 8 chunks, 16 chunks). Smaller chunks (e.g., 200 tokens) generally preserve more context around specific details, while larger chunks (e.g., 400 tokens) provide broader context but may slightly dilute specific information.
-  
-- **Order and Proximity**: Ensuring the proximity of the chunks to the query in the prompt was vital for the LLM to generate relevant answers. The order in which chunks appear relative to the query also influences the quality of the answers, with more semantically relevant chunks placed nearer to the query.
+## The Optimal Solution:
 
-#### Format-Sensitive Chunking
+After careful consideration of both performance and cost factors, we determined that the Clean Text with Finetuned BGE model offered the best balance for our needs. Here's why we chose this solution:
 
-Beyond layout, the document format plays a crucial role in embedding generation:
+1. **Cost-Effectiveness:** While the OpenAI ADA model offered slightly higher accuracy, the finetuned BGE model provided substantial cost savings in the long run, especially at our anticipated scale of operations.
 
-- **Markdown Conversion**: By converting HTML to Markdown, we ensure cleaner, more structured input for embedding models.
-- **Plain Text**: Simplifying documents to plain text often removes extraneous data and potential noise.
+2. **Accuracy:** With a retrieval accuracy of 56.8%, this solution maintained a high standard of performance, only marginally lower than the most accurate option.
 
-### 5. Prompt Engineering
+3. **Efficiency:** Using 8 chunks of 200 tokens each struck a good balance between context preservation and processing efficiency.
 
-Prompt engineering helped in maintaining the proximity of query and chunks, thereby improving the relevance of the answers provided by the LLM.
+4. **Customization:** The fine-tuning process allowed us to tailor the BGE model to our specific use case, potentially offering better performance on domain-specific queries.
 
-## Analysis and Top Solutions
+This solution allowed us to dramatically reduce costs while maintaining a high level of accuracy in our customer support system. The trade-off of a slight decrease in accuracy for significant cost savings proved to be the most sustainable approach for our large-scale operations.
 
-Through robust analysis, the most effective solutions in terms of retrieval accuracy were identified as follows:
+By implementing this optimized solution, we were able to handle our high volume of customer queries efficiently and economically, ensuring that our AI-powered support system remained both effective and financially viable in the long term.
 
-1. **Clean Text with OpenAI ADA model, chunk size 200, and 16 chunks**: 59.3% retrieval accuracy.
-   - *Pros*: Highest retrieval accuracy.
-   - *Cons*: Higher computational costs.
-
-2. **Clean Text with OpenAI ADA model, chunk size 200, and 8 chunks**: 58.7% retrieval accuracy.
-   - *Pros*: High accuracy, fewer chunks.
-   - *Cons*: OpenAI costs remain high.
-
-3. **Clean Text with Finetuned BGE model, chunk size 200, and 8 chunks**: 56.8% retrieval accuracy.
-   - *Pros*: Good accuracy, cost-effective after initial finetuning.
-   - *Cons*: Slightly lower accuracy, finetuning effort required.
-
-4. **Markdown with OpenAI ADA model, chunk size 400, and 8 chunks**: 54% retrieval accuracy.
-   - *Pros*: Decent accuracy, fewer chunks needed.
-   - *Cons*: Larger chunks may lose context, expensive OpenAI usage.
-
-![Optimisation Approaches](https://raw.githubusercontent.com/Koredotcom/SearchAssist-Toolkit/master/Blog/Assets/CostOptimizationComparison.png)
-## The Optimal Solution
-
-While OpenAI solutions offered higher retrieval accuracy, they were cost-prohibitive. The finetuned BGE model struck an optimal balance, yielding a retrieval accuracy of 56.8% at significantly reduced costs. This was achieved by:
-
-- Converting documents to Clean Text.
-- Using the finetuned BGE model for embeddings.
-- Employing a chunk size of 200 with 8 chunks per LLM call.
-
-![The Optimal Solution](https://raw.githubusercontent.com/Koredotcom/SearchAssist-Toolkit/master/Blog/Assets/CostOptimizationPlots.png)
 ## Conclusion
 
-By adopting the Clean Text with Finetuned BGE model approach, we managed to cut costs dramatically while maintaining satisfactory retrieval accuracy. This solution not only exemplifies the power of fine-tuning but also highlights the importance of thorough analysis and strategic adjustments in building cost-efficient, high-performing systems.
 
-This journey reaffirms the potential for embedding models to revolutionize customer support, offering scalability and accuracy while keeping operational expenses in check.
+Through strategic optimization and custom-tuning, we achieved significant cost savings while maintaining high accuracy in our AI-powered customer support system. This project underscores the potential of AI to enhance customer service efficiently and economically. This success underscores the importance of thorough analysis and strategic adjustments in building cost-efficient, high-performing AI systems.
 
+Our experience highlights the immense potential of embedding models in revolutionizing customer support. These models offer a scalable solution that can handle millions of queries accurately while keeping operational expenses in check. It proves that with the right approach, businesses can harness AI to significantly improve customer support without incurring unsustainable costs.
+
+This project demonstrates the transformative power of AI in customer support and the critical importance of thoughtful, strategic implementation. As AI technology evolves, we anticipate even more opportunities to enhance customer experiences while maintaining operational efficiency.
