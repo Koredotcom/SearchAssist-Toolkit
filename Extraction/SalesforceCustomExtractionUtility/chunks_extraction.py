@@ -60,11 +60,11 @@ prompt_json = [
 
 azure_prompt=[
         {
-            "role": "system", 
+            "role": "system",
             "content": "{{instruction_msg}}"
         },
         {
-            "role": "user", 
+            "role": "user",
             "content": "{{content}}"
         }
 ]
@@ -93,7 +93,7 @@ class AsyncAzureOpenAI:
         async with aiohttp.ClientSession() as session:
             for _ in range(self.max_retries + 1):
                 try:
-                    async with session.post(url, headers=headers, json=request_payload) as response:
+                    async with session.post(url, headers=headers, json=request_payload, ssl=False) as response:
                         if response.status == 200:
                             return await response.json()
                         else:
@@ -130,7 +130,7 @@ async def parse_html(file_path):
         except UnicodeDecodeError as e:
             print(f"Error decoding file {file_path} with Latin-1 encoding: {e}")
     # Reading the file
-    
+
     index = data
     return index
 
@@ -142,6 +142,10 @@ def replace_backslashes(input_string):
 def clean_json(json_str):
     data = dict(dirtyjson.loads(json_str))
     json_string = data.get("raw_data", "")
+   # json_string = json_string.replace("\n","").replace("\t","")
+   # json_string = re.sub(r'(?<!\\)\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})', r'', json_string)
+   # json_string = replace_backslashes(json_string)
+   # data['raw_data'] = json.loads(json_string)
     data['raw_data'] = json_string
     return data
 
@@ -172,7 +176,7 @@ async def parse_json(file_path):
         for item in layout_items:
             if item.get("type","") in ["RICH_TEXT_AREA","TEXT"] :
                 if item.get("value", ""):
-                    html_string += item.get("value")            
+                    html_string += item.get("value")
                     unescaped_string = html.unescape(html_string)
     return unescaped_string,lastPublisheddate
 
@@ -425,7 +429,7 @@ async def get_azure_openai_response(content, instruction_msg):
         print("Error in fetching LLM response, falling back to empty llm response")
         print(traceback.format_exc())
         completion_json_format = {}
-        
+
     return completion_json_format
 
 
@@ -435,7 +439,7 @@ async def get_llm_response(content, instruction_msg):
            raise Exception("Empty TOC encountered")
         if llm_used=="openai":
             llm_response= await get_openai_response(content, instruction_msg)
-        
+
         elif llm_used=="azure":
             llm_response= await get_azure_openai_response(content, instruction_msg)
     except Exception as e:
@@ -484,7 +488,7 @@ def extract_chunks_using_heading_id(soup, lookup_table,  heading_ids, **kwargs):
                         content_html = collect_intermediate_tags(soup, anchor_tag, heading_ids)
                         content_html_string = str(content_html)
                         chunks.append(dict(heading = new_value, content = content_html_string))
-                        
+
     except Exception as e:
         print("Error in Extracting Chunks based on the given lookup table {} for {}".format(lookup_table, kwargs.get("filename","")))
         print(traceback.format_exc())
@@ -515,7 +519,7 @@ async def convert_to_SA_format(chunks,lastupdatedDate, **kwargs):
     for chunk in chunks:
         title = chunk.get("heading")
         markdown= chunk.get("content_markdown")
-        
+
         if markdown is None:
             markdown="null"
         data = {
@@ -585,7 +589,7 @@ async def helper(input_directory_path, output_directory_path):
 
             else:
                 # Open the file in write mode
-                
+
                 parsed_html,updatedDate = await parse_json(file_path)
                 # print(parsed_html)
                 with open(html_input_file_path, 'w') as file:
@@ -618,8 +622,7 @@ async def helper(input_directory_path, output_directory_path):
             # print(store_chunks)
 
     if store_chunks:
-        # output_directory_path = ".data/output" 
+        # output_directory_path = ".data/output"
         filename = "output_file.json"
         output_file_path = os.path.join(output_directory_path, filename)
         return await save_json(output_file_path, store_chunks)
-        

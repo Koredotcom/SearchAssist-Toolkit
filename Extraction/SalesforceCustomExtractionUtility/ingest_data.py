@@ -16,7 +16,7 @@ def ingest_new_data(json_file):
     'Content-Type': 'application/json',
     'Auth': Auth
   }
-  response = requests.post(urls, headers=headers, data=payload)
+  response = requests.post(urls, headers=headers, data=payload,proxies=config.proxies,verify=False)
   if response.status_code == 200:
     logger.info("data ingested successfully")
     print("data ingested")
@@ -24,3 +24,4 @@ def ingest_new_data(json_file):
     logger.info("error occured in data ingestion")
     print("Error:", response.text)
   return response.status_code
+
