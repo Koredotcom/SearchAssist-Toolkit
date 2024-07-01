@@ -70,13 +70,17 @@ Follow the steps below to set up and run the Salesforce Custom Extraction Utilit
     /data/Python-3.9.7/bin/python3.9 -m venv py3.9.7
     source /data/py3.9.7/bin/activate
     ```
+6. **Replace Proxy url**
+   
+   In variables.py add the proxy urls under #proxies then update the url in salesforceData_extraction (line- 193).   .
+   
 
-6. **Install the required packages**:
+7. **Install the required packages**:
     ```bash
     pip install -r requirements.txt
     ```
 
-7. **Run the utility**:
+8. **Run the utility**:
     ```bash
     python main.py
     ```

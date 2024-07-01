@@ -172,13 +172,14 @@ async def parse_json(file_path):
         raw_data = cleaned_json.get("raw_data", {})
         layout_items = raw_data.get("layoutItems",[])
         lastPublisheddate= raw_data.get("lastPublishedDate","")
+        knowledge_article_urls=raw_data.get("url")
         html_string = ""
         for item in layout_items:
             if item.get("type","") in ["RICH_TEXT_AREA","TEXT"] :
                 if item.get("value", ""):
                     html_string += item.get("value")
                     unescaped_string = html.unescape(html_string)
-    return unescaped_string,lastPublisheddate
+    return unescaped_string,lastPublisheddate,knowledge_article_urls
 
 
 def check_tag(tag, heading_ids):
@@ -514,7 +515,7 @@ def split_into_chunks(text, heading_start, heading_end):
         chunks.append(dict(heading = heading, content = content))
     return chunks
 
-async def convert_to_SA_format(chunks,lastupdatedDate, **kwargs):
+async def convert_to_SA_format(chunks,lastupdatedDate,unique_ArticleIDs_url, **kwargs):
     data_list = list()
     for chunk in chunks:
         title = chunk.get("heading")
@@ -527,7 +528,8 @@ async def convert_to_SA_format(chunks,lastupdatedDate, **kwargs):
             "content": chunk.get("content"),
             "html": urllib.parse.quote(chunk.get("content")),
             "content_markdown" : markdown,
-            "url": kwargs.get("url",""),
+            # "url": kwargs.get("url",""),
+            "url": unique_ArticleIDs_url,
             "meta_data":kwargs.get("meta_data",{}),
             "doc_name" : kwargs.get("filename",""),
             "lastModifiedDate": lastupdatedDate
@@ -539,7 +541,7 @@ def convert_chunks_to_markdown(chunks):
         if chunk.get("content",""):
             chunk['content_markdown'] = md(chunk.get('content'))
     return chunks
-async def extract_chunks(input_html,lastupdatedDate,**kwargs):
+async def extract_chunks(input_html,lastupdatedDate,unique_ArticleIDs_url,**kwargs):
     try:
         soup =  BeautifulSoup(input_html, 'html.parser')
         soup_for_toc = copy.deepcopy(soup)
@@ -554,7 +556,7 @@ async def extract_chunks(input_html,lastupdatedDate,**kwargs):
         markdown_chunks = convert_chunks_to_markdown(extracted_chunks)
         # Split the html into chunk if failed to extract using the above approach
         # chunks = split_into_chunks(html_as_markdown, heading_start, heading_end)
-        sa_structured_data = await convert_to_SA_format(markdown_chunks,lastupdatedDate,**kwargs)
+        sa_structured_data = await convert_to_SA_format(markdown_chunks,lastupdatedDate,unique_ArticleIDs_url,**kwargs)
     except Exception as e:
         print("Error in extracting Chunks for the given file : {}. Sending empty data".format(kwargs.get("filename")))
         print(traceback.format_exc())
@@ -571,6 +573,7 @@ async def save_json(output_file_path, store_chunks):
 async def helper(input_directory_path, output_directory_path):
     structure_Data_Count=0
     updatedDates={}
+    articleID_urls={}
     # html_directory_path="./html"
     os.makedirs(output_directory_path, exist_ok=True)
     input_html_directory_path = os.path.join(input_directory_path, "html")
@@ -590,7 +593,7 @@ async def helper(input_directory_path, output_directory_path):
             else:
                 # Open the file in write mode
 
-                parsed_html,updatedDate = await parse_json(file_path)
+                parsed_html,updatedDate,knowledge_article_urls = await parse_json(file_path)
                 # print(parsed_html)
                 with open(html_input_file_path, 'w') as file:
                     # Write the HTML string to the file
@@ -598,6 +601,7 @@ async def helper(input_directory_path, output_directory_path):
                             with open(html_input_file_path, 'w', encoding='utf-8') as output_file:
                                 output_file.write(parsed_html)
                                 updatedDates.update({html_input_file_path:updatedDate})
+                                articleID_urls.update({html_input_file_path:knowledge_article_urls})
                                 print(f"Parsed HTML saved to {html_input_file_path}")
                         except UnicodeEncodeError as e:
                             print(f"Error encoding parsed HTML to UTF-8: {e}")
@@ -612,7 +616,9 @@ async def helper(input_directory_path, output_directory_path):
             print(f'Staring Extraction for {filename}')
             if html_input_file_path in updatedDates:
                 lastupdatedDate= updatedDates[html_input_file_path]
-            json_output = await extract_chunks(input_html,lastupdatedDate,**kwargs)
+            if html_input_file_path in articleID_urls:
+                unique_ArticleIDs_url= articleID_urls[html_input_file_path]
+            json_output = await extract_chunks(input_html,lastupdatedDate,unique_ArticleIDs_url,**kwargs)
             html_path = os.path.join(input_html_directory_path, f"{os.path.splitext(filename)[0]}_chunks.json")
             with open(html_path, 'w') as file:
                 json.dump(json_output, file, indent=4)

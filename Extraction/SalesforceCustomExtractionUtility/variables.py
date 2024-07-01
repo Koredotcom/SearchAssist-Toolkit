@@ -42,8 +42,10 @@ SA_url= os.environ.get('searchassist_URL')
 #paths
 input_path=os.environ.get('input_path')
 output_path=os.environ.get('output_path')
+
 #proxies
-proxies= {"http": "http://vz-proxy.pncint.net:80","https": "http://vz-proxy.pncint.net:80"}
+#Replace "PROXY URL"
+proxies= {"http": "PROXY URL","https": "PROXY URL"}
 
 #itemIds
 itemIds=""

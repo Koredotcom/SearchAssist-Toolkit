@@ -4,14 +4,14 @@ import asyncio
 import aiohttp
 import chunks_extraction as sa_utility
 import os
-import shutil
 import ssl
-from utils.logger import get_logger, write_json_to_separate_file
+import shutil
+import csv
+from utils.logger import get_logger, write_json_to_separate_file,write_refresh_token
 logger = get_logger()
 #access token generation
 def generate_access_token():
     try:
-        # print("PROXY: ",config.proxies)
         url = config.accessTokenUrl
         payload = {
             'grant_type': config.accessTokenGrantType,
@@ -19,14 +19,13 @@ def generate_access_token():
             'client_id': config.accessTokenClientId,
             'redirect_uri':config.redirectUri,
             'code': config.accessTokenAuthCode
-            }
+        }
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded'
         }
-        # proxy= {"http": "http://vz-proxy.pncint.net:80","https": "http://vz-proxy.pncint.net:80"}
         response = requests.post(url, headers=headers, data=payload,proxies=config.proxies,verify=False)
-        response.raise_for_status()
-        print("Response",response)
+        response.raise_for_status()  
+        #getting access token and instance_url;
 
         access_token = response.json().get('access_token')
         instance_url=response.json().get('instance_url')
@@ -44,16 +43,16 @@ def generate_refresh_token(refresh_token) :
             'grant_type': config.refreshTokenGrantType,
             'client_secret': config.refreshTokenClientSecret,
             'client_id': config.refreshTokenClientId,
-            'refresh_token' :refresh_token
+            'refresh_token' :refresh_token    
         }
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded'
         }
         response = requests.post(url, headers=headers, data=payload,proxies=config.proxies,verify=False)
-        response.raise_for_status()
+        response.raise_for_status()  
+        #getting access token and instance_url;
 
         access_token = response.json().get('access_token')
-
         if not access_token:
             raise ValueError("Access token not found in response")
         return access_token
@@ -65,73 +64,140 @@ def generate_refresh_token(refresh_token) :
 def make_api_call(url, headers=None):
     try:
         response = requests.get(url, headers=headers,proxies=config.proxies,verify=False)
-        response.raise_for_status()
-        logger.info(f"API call successful for URL: {url}")
+        response.raise_for_status()  
         return response.json()
     except requests.HTTPError as e:
         logger.error(f"HTTP error occurred for URL {url}: {e}, status code: {response.status_code}", exc_info=True)
     except Exception as e:
         logger.error(f"An error occurred during API call for URL {url}: {e}", exc_info=True)
 
-#getting id
-def get_articles_list_id(access_token):
+#getting id 
+async def get_articles_list_id(access_token):
     try:
-        lists_url = f"{config.hostUrl}/services/data/v57.0/query/?q=SELECT Id, Title, LastModifiedDate, KnowledgeArticleId FROM KnowledgeArticleVersion WHERE PublishStatus='Online'"
-        headers = {
+        urlNames=[]
+        item_ids=[]
+        emptyUrlNames=[]
+        with open('input.csv', 'r') as csvfile:
+         csvreader = csv.reader(csvfile)
+         for row in csvreader:
+           print(row)
+           urlNames.append(row[0]) 
+        print(len(urlNames))
+        #splitting into batches
+        urlBatches = [urlNames[i:i+int(config.eachBatchCount)] for i in range(0, len(urlNames), int(config.eachBatchCount))]
+        # print(urlBatches)
+        count=0
+        for eachBatch in urlBatches:
+          count=count+1;
+          logger.info(f"API calls for fetching item ids are successful for batch {count} .")
+          for url_name in eachBatch:
+            
+            # print(url_name)
+            lists_url = f"{config.hostUrl}/services/data/v57.0/query/?q=SELECT Id, Title, LastModifiedDate, KnowledgeArticleId, URLName FROM KnowledgeArticleVersion WHERE PublishStatus='Online' AND UrlName='{url_name}'" 
+            # print(lists_url)
+            headers = {
                    "Authorization": f"Bearer {access_token}",
                    "Accept-Language": "en-US",
                   }
-        expectedItemIds=config.itemIds
-        if expectedItemIds!="" :
-          item_ids= expectedItemIds 
-        else:
-            lists_response = make_api_call(lists_url, headers)
-            item_ids = [item["KnowledgeArticleId"] for item in lists_response.get("records", [])]
-            list_url_all=[]
-            # item_ids = ["kA01L000000EMkqSAG","kA04p000000dzUHCAY","kA01L000000ELC6SAO","kA01L000000ENNPSA4","kA01L000000ELokSAG","kA01L0000001hbKSAQ","kA04p0000006UQYCA2","kA01L000000ENH7SAO","kA04p0000001ClcCAE","kA01L000000EMipSAG"]
-            print(item_ids)
+            listResponse =   make_api_call(lists_url,headers)
+            if listResponse['totalSize']==0 or listResponse['records'] == None :
+                  emptyUrlNames.append(url_name)
+    
+            else :
+                 itemId = [item["KnowledgeArticleId"] for item in listResponse.get("records", [])]
+                #  print(itemId)
+                 item_ids.append(itemId[0])
+        logger.info(f"API calls for fetching item ids are successful for batch {count} .")
+        # print(f"API calls for fetching item ids are successful for batch {count} .")
+        emptyUrlNameslist = [[item] for item in emptyUrlNames]
+        print("Empty URLS",emptyUrlNameslist)  
+        
+        with open('emptyUrl.csv', 'w', newline='') as csvfile:
+         csvwriter = csv.writer(csvfile)
+         csvwriter.writerows(emptyUrlNameslist)
+        # expectedItemIds=config.itemIds
+        # if expectedItemIds!="" :
+        #   item_ids= expectedItemIds 
+        # else:
+        #     lists_response = make_api_call(lists_url, headers)
+        #     item_ids = [item["KnowledgeArticleId"] for item in lists_response.get("records", [])]
+        #     list_url_all=[]
+        #     # item_ids = ["kA01L000000EMkqSAG","kA04p000000dzUHCAY","kA01L000000ELC6SAO","kA01L000000ENNPSA4","kA01L000000ELokSAG","kA01L0000001hbKSAQ","kA04p0000006UQYCA2","kA01L000000ENH7SAO","kA04p0000001ClcCAE","kA01L000000EMipSAG"]
+        #     print(item_ids)
 
-            #getting all the other page urls and the article ids in them
-            if 'nextRecordsUrl' in lists_response:
-                for page in lists_response['nextRecordsUrl']:
-                    if lists_response['nextRecordsUrl']:
-                        headers = {
-                            "Authorization": f"Bearer {access_token}",
-                            "Accept-Language": "en-US"
-                            }
-                        lists_url_2 = f"{lists_url}{lists_response['nextRecordsUrl']}"
-                        lists_responses = make_api_call(lists_url_2, headers)
-                        item_id_all = [item["KnowledgeArticleId"] for item in lists_responses.get("records", [])]
+        #     #getting all the other page urls and the article ids in them
+        #     if 'nextRecordsUrl' in lists_response:
+        #         for page in lists_response['nextRecordsUrl']:
+        #             if lists_response['nextRecordsUrl']:
+        #                 headers = {
+        #                     "Authorization": f"Bearer {access_token}",
+        #                     "Accept-Language": "en-US"
+        #                     }
+        #                 lists_url_2 = f"{lists_url}{lists_response['nextRecordsUrl']}"
+        #                 lists_responses = make_api_call(lists_url_2, headers)
+        #                 item_id_all = [item["KnowledgeArticleId"] for item in lists_responses.get("records", [])]
 
-                        item_ids=item_ids + item_id_all
-                        lists_response=lists_responses
-                        list_url_all.append(lists_url_2)
+        #                 item_ids=item_ids + item_id_all
+        #                 lists_response=lists_responses
+        #                 list_url_all.append(lists_url_2)
 
+        # lists_url = f"https://koreai56-dev-ed.my.salesforce.com/services/data/v57.0/support/knowledgeArticles?pageNumber=1"
+      
+        # headers = {
+        #            "Authorization": f"Bearer {access_token}",
+        #            "Accept-Language": "en-US",
+        #           }
+        # expectedItemIds=config.itemIds
+        # if expectedItemIds!="" :
+        #   item_ids= expectedItemIds 
+        # else:
+        #     lists_response = make_api_call(lists_url, headers)
+        #     item_ids = [item["id"] for item in lists_response.get("articles", [])]
+        #     list_url_all=[]
+        #     # item_ids = ["kA01L000000EMkqSAG","kA04p000000dzUHCAY","kA01L000000ELC6SAO","kA01L000000ENNPSA4","kA01L000000ELokSAG","kA01L0000001hbKSAQ","kA04p0000006UQYCA2","kA01L000000ENH7SAO","kA04p0000001ClcCAE","kA01L000000EMipSAG"]
+        #     print(item_ids)
 
+        #     #getting all the other page urls and the article ids in them
+        #     if 'nextPageUrl' in lists_response:
+        #         for page in lists_response['nextPageUrl']:
+        #             if lists_response['nextPageUrl']:
+        #                 headers = {
+        #                     "Authorization": f"Bearer {access_token}",
+        #                     "Accept-Language": "en-US"
+        #                     }
+        #                 lists_url_2 = f"https://koreai56-dev-ed.my.salesforce.com/{lists_response['nextPageUrl']}"
+        #                 lists_responses = make_api_call(lists_url_2, headers)
+        #                 item_id_all = [item["id"] for item in lists_responses.get("articles", [])]
 
+        #                 item_ids=item_ids + item_id_all
+        #                 lists_response=lists_responses
+        #                 list_url_all.append(lists_url_2)
+        # print(item_ids)
     except Exception as e:
         logger.error(f"An error occurred while retrieving 'Articles' list ID: {e}", exc_info=True)
+        logger.error(f"API calls for fetching item ids failed at batch {count} .")
 
     return item_ids
 #getting details
 async def fetch_item_details(new_access_token,instance_url,item_id,proxy_url):
-    item_url = f"{instance_url}/services/data/v57.0/support/knowledgeArticles/{item_id}"
+    item_url = f"{instance_url}/services/data/v57.0/support/knowledgeArticles/{item_id}"  
     headers = {
                 "Authorization": f"Bearer {new_access_token}",
                 "Accept-Language": "en-US"
-               }
-    try:
+               } 
+    try: 
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
-            async with session.get(item_url, headers=headers, timeout=20,proxy="http://vz-proxy.pncint.net:80") as response:
-              response.raise_for_status()
-              item_response = await response.json()
-
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:     
+            async with session.get(item_url, headers=headers, timeout=20,proxy="client proxy url") as response:
+              response.raise_for_status()  
+              item_response = await response.json()  
+              item_response["url"]= item_url
+                
             return {
                 'raw_data': item_response
-            }
+            } 
     except aiohttp.ClientError as e:
         logger.error(f"An error occurred during item details fetch: {e}", exc_info=True)
     except asyncio.TimeoutError:
@@ -142,23 +208,21 @@ async def fetch_item_details(new_access_token,instance_url,item_id,proxy_url):
 async def make_list_api_call(access_token, instance_url,itemIds,refresh_token,proxy_url):
     logger.info(f"Making API call for retreiving all the item details")
     batches = [itemIds[i:i+int(config.eachBatchCount)] for i in range(0, len(itemIds), int(config.eachBatchCount))]
-    print(batches)
+    
     try:
-
-                results_final=[];
-                x=1
+                 
+                results_final=[]; 
+                x=1      
                 for eachBatch in batches:
-                    tasks = []
-                    print(len(eachBatch))
-                    # print("Next Batch")
+                    tasks = []   
                     new_access_token=generate_refresh_token(refresh_token)
                     print("New Access Token",new_access_token)
                     for item_id in eachBatch:
                         task = fetch_item_details(new_access_token,instance_url,item_id,proxy_url)
-                        tasks.append(task)
+                        tasks.append(task)    
                     results = await asyncio.gather(*tasks)
-                    results_final.append(results);
-                    print("results", results)
+                    results_final.append(results); 
+
                     # x=1
                     for individual_batch in results_final :
                         for individual_response in individual_batch :
@@ -173,7 +237,7 @@ async def make_list_api_call(access_token, instance_url,itemIds,refresh_token,pr
                     os.makedirs(config.input_path)
 
                 return filtered_results
-
+                   
     except aiohttp.ClientError as e:
         logger.error(f"An error occurred during API call for retrieving item details: {e}", exc_info=True)
 
@@ -182,18 +246,15 @@ async def make_list_api_call(access_token, instance_url,itemIds,refresh_token,pr
 async def extractData():
     try:
         access_token,instance_url,refresh_token = generate_access_token()
-
-        print("Access Token",access_token,instance_url)
         logger.info("Access token generated successfully.")
         logger.debug(f"Access token: {access_token}")
 
         logger.info("Access token generated successfully.")
         logger.debug(f"Access token: {access_token}")
 
-        itemIds = get_articles_list_id(access_token)
+        itemIds = await get_articles_list_id(access_token)
         logger.debug(f"Instance Url: {itemIds}")
         proxy_url=config.proxies
-
         details= await make_list_api_call(access_token,instance_url,itemIds,refresh_token,proxy_url)
         logger.debug(f"Details: {details}")
 
