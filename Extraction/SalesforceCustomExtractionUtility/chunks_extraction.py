@@ -22,10 +22,7 @@ logger = get_logger()
 OPENAI_KEY = config.OPENAI_KEY
 Azure_key= config.AZURE_OPENAI_KEY
 
-if OPENAI_KEY:
-    llm_used="openai"
-elif Azure_key:
-    llm_used="azure"
+llm_used=config.llm_used
 
 open_ai_conf = {
     "API_BASE":config.openAI_apibase,

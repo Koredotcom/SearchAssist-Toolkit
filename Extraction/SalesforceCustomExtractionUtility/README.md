@@ -29,6 +29,9 @@ Follow the steps below to set up and run the Salesforce Custom Extraction Utilit
 
 4. **Create a `.env` file and configure the following environment variables**:
     ```plaintext
+     
+    # Specify the language model provider: "openai" or "azure"
+    llm_used=""
 
     # open ai
     open_ai_key=""
@@ -43,6 +46,10 @@ Follow the steps below to set up and run the Salesforce Custom Extraction Utilit
     userSubDomain= ""
     deployment=""
     Apiversion=""
+
+    #update testing environment
+    # if cloud then test_env="login" for sandbox="test"
+    test_env=""
 
     # Access Token
     hostUrl = "***"
@@ -64,23 +71,31 @@ Follow the steps below to set up and run the Salesforce Custom Extraction Utilit
     output_path = ".data/output/"
     ```
 
+    #Proxy URLs for network access
+    proxies= {"http": "PROXY URL","https": "PROXY URL"}
+
+    #Specifies whether data fetching uses URL names or Item IDs
+    #inputFormat="urlnames" or inputFormat="itemids"
+    inputFormat =""
+
+    #SSL Verification
+    #Set to "False" if SSL Verification is not needed, otherwise set to "True"
+    ssl=""
+
+
 5. **Create and activate a virtual environment**:
     ```bash
     cd /data
     /data/Python-3.9.7/bin/python3.9 -m venv py3.9.7
     source /data/py3.9.7/bin/activate
     ```
-6. **Replace Proxy url**
-   
-   In variables.py add the proxy urls under #proxies then update the url in salesforceData_extraction (line- 193).   .
-   
 
-7. **Install the required packages**:
+6. **Install the required packages**:
     ```bash
     pip install -r requirements.txt
     ```
 
-8. **Run the utility**:
+7. **Run the utility**:
     ```bash
     python main.py
     ```
