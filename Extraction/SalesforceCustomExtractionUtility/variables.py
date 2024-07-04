@@ -57,5 +57,5 @@ inputFormat=os.environ.get('inputFormat')
 sslVerify=os.environ.get('ssl')
 
 #itemIds
-itemIds=""
+itemIds=os.environ.get('itemIds')
 

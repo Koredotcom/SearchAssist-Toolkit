@@ -81,6 +81,10 @@ Follow the steps below to set up and run the Salesforce Custom Extraction Utilit
     #SSL Verification
     #Set to "False" if SSL Verification is not needed, otherwise set to "True"
     ssl=""
+
+    #If you need the details of specific documents you can enter their article ids or leave it as empty
+    itemIds=""
+
     ```
 
 5. **Create and activate a virtual environment**:

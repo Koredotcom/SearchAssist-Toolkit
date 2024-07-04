@@ -90,7 +90,7 @@ class AsyncAzureOpenAI:
         async with aiohttp.ClientSession() as session:
             for _ in range(self.max_retries + 1):
                 try:
-                    async with session.post(url, headers=headers, json=request_payload, ssl=False) as response:
+                    async with session.post(url, headers=headers, json=request_payload, verify=bool(config.sslVerify)) as response:
                         if response.status == 200:
                             return await response.json()
                         else:
