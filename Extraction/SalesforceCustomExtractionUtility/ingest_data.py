@@ -16,7 +16,7 @@ def ingest_new_data(json_file):
     'Content-Type': 'application/json',
     'Auth': Auth
   }
-  response = requests.post(urls, headers=headers, data=payload,proxies=config.proxies,verify=False)
+  response = requests.post(urls, headers=headers, data=payload,proxies=config.proxies,verify=bool(config.sslVerify))
   if response.status_code == 200:
     logger.info("data ingested successfully")
     print("data ingested")

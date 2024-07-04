@@ -560,13 +560,37 @@ async def extract_chunks(input_html,lastupdatedDate,unique_ArticleIDs_url,**kwar
         sa_structured_data = list()
     return sa_structured_data
 
+# async def save_json(output_file_path, store_chunks):
+#     async with aiofiles.open(output_file_path, 'w') as json_file:
+#         await json_file.write(json.dumps(store_chunks, indent=2))
+#         print("data ingestion started")
+#         ingest=data_ingestion.ingest_new_data(store_chunks)
+#         print(ingest)
+        
 async def save_json(output_file_path, store_chunks):
-    async with aiofiles.open(output_file_path, 'w') as json_file:
-        await json_file.write(json.dumps(store_chunks, indent=2))
-        print("data ingestion started")
-        ingest=data_ingestion.ingest_new_data(store_chunks)
-        print(ingest)
+#starting here
+    if os.path.exists(output_file_path):
+        # File exists, read current data
+        async with aiofiles.open(output_file_path, 'r') as json_file:
+            file_content = await json_file.read()
+            if file_content.strip(): 
+                data = json.loads(file_content)
+            else:
+                data = [] 
+                print("data",data)
+    else:
+        data = []
+    data.extend(store_chunks)
+#End here
 
+    # print(data)
+    async with aiofiles.open(output_file_path, 'w') as json_file:
+        await json_file.write(json.dumps(data, indent=2))
+    
+    # Example of data ingestion (replace with your own logic)
+    print("Data ingestion started")
+    ingest = data_ingestion.ingest_new_data(store_chunks)
+    print(ingest)
 async def helper(input_directory_path, output_directory_path):
     structure_Data_Count=0
     updatedDates={}

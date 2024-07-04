@@ -69,7 +69,7 @@ Follow the steps below to set up and run the Salesforce Custom Extraction Utilit
     # Input and Output Paths
     input_path = ".data/input/"
     output_path = ".data/output/"
-    ```
+   
 
     #Proxy URLs for network access
     proxies= {"http": "PROXY URL","https": "PROXY URL"}
@@ -81,7 +81,7 @@ Follow the steps below to set up and run the Salesforce Custom Extraction Utilit
     #SSL Verification
     #Set to "False" if SSL Verification is not needed, otherwise set to "True"
     ssl=""
-
+    ```
 
 5. **Create and activate a virtual environment**:
     ```bash

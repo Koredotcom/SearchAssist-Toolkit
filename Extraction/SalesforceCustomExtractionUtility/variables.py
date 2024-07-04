@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 #LLM 
-llm_used=os.environ("llm_used")
+llm_used=os.environ.get("llm_used")
 
  
 # OpenAI Configuration
@@ -21,7 +21,7 @@ deployment= os.environ.get("deployment")
 Apiversion=os.environ.get("Apiversion")
 
 # Access Token Configuration
-accessTokenUrl = f"https://{os.environ('test_env')}.salesforce.com/services/oauth2/token"
+accessTokenUrl = f"https://{os.environ.get('test_env')}.salesforce.com/services/oauth2/token"
 hostUrl = os.environ.get('hostUrl')
 accessTokenGrantType = "authorization_code"
 accessTokenClientId = os.environ.get('clientId')
@@ -30,7 +30,7 @@ redirectUri = os.environ.get('redirectUri')
 accessTokenAuthCode =os.environ.get('accessTokenAuthCode')
 
 #Refresh Token Configuration
-refreshTokenUrl = f"https://{os.environ('test_env')}test.salesforce.com/services/oauth2/token"
+refreshTokenUrl = f"https://{os.environ.get('test_env')}.salesforce.com/services/oauth2/token"
 refreshTokenGrantType = "refresh_token"
 refreshTokenClientId = os.environ.get('clientId')
 refreshTokenClientSecret = os.environ.get('clientSecret')

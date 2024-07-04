@@ -23,7 +23,7 @@ def generate_access_token():
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded'
         }
-        response = requests.post(url, headers=headers, data=payload,proxies=config.proxies,verify=config.sslVerify)
+        response = requests.post(url, headers=headers, data=payload,proxies=config.proxies,verify=bool(config.sslVerify))
         response.raise_for_status()  
         #getting access token and instance_url;
 
@@ -38,6 +38,7 @@ def generate_access_token():
 
 def generate_refresh_token(refresh_token) :
     try:
+        # print(config.accessTokenUrl)
         url = config.accessTokenUrl
         payload = {
             'grant_type': config.refreshTokenGrantType,
@@ -48,7 +49,7 @@ def generate_refresh_token(refresh_token) :
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded'
         }
-        response = requests.post(url, headers=headers, data=payload,proxies=config.proxies,verify=config.sslVerify)
+        response = requests.post(url, headers=headers, data=payload,proxies=config.proxies,verify=bool(config.sslVerify))
         response.raise_for_status()  
         #getting access token and instance_url;
 
@@ -63,7 +64,7 @@ def generate_refresh_token(refresh_token) :
 # Make an API call to the specified URL with optional headers.
 def make_api_call(url, headers=None):
     try:
-        response = requests.get(url, headers=headers,proxies=config.proxies,verify=config.sslVerify)
+        response = requests.get(url, headers=headers,proxies=config.proxies,verify=bool(config.sslVerify))
         response.raise_for_status()  
         return response.json()
     except requests.HTTPError as e:
@@ -74,20 +75,20 @@ def make_api_call(url, headers=None):
 #getting id 
 async def get_articles_list_id(access_token):
     try:
+        count=0
         if config.inputFormat=="urlnames":
             urlNames=[]
             item_ids=[]
             emptyUrlNames=[]
             with open('input.csv', 'r') as csvfile:
              csvreader = csv.reader(csvfile)
-            for row in csvreader:
-                print(row)
-            urlNames.append(row[0]) 
+             for row in csvreader:
+                #  print(row)
+                 urlNames.append(row[0]) 
             print(len(urlNames))
             #splitting into batches
             urlBatches = [urlNames[i:i+int(config.eachBatchCount)] for i in range(0, len(urlNames), int(config.eachBatchCount))]
             # print(urlBatches)
-            count=0
             for eachBatch in urlBatches:
                 count=count+1;
             logger.info(f"API calls for fetching item ids are successful for batch {count} .")
@@ -127,6 +128,7 @@ async def get_articles_list_id(access_token):
                     "Accept-Language": "en-US",
                     }
                 lists_response = make_api_call(lists_url, headers)
+                # print("lists_response",lists_response)
                 item_ids = [item["KnowledgeArticleId"] for item in lists_response.get("records", [])]
                 list_url_all=[]
                 # print(item_ids)
@@ -163,10 +165,11 @@ async def fetch_item_details(new_access_token,instance_url,item_id,proxy_url):
                } 
     try: 
         ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = config.sslVerify
+        ssl_context.check_hostname = bool(config.sslVerify)
         ssl_context.verify_mode = ssl.CERT_NONE
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:     
-            async with session.get(item_url, headers=headers, timeout=20,proxy=config.proxies["http"]) as response:
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:  
+        # async with aiohttp.ClientSession() as session:  
+            async with session.get(item_url, headers=headers, timeout=20,proxies=config.proxies['http']) as response:
               response.raise_for_status()  
               item_response = await response.json()  
               item_response["url"]= item_url
