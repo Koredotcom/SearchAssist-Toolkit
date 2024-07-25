@@ -1,0 +1,37 @@
+# Core dependencies
+pandas==2.1.1
+openpyxl==3.1.2
+numpy==1.25.2
+
+# RAGAS and its dependencies
+ragas==0.0.20
+datasets==2.14.5
+
+# OpenAI API
+openai==1.3.5
+
+# Transformers for tokenization
+transformers==4.35.2
+
+# Logging
+loguru==0.7.2
+
+# Progress bar
+tqdm==4.66.1
+
+# For handling environment variables
+python-dotenv==1.0.0
+
+# Optional: If you're using any visualization in your project
+matplotlib==3.8.0
+seaborn==0.13.0
+
+# Optional: For more advanced DataFrame operations
+pyarrow==14.0.1
+
+# Optional: For API if you plan to serve results
+fastapi==0.104.1
+uvicorn==0.24.0.post1
+
+# Testing
+pytest==7.4.3

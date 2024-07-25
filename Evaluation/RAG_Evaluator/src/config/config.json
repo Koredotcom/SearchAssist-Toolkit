@@ -1,0 +1,5 @@
+{
+    "auth_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiYXBwSWQiOiJjcy0yMjU4MzdlZS1kN2ZhLTUxMDktOGExMS01NDQxYjYzMDBiMmMifQ.SQIzqbcrmbxV744mhYimx7ORDThBP2PaJF3pIS4bd54",
+    "app_id":"st-f1aaa40c-e1a3-59fe-a48f-9c9bf535a50e",
+    "EVALUATION_MODEL_NAME": "gpt-4-0125-preview"
+}
