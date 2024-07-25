@@ -5,7 +5,7 @@
 
 In the rapidly evolving world of artificial intelligence, Retrieval-Augmented Generation (RAG) has emerged as a game-changer. RAG combines the power of large language models (LLMs) with external knowledge retrieval, enhancing the accuracy and relevance of AI-generated responses. But with great power comes great responsibility - how do we ensure that our RAG applications are performing as expected?
 
-Enter [RAGEvaluator](), a powerful tool designed to assess and optimize RAG applications. In this blog post, we'll explore how RAGEvaluator works, why it's crucial for developers and data scientists, and how you can use it to improve your RAG-based systems.
+Enter [RAGEvaluator](https://github.com/Koredotcom/SearchAssist-Toolkit/tree/akhilm/rag_evaluator/Evaluation/RAG_Evaluator), a powerful tool designed to assess and optimize RAG applications. In this blog post, we'll explore how RAGEvaluator works, why it's crucial for developers and data scientists, and how you can use it to improve your RAG-based systems.
 
 ## Introducing RAGEvaluator: A RAG Evaluation Solution
 
@@ -42,117 +42,54 @@ RAGEvaluator operates by running your RAG application through a series of carefu
 4. **Metric Calculation**: Various performance metrics are calculated based on the analysis.
 5. **Report Generation**: A comprehensive report is produced with the evaluation results.
 
-The RAG Evaluator assesses a RAG application using the widely recognized RAGAS and CRAG benchmarks. The evaluation encompasses several key metrics:
+The RAG Evaluator assesses a RAG application using the widely recognized RAGAS and CRAG benchmarks.
 
-### RAGAS Metrics:
-### Faithfulness
-This measures the factual consistency of the generated answer against the given context. It is calculated from the answer and retrieved context. The answer is scaled to (0,1) range. Higher the better.
+- **[CRAG](https://arxiv.org/pdf/2406.04744) (Comprehensive Retrieval-Augmented Generation)**:  Comprehensive RAG Benchmark (CRAG), a factual question answering benchmark of 4,409 question-answer pairs and Knowledge Graph (KG) search.CRAG is designed to encapsulate a diverse array of questions across five domains and eight question categories. It reflects varied entity popularity from popular to long-tail, and temporal dynamisms ranging from years to seconds.
+- **[RAGAS](https://arxiv.org/pdf/2309.15217) (Retrieval-Augmented Generation Accuracy Score)**: Ragas is built on the idea that LLMs can effectively evaluate natural language output. It forms paradigms that overcome the biases of using LLMs as judges directly and provides continuous scores that are explainable and intuitive to understand.
 
-**Question:** Where and when was Einstein born?  
-**Context:** Albert Einstein (born 14 March 1879) was a German-born theoretical physicist, widely held to be one of the greatest and most influential scientists of all time.
+### RAGAS Metrics
 
-- **High faithfulness answer:** Einstein was born in Germany on 14th March 1879.
-- **Low faithfulness answer:** Einstein was born in Germany on 20th March 1879.
+1. **Context Precision**: Uses the question and retrieved contexts to measure the signal-to-noise ratio.
+2. **Context Recall**: Uses the ground truth and retrieved contexts to check if all relevant information for the answer is retrieved.
+3. **Faithfulness**: Uses the contexts and the bot answer to measure if the claims in the answer can be inferred from the context.
+4. **Answer Relevancy**: Uses the question and the bot answer to assess whether the answer addresses the question (does not consider factuality but penalizes incomplete or redundant answers).
+5. **Answer Correctness**: Uses the ground truth answer and the bot answer to assess the correctness of the bot answer.
 
-### Answer Relevance
-The evaluation metric, Answer Relevancy, focuses on assessing how relevant the generated answer is to the given prompt. A lower score is assigned to answers that are incomplete or contain redundant information and higher scores indicate better relevancy. This metric is computed using the question, the context and the answer. Please note, that even though in practice the score will range between 0 and 1 most of the time, this is not mathematically guaranteed, due to the nature of the cosine similarity ranging from -1 to 1.
+### CRAG Metrics
 
-**Question:** Where is France and what is its capital?  
-- **Low relevance answer:** France is in western Europe.
-- **High relevance answer:** France is in western Europe and Paris is its capital.
+CRAG uses a scoring method to assess the performance of RAG systems based on the following criteria:
 
-### Context Precision
-Context Precision is a metric that evaluates whether all of the ground-truth relevant items present in the contexts are ranked higher or not. Ideally, all the relevant chunks must appear at the top ranks. This metric is computed using the question, ground truth, and the contexts, with values ranging between 0 and 1, where higher scores indicate better precision.
+1. **Perfect**: The response correctly answers the user’s question and contains no hallucinated content.
+2. **Acceptable**: The response provides a useful answer to the user’s question but may contain minor errors that do not harm the usefulness of the answer.
+3. **Missing**: The response is “I don’t know”, “I’m sorry I can’t find ...”, a system error such as an empty response, or a request from the system to clarify the original question.
+4. **Incorrect**: The response provides wrong or irrelevant information to answer the user’s question.
 
-**Question:** Where is France and what is its capital?  
-**Ground truth:** France is in Western Europe and its capital is Paris.
-
-- **High context precision:** 
-  - "France, in Western Europe, encompasses medieval cities, alpine villages and Mediterranean beaches. Paris, its capital, is famed for its fashion houses, classical art museums including the Louvre and monuments like the Eiffel Tower."
-  - "The country is also renowned for its wines and sophisticated cuisine. Lascaux’s ancient cave drawings, Lyon’s Roman theater and the vast Palace of Versailles attest to its rich history."
-
-- **Low context precision:** 
-  - "The country is also renowned for its wines and sophisticated cuisine. Lascaux’s ancient cave drawings, Lyon’s Roman theater and..."
-  - "France, in Western Europe, encompasses medieval cities, alpine villages and Mediterranean beaches. Paris, its capital, is famed for its fashion houses, classical art museums including the Louvre and monuments like the Eiffel Tower."
-
-### Context Relevance
-This metric gauges the relevancy of the retrieved context, calculated based on both the question and contexts. The values fall within the range of (0, 1), with higher values indicating better relevancy.
-
-**Question:** What is the capital of France?  
-- **High context relevance:** "France, in Western Europe, encompasses medieval cities, alpine villages and Mediterranean beaches. Paris, its capital, is famed for its fashion houses, classical art museums including the Louvre and monuments like the Eiffel Tower."
-- **Low context relevance:** "France, in Western Europe, encompasses medieval cities, alpine villages and Mediterranean beaches. Paris, its capital, is famed for its fashion houses, classical art museums including the Louvre and monuments like the Eiffel Tower. The country is also renowned for its wines and sophisticated cuisine. Lascaux’s ancient cave drawings, Lyon’s Roman theater and the vast Palace of Versailles attest to its rich history."
-
-### Context Recall
-Context recall measures the extent to which the retrieved context aligns with the annotated answer, treated as the ground truth. It is computed based on the ground truth and the retrieved context, and the values range between 0 and 1, with higher values indicating better performance.
-
-**Question:** Where is France and what is its capital?  
-**Ground truth:** France is in Western Europe and its capital is Paris.
-
-- **High context recall:** "France, in Western Europe, encompasses medieval cities, alpine villages and Mediterranean beaches. Paris, its capital, is famed for its fashion houses, classical art museums including the Louvre and monuments like the Eiffel Tower."
-- **Low context recall:** "France, in Western Europe, encompasses medieval cities, alpine villages and Mediterranean beaches. The country is also renowned for its wines and sophisticated cuisine. Lascaux’s ancient cave drawings, Lyon’s Roman theater and the vast Palace of Versailles attest to its rich history."
-
-### Answer Semantic Similarity
-The concept of Answer Semantic Similarity pertains to the assessment of the semantic resemblance between the generated answer and the ground truth. This evaluation is based on the ground truth and the answer, with values falling within the range of 0 to 1. A higher score signifies a better alignment between the generated answer and the ground truth.
-
-**Ground truth:** "Albert Einstein’s theory of relativity revolutionized our understanding of the universe."  
-- **High similarity answer:** "Einstein’s groundbreaking theory of relativity transformed our comprehension of the cosmos."
-- **Low similarity answer:** "Isaac Newton’s laws of motion greatly influenced classical physics."
-
-### Answer Correctness
-The assessment of Answer Correctness involves gauging the accuracy of the generated answer when compared to the ground truth. This evaluation relies on the ground truth and the answer, with scores ranging from 0 to 1. A higher score indicates a closer alignment between the generated answer and the ground truth, signifying better correctness.
-
-**Ground truth:** "Einstein was born in 1879 in Germany."  
-- **High answer correctness:** "In 1879, Einstein was born in Germany."
-- **Low answer correctness:** "Einstein was born in Spain in 1879."
-
-###CRAG Metrics:
-Need to add
+The scoring method,assigns scores of 1, 0.5, 0, and -1 for perfect, acceptable, missing, and incorrect answers, respectively. For a given RAG system, we compute the average score from all examples in the evaluation set as the final score.
 
 These metrics provide a holistic view of your RAG application's performance, helping you identify areas for improvement.
 
-##Getting Started with RAGEvaluator
+##Getting Started with RAGEvaluator & Running Your First Evaluation
 
-To begin using RAGEvaluator, you'll need to have the following prerequisites:
+To begin using RAGEvaluator, you need to do the installation setup and run your first evaluation as mentioned here
+[setup & running first evaluation](https://github.com/Koredotcom/SearchAssist-Toolkit/blob/akhilm/rag_evaluator/Evaluation/RAG_Evaluator/README.md)
 
-### Prerequisites
+## Interpreting the Results
 
-- Install a new python virtual environment(Recommended)
-- Python 3.9.x
-- Pip package manager
+RAGEvaluator provides a comprehensive report of your RAG application's performance. Here's a sample of what the output might look like:
 
-### Installing Packages
-
-1. Ensure you have Python and pip installed. You can check this by running:
- ```sh
- python --version
- pip --version
- ```
-
-2. Install the necessary packages by running:
- ```sh
- pip install -r requirements.txt
- ```
-
-
-## Running Your First Evaluation
-
-Let's walk through a basic example of how to use RAGEvaluator:
-
-
-To run an evaluation on a Search AI application, follow these steps:
-
-1. Prepare your Excel file with the following columns:
-    - `query`: The query string.
-    - `ground_truth`: The expected ground truth for the query.
-
-2. Execute the script with the following command:
-
-```sh
-python main.py --input_file path/to/your/excel_file.xlsx --sheet_name "Sheet1" --use_search_api
+```json5
+{
+    "answer_relevancy": 0.74,
+    "faithfulness": 0.9,
+    "context_recall": 0.69,
+    "context_precision": 0.99,
+    "answer_correctness": 0.54,
+    "answer_similarity":0.96,
+    "crag_eval_score": 0.2
+}
 ```
 
-
-This script will run your RAG application through the evaluation process and output the results.
+These metrics give you a clear picture of how well your RAG application is performing across different dimensions. A high retrieval precision indicates that your system is effectively finding relevant information. A low hallucination rate suggests that your responses are generally well-grounded in the retrieved data.
 
 ## Best Practices and Tips
 
