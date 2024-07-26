@@ -96,3 +96,22 @@ Create a config.json file in the config directory with the necessary configurati
 ```
 Replace `EVALUATION_MODEL_NAME` with the actual name of your model, and replace `app_id` and `auth_token` with the `streamId` and `JWT auth token` of your Search AI application.
 
+## Future Improvements
+
+- Add support for additional evaluators.
+- Generate User friendly reports.
+- Support for synthetic test data set generator.
+- Support for custom LLMs(Azure, Claude etc).
+- More to come....!
+
+## Contributing
+
+We welcome contributions to this project! To contribute:
+
+1. Fork the repository.
+2. Create a new branch for your feature or bugfix.
+3. Make your changes and commit them with clear and descriptive messages.
+4. Push your changes to your fork.
+5. Open a pull request with a detailed description of your changes.
+
+For major changes, please open an issue first to discuss what you would like to change. This helps ensure that your contribution is aligned with the project's goals and avoids duplication of effort.

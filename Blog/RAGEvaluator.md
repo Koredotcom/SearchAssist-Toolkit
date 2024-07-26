@@ -47,13 +47,14 @@ The RAG Evaluator assesses a RAG application using the widely recognized RAGAS a
 - **[CRAG](https://arxiv.org/pdf/2406.04744) (Comprehensive Retrieval-Augmented Generation)**:  Comprehensive RAG Benchmark (CRAG), a factual question answering benchmark of 4,409 question-answer pairs and Knowledge Graph (KG) search.CRAG is designed to encapsulate a diverse array of questions across five domains and eight question categories. It reflects varied entity popularity from popular to long-tail, and temporal dynamisms ranging from years to seconds.
 - **[RAGAS](https://arxiv.org/pdf/2309.15217) (Retrieval-Augmented Generation Accuracy Score)**: Ragas is built on the idea that LLMs can effectively evaluate natural language output. It forms paradigms that overcome the biases of using LLMs as judges directly and provides continuous scores that are explainable and intuitive to understand.
 
-### RAGAS Metrics
+### [RAGAS Metrics](https://docs.ragas.io/en/latest/concepts/metrics/index.html)
 
 1. **Context Precision**: Uses the question and retrieved contexts to measure the signal-to-noise ratio.
 2. **Context Recall**: Uses the ground truth and retrieved contexts to check if all relevant information for the answer is retrieved.
 3. **Faithfulness**: Uses the contexts and the bot answer to measure if the claims in the answer can be inferred from the context.
 4. **Answer Relevancy**: Uses the question and the bot answer to assess whether the answer addresses the question (does not consider factuality but penalizes incomplete or redundant answers).
 5. **Answer Correctness**: Uses the ground truth answer and the bot answer to assess the correctness of the bot answer.
+6. **Answer Similarity**: Uses the ground truth and the generated answer to measure their semantic similarity, providing a score from 0 to 1 to indicate the alignment quality.
 
 ### CRAG Metrics
 
@@ -69,9 +70,7 @@ The scoring method,assigns scores of 1, 0.5, 0, and -1 for perfect, acceptable, 
 These metrics provide a holistic view of your RAG application's performance, helping you identify areas for improvement.
 
 ##Getting Started with RAGEvaluator & Running Your First Evaluation
-
-To begin using RAGEvaluator, you need to do the installation setup and run your first evaluation as mentioned here
-[setup & running first evaluation](https://github.com/Koredotcom/SearchAssist-Toolkit/blob/akhilm/rag_evaluator/Evaluation/RAG_Evaluator/README.md)
+To start using RAGEvaluator, follow the installation setup and run your first evaluation as described here: [setup & running first evaluation](https://github.com/Koredotcom/SearchAssist-Toolkit/blob/akhilm/rag_evaluator/Evaluation/RAG_Evaluator/README.md).
 
 ## Interpreting the Results
 
@@ -89,7 +88,7 @@ RAGEvaluator provides a comprehensive report of your RAG application's performan
 }
 ```
 
-These metrics give you a clear picture of how well your RAG application is performing across different dimensions. A high retrieval precision indicates that your system is effectively finding relevant information. A low hallucination rate suggests that your responses are generally well-grounded in the retrieved data.
+These metrics give you a clear picture of how well your RAG application is performing across different dimensions.
 
 ## Best Practices and Tips
 

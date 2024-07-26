@@ -12,6 +12,7 @@ from ragas.metrics import (
 from ragas import evaluate
 from .baseEvaluator import BaseEvaluator
 
+
 class RagasEvaluator(BaseEvaluator):
     def evaluate(self, queries, answers, ground_truths, contexts):
         data = {

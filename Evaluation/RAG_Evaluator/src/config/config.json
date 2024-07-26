@@ -1,5 +1,6 @@
 {
-    "auth_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiYXBwSWQiOiJjcy0yMjU4MzdlZS1kN2ZhLTUxMDktOGExMS01NDQxYjYzMDBiMmMifQ.SQIzqbcrmbxV744mhYimx7ORDThBP2PaJF3pIS4bd54",
-    "app_id":"st-f1aaa40c-e1a3-59fe-a48f-9c9bf535a50e",
-    "EVALUATION_MODEL_NAME": "gpt-4-0125-preview"
+    "auth_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBJZCI6ImNzLTFmZGRkMTdmLWFhNWItNTQ4NS1iYjQ3LTBjNjRkZWVjNGMxOSJ9.OYKU1s11FXPLfC7PEu4zdEqfalx2iFg5eU-lz1e_z2Q",
+    "app_id":"st-b1d13051-51ab-5901-8c56-bafabc9a6af0",
+    "EVALUATION_MODEL_NAME": "gpt-4-0125-preview",
+    "domain": "searchassist-app.kore.ai"
 }

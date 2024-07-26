@@ -8,7 +8,8 @@ class SearchAssistAPI:
         config = ConfigManager().get_config()
         self.auth_token = config.get('auth_token')
         self.app_id = config.get('app_id')
-        self.base_url = f'https://searchassist.kore.ai/searchassistapi/external/stream/{self.app_id}'
+        self.domain = config.get('domain')
+        self.base_url = f'https://{self.domain}/searchassistapi/external/stream/{self.app_id}'
 
     def _make_request(self, endpoint: str, data: Dict) -> Optional[Dict]:
         headers = {
@@ -16,6 +17,7 @@ class SearchAssistAPI:
             'Content-Type': 'application/json'
         }
         try:
+
             response = requests.post(f"{self.base_url}/{endpoint}", json=data, headers=headers)
             response.raise_for_status()
             return response.json()
@@ -28,6 +30,7 @@ class SearchAssistAPI:
             "query": query,
             "includeChunksInResponse": True
         }
+        print("Making SA search call for query:", query)
         return self._make_request('advancedSearch', data)
 
 
@@ -51,8 +54,9 @@ class AnswerProcessor:
                         .get('center_panel', {}))
         if not center_panel:
             return "No Answer Found"
-        return center_panel.get('data', [{}])[0].get('snippet_content', [{}])[0].get('answer_fragment',
-                                                                                     "No Answer Found")
+        snippet_content = center_panel.get('data', [{}])[0].get('snippet_content', [{}])
+        answer_string = " ".join(content.get('answer_fragment', "No Answer Found") for content in snippet_content) if snippet_content else "No Answer Found"
+        return answer_string
 
 
 def get_bot_response(api: SearchAssistAPI, query: str, truth: str) -> Optional[Dict]:
