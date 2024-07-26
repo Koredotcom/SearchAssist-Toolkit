@@ -1,4 +1,5 @@
 # Understanding RAPTOR:Revolutionizing Retrieval-Augmented Generation with Hierarchical Systems
+*Author: RAGUL S*
 
 ## Introduction to RAPTOR
 
