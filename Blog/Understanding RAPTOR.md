@@ -1,4 +1,4 @@
- # Understanding RAPTOR:Revolutionizing Retrieval-Augmented Generation with Hierarchical Systems
+# Understanding RAPTOR:Revolutionizing Retrieval-Augmented Generation with Hierarchical Systems
 
 ## Introduction to RAPTOR
 
