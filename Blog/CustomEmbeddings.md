@@ -1,28 +1,19 @@
 
 # Custom Embeddings Support in SearchAssist
 
-## What Are Embeddings?
+## Introduction
 
-Embeddings are a way to represent text data as vectors in a continuous vector space. These vector representations capture the semantic meaning of the text, allowing similar texts to have similar vector representations. Embeddings are widely used in natural language processing (NLP) tasks to improve the performance of various models, including search engines, by enabling them to understand and process text more effectively.
+In the world of search technology, delivering accurate and relevant results is paramount. Default embedding models in SearchAssist serve most clients well, offering robust semantic search capabilities by transforming text data into meaningful vector representations. However, as data continues to expand and diversify, challenges arise. What if your application involves highly specialized, domain-specific data that isn't covered by our default models? This gap can lead to less accurate search results, impacting user experience and satisfaction.
 
-**Use of Embeddings in SearchAssist**
+To address this challenge, we introduce Custom Embeddings Support in SearchAssist. This powerful feature allows you to integrate any custom embedding model, providing the flexibility needed to handle unique and specialized data. By leveraging custom embeddings, you can ensure that your search functionality is not only effective but also finely tuned to your specific requirements.
 
-In SearchAssist, embeddings are utilized to enhance both the training and searching phases:
+For a detailed explanation of what embeddings are and how they work, you can refer to this [comprehensive guide on Hugging Face](https://huggingface.co/blog/getting-started-with-embeddings).
 
-1. **Training**: SearchAssist uses embeddings on the ingested data to enhance the training process of your application. By leveraging specialized embeddings during training, you can improve the accuracy and effectiveness of your models.
-2. **Searching**: When users interact with SearchAssist for queries or document searches, embeddings are used to generate embeddings in real-time. This ensures that the search results are more relevant and aligned with the specific requirements of your application.
+## Custom Embeddings Support in SearchAssist
 
-**Benefits of Embeddings**
+Custom Embeddings Support in SearchAssist allows you to use your preferred embedding models instead of the default ones. This flexibility is crucial for applications requiring specialized embeddings to improve search accuracy and relevance. With this feature, you can integrate any custom embedding model through an API, enhancing your application's ability to handle unique data and deliver precise search results.
 
-- **Enhanced Understanding**: Embeddings capture the semantic relationships between words, phrases, and documents.
-- **Improved Accuracy**: Tailored embeddings can lead to more relevant and precise search results.
-- **Flexible Applications**: They can be used in various NLP tasks such as classification, clustering, and search.
-
-We are excited to introduce a powerful new feature in SearchAssist: **Custom Embeddings Support**. This enhancement allows you to integrate any custom embedding model into SearchAssist using an API, enabling more tailored and effective search capabilities.
-
-## What is Custom Embeddings Support?
-
-Custom Embeddings Support in SearchAssist allows you to use your preferred embedding models instead of the default ones. This flexibility is crucial for applications requiring specialized embeddings to improve search accuracy and relevance.
+By using custom embeddings, you can tailor the search functionality to better align with your specific data and use cases. Whether your data is from a specialized domain or requires unique processing, custom embeddings ensure that SearchAssist can meet your needs effectively.
 
 ## How to Integrate Custom Embeddings in SearchAssist
 
