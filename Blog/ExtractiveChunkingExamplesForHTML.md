@@ -110,10 +110,11 @@ The highlighted boxes with each color are a single chunk, where the heading tag 
 
 ## Case Study: Handling HTML Without Headings
 
-In a recent project, our team encountered a common challenge: processing HTML content that lacked essential structure. Specifically, the content was devoid of heading tags, a critical component for our HTML extractor to generate meaningful chunks. Without these structural markers, the extractor was unable to identify distinct sections within the text, rendering it ineffective.
+In a recent project, our team encountered a common challenge: processing HTML content that lacked essential structure. Specifically, the content was devoid of heading tags, a critical component for our HTML extractor to generate meaningful chunks. Without these structural markers, the extractor was unable to identify distinct sections within the text, rendering it ineffective. The head tag was present in advi elemtn which had a class head.
 To illustrate, consider this simple HTML snippet:
 
 ```html
+<div class= "heading 1">Relavnt Headings </div>
 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>   
 ```
 
@@ -131,7 +132,6 @@ By prepending an h1 tag, we transformed the original HTML into the following:
 ```html
 <h1>Relevant Heading</h1>
 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
-<h1>Relevant Heading</h1><p>This is a paragraph of text with a heading now.</p>
 ```
 
 ### Implementation:
@@ -143,6 +143,14 @@ String Content = "<p>" + ctx.content + "</p>";
 ctx.html = makeTitle + Content;
 ```
 
+#### The Final Chunk
+```json
+ {
+    "title": "Relevant Heading",
+    "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+ }
+
+```
 ## Conclusion
 
 Understanding the HTML structure is crucial for optimizing content extraction. By following the guidelines and handling special cases as demonstrated, you can ensure that your HTML content is processed efficiently, leading to more accurate and contextually relevant extractive snippets.
