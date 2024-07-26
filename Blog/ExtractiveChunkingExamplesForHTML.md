@@ -149,9 +149,15 @@ By prepending an h1 tag, we transformed the original HTML into the following:
 We utilized a custom script within our workbench to achieve this transformation:
 
 ```Painless
-String makeTitle = "<h1>" + ctx.title + "</h1>";
-String Content = "<p>" + ctx.content + "</p>";
-ctx.html = makeTitle + Content;
+def pattern =/<div\s+class="heading">(.*?)<\/div>/;
+Matcher matcher = pattern.matcher(ctx.html);
+String title;
+if (matcher.find()){
+    title = matcher.group(1);
+    String makeTitle = "<h1>" + title + "</h1>";
+    String Content = "<p>" + ctx.content + "</p>";
+    ctx.html = makeTitle + Content;
+}
 ```
 
 #### The Final Chunk
