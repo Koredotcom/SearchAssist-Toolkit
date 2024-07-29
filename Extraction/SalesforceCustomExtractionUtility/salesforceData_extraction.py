@@ -232,7 +232,6 @@ async def extractData():
     try:
 
         access_token,instance_url,refresh_token = generate_access_token()
-
         logger.info("Access token generated successfully.")
         logger.debug(f"Access token: {access_token}")
 

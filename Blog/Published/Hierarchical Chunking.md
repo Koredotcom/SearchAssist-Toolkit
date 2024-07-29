@@ -1,4 +1,5 @@
 ## Solving Document Structure Issues for Knowledge Extraction Using LLMs
+*Author: Vishwas Tak*
 
 Organizations often face problems with the structure and organization of content when extracting knowledge from large document repositories. This article describes a situation where a major banking client encountered difficulties while using the SearchAI platform to retrieve answers from Salesforce knowledge articles.
 
