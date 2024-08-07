@@ -1,6 +1,6 @@
 {
     "input_excel_file":"sampleInput.xlsx",
-    "auth_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBJZCI6ImNzLTA0ZTViZGNhLWY4MTYtNTUyZS04NmY4LTczYjU0YWYyYjU4ZiJ9.hdmfwW-fVCiBdc6UUZjp2JAmycDhC0a7LjDEoGXlT64",
-    "app_id":"st-3908955b-b763-5702-9de6-cb268a1eb648",
+    "auth_token":"<jwtToken>",
+    "app_id":"<streamId>",
     "output_excel_file":"output.xlsx"
 }

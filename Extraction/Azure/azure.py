@@ -7,11 +7,11 @@ import requests
 import pandas as pd
 import urllib.parse
 # set `<your-endpoint>` and `<your-key>` variables with the values from the Azure portal
-endpoint = "https://testress.cognitiveservices.azure.com/"
-credential = AzureKeyCredential("2238144d02184d09b2498e8981157f5a")
+endpoint = "<azure-endpoint>"
+credential = AzureKeyCredential("<azure-key>")
 # SearchAssist data ingestion URL and authKey
-ingest_url = "https://searchassist-qa.kore.ai/searchassistapi/external/stream/st-b55eed48-d045-51e0-bc92-486f29306aed/ingest?contentSource=manual&extractionType=data&index=true"
-authKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBJZCI6ImNzLWRiOWRkZWNlLTQwNDgtNTAxYS04ZWYyLTJiZWJkYTNhYTNjYyJ9.rrVw6UDDMXQEv4z4sWFy5hS_emE-ACVu7TSKkxYAkSg'
+ingest_url = "<searchai-hostUrl>/searchassistapi/external/stream/<searchai-hostUrl>/ingest?contentSource=manual&extractionType=data&index=true"
+authKey = 'searchai-jwtToken'
 #from google.colab import files
 
 uploaded = files.upload()

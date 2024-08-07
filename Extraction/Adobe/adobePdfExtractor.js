@@ -13,8 +13,8 @@ const INPUT_PDF = './sc_cookie_brownie_proc2883013233763893968.pdf'; //File path
 
 const credentials = PDFServicesSdk.Credentials
     .servicePrincipalCredentialsBuilder()
-    .withClientId("a105b78283384ff095d0cb48a3de7a83")               //ClientId provided by adobe
-    .withClientSecret("p8e-NQKhsBrFw7dlkIN2BpZ8bVKcBoKra78D")       //ClientSecret provided by adobe
+    .withClientId("<clientId>")               //ClientId provided by adobe
+    .withClientSecret("<clientSecret>")       //ClientSecret provided by adobe
     .build();
 
 // Create an ExecutionContext using credentials
