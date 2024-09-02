@@ -14,7 +14,7 @@ from .baseEvaluator import BaseEvaluator
 
 
 class RagasEvaluator(BaseEvaluator):
-    def evaluate(self, queries, answers, ground_truths, contexts):
+    def evaluate(self, queries, answers, ground_truths, contexts, question_type):
         ground_truths = [str(ground_truth).strip() for ground_truth in ground_truths]
         data = {
             'question': queries,
@@ -32,6 +32,7 @@ class RagasEvaluator(BaseEvaluator):
             answer_similarity
         ])
         result_df = result.to_pandas()
+        result_df['question_type'] = question_type
         return result_df
 
     def process_results(self, results):
