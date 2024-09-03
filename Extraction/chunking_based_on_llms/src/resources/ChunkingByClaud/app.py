@@ -1,5 +1,5 @@
 import sys
-sys.path.append('Extraction\chunking_based_on_llms\resources')
+sys.path.append('E:\\Projects\\SA - R&D\\chunking')
 from nltk.tokenize import word_tokenize
 from pypdf import PdfReader
 from fuzzywuzzy import fuzz
@@ -203,7 +203,8 @@ if __name__ == "__main__":
     
     start_time = time.time()
     log("Called PDF extracter")
-    corpus = main(r"sample\resources\data\Companycar.pdf")
+    # corpus = extract_data(pdf_path_or_url=r"./data\mlpdf.pdf")
+    corpus = main(r"E:\Projects\SA - R&D\chunking\resources\data\Companycar.pdf")
     log("Extracted PDF data")
     print(corpus)
     # corpus = format_text(corpus)

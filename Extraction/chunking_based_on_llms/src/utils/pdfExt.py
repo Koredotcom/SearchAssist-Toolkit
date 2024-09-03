@@ -1,6 +1,5 @@
 import sys
 
-sys.path.append(r"Extraction\chunking_based_on_llms\resources")
 import os
 import fitz
 import pandas as pd
@@ -345,8 +344,11 @@ def remove_duplicate_paragraphs(text):
     
     return result_text
 
-def main(pdf_filepath):
+def main(pdf_filepath,nv_api_key='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'):
 
+
+    # Set the value of NVIDIA_API_KEY environment variable
+    os.environ['NVIDIA_API_KEY'] = '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'
     # Call the function to extract documents from the PDF
     pdf_documents_dl = get_pdf_documents(pdf_filepath)
     # Initialize an empty string to store the concatenated documents
@@ -361,3 +363,8 @@ def main(pdf_filepath):
     result = remove_duplicate_paragraphs(result_string)
     
     return result,os.path.basename(pdf_filepath)
+
+# if __name__ == "__main__":
+    # with open('output.txt', 'w') as file:
+    #     file.write(main(r"E:\Projects\SA - R&D\chunking\data\Adoption Policy.pdf")[0])
+    # print(main(r"E:\Projects\SA - R&D\chunking\data\Adoption Policy.pdf")[0])

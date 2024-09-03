@@ -10,9 +10,7 @@ This project provides a method to chunk PDFs based on their meaning using AI mod
 - **AI Processing**: Uses Claude or GPT based on user preference to generate rough chunks of the PDF content.
 - **Post-Processing**: Refines rough chunks into final, meaningful chunks.
 
-## Architecture Diagram
-
-![My Image](Arch-Diagram.jpg)
+Refer .idea\intelligent.md for more info!!
 
 ## Installation
 
@@ -34,26 +32,21 @@ pip install -r requirements.txt
 you can use either 
 
 ```bash
-resources.chunking_by_GPT.app.chunk_single_pdf
+from resources.ChunkingByGPT.app import CHunkingByGPT
 
-def chunk_single_pdf(timer: bool, pdf_path: str, display_flag=False, save_flag=True)
+chunker = CHunkingByGPT('Your Key Here','Your Model name here')
+
+'''exapmle to chunk single PDF''' 
+chunker.chunk_single_pdf(timer=True,pdf_path=r'Sample File path',display_flag=False,save_flag=True)
 ```
 
 or 
 
 ```bash
-resources.chunking_by_GPT.app.chunk_multiple_pdf
+from resources.ChunkingByGPT.app import CHunkingByGPT
 
-def chunk_multiple_pdf(timer: bool, folder_path: str, display_flag=False, save_flag=True)
+chunker = CHunkingByGPT('Your Key Here','Your Model name here')
+
+'''exapmle to chunk Multiple PDF''' 
+chunker.chunk_multiple_pdf(timer=True,folder_path=r'Sample Folder Path',display_flag=False,save_flag=True)
 ```
-
-
-## Google Colab Notebook
-
-The Colab notebook demonstrates the steps to chunk PDFs intelligently:
-
-1. **Upload PDF**: Upload the PDF file you want to chunk.
-2. **Extract Content**: Use the provided code to extract the content.
-3. **Select AI Model**: Choose either Claude or GPT for chunking.
-4. **Generate Rough Chunks**: Run the code to generate rough chunks.
-5. **Post-Process Chunks**: Refine the rough chunks into final meaningful chunks.
