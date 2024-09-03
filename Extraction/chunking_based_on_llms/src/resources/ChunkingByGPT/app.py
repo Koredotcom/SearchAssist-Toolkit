@@ -1,5 +1,3 @@
-import sys
-sys.path.append('E:\\Projects\\SA - R&D\\chunking')
 import warnings
 
 warnings.filterwarnings("ignore",category=UserWarning)
