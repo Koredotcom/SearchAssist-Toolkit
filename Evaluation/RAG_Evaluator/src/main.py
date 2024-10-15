@@ -9,7 +9,7 @@ from evaluators.ragasEvaluator import RagasEvaluator
 from evaluators.cragEvaluator import CragEvaluator
 from utils.evaluationResult import ResultsConverter
 from api.SASearch import SearchAssistAPI, get_bot_response
-
+from utils.dbservice import dbService
 
 def call_searchassist_api(queries, ground_truths):
     api = SearchAssistAPI()
@@ -72,7 +72,7 @@ def load_data(excel_file, sheet_name):
     return queries, answers, ground_truths, contexts
 
 
-def evaluate_with_ragas_and_crag(excel_file, sheet_name, config, run_ragas=True, run_crag=True, use_search_api= False):
+def evaluate_with_ragas_and_crag(excel_file, sheet_name, config, run_ragas=True, run_crag=True, use_search_api= False, llm_model=""):
     try:
         if use_search_api:
             queries, answers, ground_truths, contexts = load_data_and_call_api(excel_file, sheet_name, config)
@@ -84,13 +84,15 @@ def evaluate_with_ragas_and_crag(excel_file, sheet_name, config, run_ragas=True,
 
         if run_ragas:
             ragas_evaluator = RagasEvaluator()
-            ragas_results = ragas_evaluator.evaluate(queries, answers, ground_truths, contexts)
+            ragas_results = ragas_evaluator.evaluate(queries, answers, ground_truths, contexts, model=llm_model)
 
         if run_crag:
             openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
             crag_evaluator = CragEvaluator(config['EVALUATION_MODEL_NAME'], openai_client)
             crag_results = crag_evaluator.evaluate(queries, answers, ground_truths, contexts)
-
+            
+        total_set_result = ragas_results[1]
+        ragas_results = ragas_results[0]
         result_converter = ResultsConverter(ragas_results, crag_results)
 
         if run_ragas:
@@ -103,7 +105,7 @@ def evaluate_with_ragas_and_crag(excel_file, sheet_name, config, run_ragas=True,
             combined_results = result_converter.get_combined_results()
             return combined_results
         elif len(ragas_results.index) > 0:
-            return result_converter.get_ragas_results()
+            return result_converter.get_ragas_results(), total_set_result   
         elif len(crag_results.index) > 0:
             return result_converter.get_crag_results()
     except Exception as e:
@@ -119,7 +121,8 @@ def main():
         parser.add_argument('--evaluate_ragas', action='store_true', help='Run only Ragas evaluation.')
         parser.add_argument('--evaluate_crag', action='store_true', help='Run only Crag evaluation.')
         parser.add_argument('--use_search_api', action='store_true', help='Use SearchAssist API to fetch responses.')
-
+        parser.add_argument('--llm_model', type=str, help="Use Azure OpenAI to evaluate the responses.")
+        parser.add_argument('--save_db', action='store_true', help='Save the results to MongoDB.')
         args = parser.parse_args()
 
         config_manager = ConfigManager()
@@ -147,14 +150,19 @@ def main():
             run_crag = True
             run_ragas = True
 
+        llm_model = args.llm_model
+
         with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
             for sheet_name in sheet_names:
                 print(f"Processing sheet: {sheet_name}")
                 results = evaluate_with_ragas_and_crag(args.input_file, sheet_name, config,
                                                        run_crag=run_crag,
                                                        run_ragas=run_ragas,
-                                                       use_search_api=args.use_search_api)
-                results.to_excel(writer, sheet_name=sheet_name, index=False)
+                                                       use_search_api=args.use_search_api, 
+                                                       llm_model=llm_model)
+                results[0].to_excel(writer, sheet_name=sheet_name, index=False)
+                if(args.save_db):
+                    dbService(results[0], output_filename, results[1])
 
                 print(f"Results for sheet '{sheet_name}' saved to '{output_filename}'.")
 

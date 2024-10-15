@@ -2,5 +2,14 @@
     "auth_token":"<JWT TOKEN>",
     "app_id":"<STREAM ID>",
     "EVALUATION_MODEL_NAME": "<MODEL NAME>",
-    "domain": "searchassist-app.kore.ai"
+    "domain": "searchassist-app.kore.ai",
+    "openai_api_version": "<API VERSION>",
+    "base_url": "<BASE URL>",
+    "model_deployment": "<MODEL DEPLOYMENT>",
+    "embedding_deployment": "<EMBEDDING DEPLOYMENT>",
+    "embedding_name": "<EMBEDDING NAME>",
+    "MongoDB": {
+        "url": "<MONGO URL>",
+        "dbName": "<DB NAME>"
+    }
 }
