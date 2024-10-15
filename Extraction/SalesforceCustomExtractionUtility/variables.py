@@ -49,13 +49,14 @@ output_path=os.environ.get('output_path')
 
 #proxies
 proxies=os.environ.get('proxies')
-
-#Fetching definiton
-inputFormat=os.environ.get('inputFormat')
-
 #set SSL verfication
 sslVerify=os.environ.get('ssl')
 
+#input type 
+inputType=os.environ.get('inputType') 
+
 #itemIds
 itemIds=os.environ.get('itemIds')
+
+
 
