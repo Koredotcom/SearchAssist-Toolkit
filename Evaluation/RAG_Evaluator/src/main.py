@@ -38,7 +38,8 @@ def load_data_and_call_api(excel_file, sheet_name, config):
 
     # Create a new DataFrame with API results
     results_df = pd.DataFrame(api_results)
-    relative_output_dir = "./outputs/sa_api_outputs"
+    current_file_dir = os.path.dirname(os.path.abspath(__file__))
+    relative_output_dir = os.path.join(current_file_dir, ".", "outputs", "sa_api_outputs")
     os.makedirs(relative_output_dir, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -136,7 +137,8 @@ def main():
             sheet_names = pd.ExcelFile(excel_file_path).sheet_names
 
         # Define the relative path directory where you want to save the output file
-        relative_output_dir = "./outputs"
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        relative_output_dir = os.path.join(current_file_dir, ".", "outputs")
         os.makedirs(relative_output_dir, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
