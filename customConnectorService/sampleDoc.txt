@@ -1,0 +1,67 @@
+{
+    "result": [
+        {
+            "short_description": "Are Copyrighted Files Illegal to Have On My\n\t\t\tComputer?\n\t\t",
+            "roles": "",
+            "wiki": null,
+            "direct": "false",
+            "rating": "",
+            "description": "",
+            "generated_with_now_assist": "false",
+            "source": "",
+            "sys_updated_on": "2014-12-19 15:55:18",
+            "disable_suggesting": "false",
+            "sys_class_name": "kb_knowledge",
+            "number": "KB0000009",
+            "sys_id": "1addc9f1474321009db4b5b08b9a7120",
+            "use_count": "0",
+            "sys_updated_by": "johnoliver.mendoza",
+            "flagged": "false",
+            "disable_commenting": "false",
+            "sys_created_on": "2014-09-09 20:33:34",
+            "sys_domain": {
+                "link": "https://ven06090.service-now.com/api/now/table/sys_user_group/global",
+                "value": "global"
+            },
+            "valid_to": "2100-01-01",
+            "retired": "",
+            "workflow_state": "published",
+            "text": "<p><span style=\"font-size: 18pt;\"><strong>Are Copyrighted Files Illegal to Have On My Computer?</strong></span></p>\n<p>Tools built to make use of the Internet easier have created special concerns for the holders of copyright. While it takes time and energy for someone to photocopy all the pages of a book, it takes scarcely any time for someone to download an album of music, a feature film, an episode of a television show, or a computer game. Sometimes, because it is easy to download copyrighted material, it is tempting to believe it is legal to do so.</p>\n<p>But it is legal only if the material being downloaded is in the public domain, if the copyright holder has given you permission to make a copy of the material, or if you are making copies for purposes of criticism, comment, news reporting, scholarly or instructional purposes such that the &#34;fair use&#34; exception under federal copyright law applies. However, most contemporary music, film, television shows, computer games, and computer software are not likely to be in the public domain. Nor is it likely that downloading such materials in their entirety for entertainment purposes without permission from the rights-holder will meet the &#34;fair use&#34; criteria.</p>\n<p>Therefore, if you do not know whether material is copyrighted or not, assume that it is, and proceed accordingly.</p>\n<p><span style=\"font-size: 12pt;\"><b>But what if I own legal copies of the material?</b></span></p>\n<p>Even if you have legally obtained copies of copyrighted materials on your computer, you must be careful to protect those copies against unauthorized copying by others.</p>\n<p>In particular, file sharing technologies such as BitTorrent, and so-called &#34;private&#34; sharing networks (to the extent you have reason to use such technologies for legitimate purposes) should be used responsibly and with great care to ensure that copyrighted materials are not being made available for copying by others not legally entitled to do so. Indeed, failure to restrict unauthorized access to copyrighted materials stored on your computer may constitute contributory infringement under federal copyright law.</p>\n<p><span style=\"font-size: 12pt;\"><b>What is legal to download?</b></span></p>\n<p>Some material is in the public domain, and is available through web or file transfer sites maintained for that purpose. Some recording artists and some television studios provide streaming versions of performances for your viewing or listening.  And some performers do give permission to copy and share some of their work.</p>\n<p><span style=\"font-size: 12pt;\"><b>How will the rights-holder know?</b></span></p>\n<p>The music industry, the film and television industry, and organizations representing software manufacturers and firms creating computer games, have become increasingly concerned about copyright infringement via the Internet, and have pursued the infringers - sometimes filing lawsuits against the individuals. Other kinds of copyrighted materials also are of concern.</p>\n<p>Just as some Employees search the Internet for music, films, or other material they would like, the rights-holders or their agents often search the Internet for computers that are holding and/or distributing unauthorized copies. When rights-holders find an unauthorized copy of a work, they often file an infringement complaint with the service provider. Sometimes, they file a lawsuit. And under some circumstances, they may file criminal charges.</p>\n<p>The Company is the service provider for its employees. Unless these complaints are addressed promptly, the Company may also be held liable for infringement. So if you use the Company network to make illegal copies, or if you fail to protect legally obtained copies on your computer, you put yourself and the Company at risk.</p>\n<p><span style=\"font-size: 12pt;\"><b>What happens if I get caught?</b></span></p>\n<p>Penalties for copyright infringement include civil and criminal penalties. In general, anyone found liable for civil copyright infringement may be ordered to pay either actual damages or &#34;statutory&#34; damages affixed at not less than $750 and not more than $30,000 per work infringed. For &#34;willful&#34; infringement, a court may award up to $150,000 per work infringed. A court can, in its discretion, also assess costs and attorney&#39;s fees. For details see Title 17, United States Code, Sections 504, 505.</p>\n<p>Willful copyright infringement can also result in criminal penalties, including imprisonment of up to five years and fines of up to $250,000 per offense.</p>\n<p>Violation of federal copyright law is also a violation of Company regulations and will be reported to appropriate disciplinary authorities. Employees may receive a warning, disciplinary probation, or other, even more serious, penalty as a result of infringement. Company policy also requires that loss of computing and network privileges be considered as part of the penalty in cases of repeated infringement.</p>\n<p><span style=\"font-size: 12pt;\"><b>Does IT scan my computer for illegal files?</b></span></p>\n<p>Although most campus copyright infringement is revealed when the Company receives complaints from the rights-holder or agent, some unauthorized service of music, films, television, computer games, and proprietary software has been discovered by IT simply because of the network performance problems caused by the traffic.</p>\n<p>In such cases, IT does not peruse files, but makes inferences which it reports to the appropriate disciplinary authority, while notifying the employee of the potential disciplinary and legal action. As a general matter, the Company is committed to protection of privacy, unless intrusion is warranted, and does not actively monitor its computing network for purposes of seeking out infringing activity on the part of its users. Further, the language of the Digital Millennium Copyright Act makes it clear that the service provider is not expected to be aware of content carried through its services, only to be properly responsive when alleged infringement is reported.</p>\n<p>Please be aware the Company cannot knowingly assist you in illegal activity, such as making unauthorized copies or sharing copyrighted materials without authorization. To do so would be to participate in violating federal law and, in acting as agents of the Company, staff are forbidden to do so.</p>\n<p> </p>",
+            "sys_created_by": "johnoliver.mendoza",
+            "display_attachments": "false",
+            "image": "",
+            "sys_view_count": "26",
+            "article_type": "text",
+            "cmdb_ci": "",
+            "author": {
+                "link": "https://ven06090.service-now.com/api/now/table/sys_user/46d14f04a9fe19810142e40c6b071512",
+                "value": "46d14f04a9fe19810142e40c6b071512"
+            },
+            "can_read_user_criteria": "",
+            "sys_mod_count": "2",
+            "active": "true",
+            "cannot_read_user_criteria": "",
+            "published": "2014-09-09",
+            "helpful_count": "",
+            "sys_domain_path": "/",
+            "sys_tags": "",
+            "instrumentation_metadata": "",
+            "replacement_article": "",
+            "meta_description": "",
+            "taxonomy_topic": "",
+            "kb_knowledge_base": {
+                "link": "https://ven06090.service-now.com/api/now/table/kb_knowledge_base/a7e8a78bff0221009b20ffffffffff17",
+                "value": "a7e8a78bff0221009b20ffffffffff17"
+            },
+            "meta": "",
+            "view_as_allowed": "true",
+            "topic": "Policies",
+            "category": "",
+            "kb_category": {
+                "link": "https://ven06090.service-now.com/api/now/table/kb_category/5a7b2552ff0131009b20ffffffffffb1",
+                "value": "5a7b2552ff0131009b20ffffffffffb1"
+            }
+        }
+    ],
+    "isContentAvailable": false
+}
