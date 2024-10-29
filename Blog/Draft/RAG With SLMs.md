@@ -1,11 +1,12 @@
 # Small But Mighty: Supercharging RAG Systems with Small Language Models
+
 *Author: [Vikhyath Venkatraman](https://github.com/Vikhyath-Kore)*
 
 
 - [Small But Mighty: Supercharging RAG Systems with Small Language Models](#small-but-mighty-supercharging-rag-systems-with-small-language-models)
   - [Introduction](#introduction)
     - [Background](#background)
-      - [SearchAssist's SaaS Application](#searchassists-saas-application)
+      - [SearchAI Application](#searchai-application)
       - [Challenges with Traditional Search Approaches in the era of RAG](#challenges-with-traditional-search-approaches-in-the-era-of-rag)
     - [Problem Statement](#problem-statement)
   - [Small Language Models: The Game Changer](#small-language-models-the-game-changer)
@@ -42,8 +43,8 @@
 
 ### Background
 
-#### SearchAssist's SaaS Application
-SearchAssist is a versatile conversational search platform that enables seamless content discovery across various data sources, including website crawlers, structured and unstructured documents, catalogs, FAQs, and knowledge bases. It features pre-built integrations with popular commerce and content platforms, ensuring automatic synchronization and document access control. Additionally, SearchAssist supports federated search capabilities, allowing you to leverage results from existing business systems. With intelligent virtual assistant actions, AI-powered relevance optimization, and a customizable user interface, it creates a personalized and engaging search experience that drives brand engagement and conversions.
+#### SearchAI Application
+SearchAI is a versatile conversational search platform that enables seamless content discovery across various data sources, including website crawlers, structured and unstructured documents, catalogs, FAQs, and knowledge bases. It features pre-built integrations with popular commerce and content platforms, ensuring automatic synchronization and document access control. Additionally, SearchAI supports federated search capabilities, allowing you to leverage results from existing business systems. With intelligent virtual assistant actions, AI-powered relevance optimization, and a customizable user interface, it creates a personalized and engaging search experience that drives brand engagement and conversions.
 
 
 #### Challenges with Traditional Search Approaches in the era of RAG
@@ -197,12 +198,15 @@ The evaluation dataset was synthetically generated with the assistance of ChatGP
 
 #### User Query Classification
 ![SLM Type Results](../Assets/slm_type_results.png)
+![SLM Type Chart](../Assets/slm_type_chart.png)
 
 #### User Query Source Identification
 ![SLM Source Results](../Assets/slm_source_results.png)
+![SLM Source Chart](../Assets/slm_source_chart.png)
 
 #### User Query Metadata Identification and Mapping
 ![SLM Metadata Fields Results](../Assets/slm_fields_results.png)
+![SLM Metadata Fields Chart](../Assets/slm_fields_chart.png)
 
 ### Implementation Inferences
 
