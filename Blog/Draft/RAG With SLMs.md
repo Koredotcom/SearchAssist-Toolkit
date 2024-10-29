@@ -98,7 +98,7 @@ While there is no strict definition, Small Language Models (SLMs) are generally 
 
 #### Cost
 
-If we use the most popular LLM, GPT-4o, the cost of inference, via API calls, is (as of October 2024) is [$2.5 per 1M input tokens and $1.25 per 1M output tokens](https://openai.com/api/pricing/).
+If we use the most popular LLM, GPT-4o, the cost of inference, via API calls, is (as of October 2024) [$2.5 per 1M input tokens and $1.25 per 1M output tokens](https://openai.com/api/pricing/).
 
 In contrast, Mistral-7b, via Mistral's own API, is [$0.25 per 1M input tokens and $0.25 per 1M output tokens](https://mistral.ai/technology/). Even GPT-4o-mini, which is rumored to have around 8b tokens, costs around [$0.15 per 1M input tokens and $0.075 per 1M output tokens](https://openai.com/api/pricing/).
 
