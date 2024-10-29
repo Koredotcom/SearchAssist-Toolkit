@@ -197,15 +197,15 @@ The evaluation dataset was synthetically generated with the assistance of ChatGP
 ### Implementation Results
 
 #### User Query Classification
-![SLM Type Results](../Assets/slm_type_results.png?)
+![SLM Type Results](../Assets/slm_type_results_2.png?)
 ![SLM Type Chart](../Assets/slm_type_chart.png?)
 
 #### User Query Source Identification
-![SLM Source Results](../Assets/slm_source_results.png?)
+![SLM Source Results](../Assets/slm_source_results_2.png?)
 ![SLM Source Chart](../Assets/slm_source_chart.png?)
 
 #### User Query Metadata Identification and Mapping
-![SLM Metadata Fields Results](../Assets/slm_fields_results.png?)
+![SLM Metadata Fields Results](../Assets/slm_fields_results_2.png?)
 ![SLM Metadata Fields Chart](../Assets/slm_fields_chart.png?)
 
 ### Implementation Inferences
