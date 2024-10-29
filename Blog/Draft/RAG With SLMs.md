@@ -23,9 +23,9 @@
   - [Implementation Strategy](#implementation-strategy)
     - [Implementation Parameters](#implementation-parameters)
     - [Implementation Results](#implementation-results)
-      - [User Query Classification](#user-query-classification)
-      - [User Query Source Identification](#user-query-source-identification)
-      - [User Query Metadata Identification and Mapping](#user-query-metadata-identification-and-mapping)
+      - [User Query Classification\[1\]](#user-query-classification1)
+      - [User Query Source Identification\[2\]](#user-query-source-identification2)
+      - [User Query Metadata Identification and Mapping\[3\]](#user-query-metadata-identification-and-mapping3)
     - [Implementation Inferences](#implementation-inferences)
   - [Business Impact](#business-impact)
     - [Cost Savings](#cost-savings)
@@ -33,6 +33,7 @@
     - [Scalability Advantages](#scalability-advantages)
   - [Future Roadmap](#future-roadmap)
   - [Conclusion](#conclusion)
+  - [References](#references)
   - [Appendix: Quantization of SLMs](#appendix-quantization-of-slms)
     - [Introduction](#introduction-1)
     - [Types](#types)
@@ -80,16 +81,18 @@ While there is no strict definition, Small Language Models (SLMs) are generally 
 
 ### SLMs vs LLMs
 
-1. **Size**: LLMs, like Claude 3 and Olympus, can have up to 2 trillion parameters, while SLMs, such as Phi-2, typically have around 2.7 billion.
-2. **Training Data**: LLMs require extensive and diverse datasets for broad learning, whereas SLMs focus on specialized, smaller datasets.
-3. **Training Time**: Training an LLM can take months, while SLMs can be trained in just weeks.
-4. **Computing Power and Resources**: LLMs demand significant computational resources due to their size and data requirements, making them less sustainable compared to SLMs, which require fewer resources.
-5. **Proficiency**: LLMs excel at complex and general tasks, while SLMs are better suited for simpler, more specific tasks.
-6. **Adaptation**: Adapting LLMs to customized tasks can be challenging and resource-intensive, whereas SLMs are easier to fine-tune for specific needs.
-7. **Inference**: LLMs need specialized hardware and cloud services for inference, limiting their use to online environments. In contrast, SLMs can run locally on devices like Raspberry Pi or smartphones, allowing offline functionality.
-8. **Latency**: LLMs often face significant latency, with response times of several seconds, while SLMs typically offer much faster responses due to their smaller size.
-9. **Cost**: Higher computational demands and larger model sizes make LLMs more expensive to operate, whereas SLMs are generally cheaper to run.
-10. **Control**: With LLMs, you rely on the model builders, which can lead to issues like model drift. SLMs can be run on personal servers, allowing users to fine-tune and stabilize them over time.
+| **Aspect**              | **LLMs (Large Language Models)**                    | **SLMs (Small Language Models)**                |
+|-------------------------|----------------------------------------------------|------------------------------------------------|
+| **Size**                | Up to 2 trillion parameters                        | Around 2.7 billion parameters                  |
+| **Training Data**       | Extensive and diverse datasets                     | Specialized, smaller datasets                  |
+| **Training Time**       | Months                                             | Weeks                                          |
+| **Computing Power and Resources** | High; requires significant resources           | Lower; more sustainable due to fewer resources |
+| **Proficiency**         | Complex and general tasks                          | Simple and specific tasks                      |
+| **Adaptation**          | Challenging and resource-intensive                 | Easier to fine-tune                            |
+| **Inference**           | Specialized hardware, often cloud-based            | Can run locally on low-power devices           |
+| **Latency**             | Higher latency, several seconds                    | Faster response times                          |
+| **Cost**                | Expensive to operate                               | Generally cheaper to run                       |
+| **Control**             | Limited control; depends on model builders         | More control; can be run on personal servers   |
 
 ### Direct Comparison
 
@@ -141,10 +144,10 @@ The SLMs were selected on the basis of multiple criteria, such as:
 
 ### Use Case Analysis
 
-We wanted to replace LLM calls with SLM calls for three major use-cases:
+The focus was on replacing LLM calls with SLM calls for three main tasks:
 1. **User Query Classification**: Classify the query based on its type, context and recency. 
-2. **User Query Source Identification**: From a given list of sources, identify one or more sources that are required to answer the query.
-3. **User Query Metadata Identification and Mapping**: From the list of all the metadata fields of a particular source, identify which fields are required to answer the query.
+2. **User Query Source Identification**: Identifying required sources from a given list to answer the query.
+3. **User Query Metadata Identification and Mapping**: Mapping necessary metadata fields from a source to answer the query.
 
 These tasks were especially suited to SLM replacements as these tasks
 - Are highly **specific**, aligning with SLMs' design for targeted tasks.
@@ -191,28 +194,32 @@ The evaluation dataset was synthetically generated with the assistance of ChatGP
 
 1. All models were sourced from Hugging Face and used default parameters.
 2. Output tokens were capped at 50 for all use cases to mitigate hallucinations.
-3. Models were executed in Colab.
-4. Minimal post-processing of data was performed, saving only the first JSON outcome.
+3. Minimal post-processing of data was performed.
 
 ### Implementation Results
 
-#### User Query Classification
+#### User Query Classification[[1]](#1)
 ![SLM Type Results](../Assets/slm_type_results_2.png?)
 ![SLM Type Chart](../Assets/slm_type_chart.png?)
 
-#### User Query Source Identification
+#### User Query Source Identification[[2]](#2)
 ![SLM Source Results](../Assets/slm_source_results_2.png?)
 ![SLM Source Chart](../Assets/slm_source_chart.png?)
 
-#### User Query Metadata Identification and Mapping
+#### User Query Metadata Identification and Mapping[[3]](#3)
 ![SLM Metadata Fields Results](../Assets/slm_fields_results_2.png?)
 ![SLM Metadata Fields Chart](../Assets/slm_fields_chart.png?)
 
 ### Implementation Inferences
 
-1. For the first two use cases, Llama-3.2-3B-Instruct outperformed the other models, while Qwen2.5-3B-Instruct excelled in the third use case.
-2. Although Phi-3.5-mini-instruct and Mistral-7B-Instruct-v0.3 showed good accuracy, they exhibited relatively higher latency.
+1. **User Query Classification**
+    - Results showed Llama-3.2-3B-Instruct outperformed other models.
+2. **User Query Source Identification**
+    - Performance favored the same model.
+3. **User Query Metadata Identification and Mapping**
+    - Qwen2.5-3B-Instruct excelled in this use case.
 
+For all of the tasks, although Phi-3.5-mini-instruct and Mistral-7B-Instruct-v0.3 showed good accuracy, they exhibited relatively higher latency.
 
 ## Business Impact
 
@@ -245,6 +252,15 @@ The exploration of Small Language Models (SLMs) as a cost-effective and efficien
 
 As organizations continue to seek agile and adaptable solutions in a rapidly evolving digital landscape, SLMs provide a promising pathway forward. The ability to fine-tune these models for specialized applications further amplifies their potential, ensuring they can meet diverse user needs effectively. Looking ahead, the integration of advanced deployment strategies and ongoing testing will be crucial to harnessing the full capabilities of SLMs. Ultimately, leveraging these smaller models can supercharge RAG systems, driving innovation and improving content discovery while remaining mindful of operational efficiencies.
 
+
+## References
+
+<a id="1">[1]</a> [User Query Classification full evaluation spreadsheet](https://docs.google.com/spreadsheets/d/1fug_eExph8Ak8EVfrypor60kTxh2AndCxrIvrOzU3Kg/edit?gid=1017792656#gid=1017792656)
+
+<a id="2">[2]</a> [User Query Source Identification full evaluation spreadsheet](https://docs.google.com/spreadsheets/d/1ilj0BVdiOLhCumxxJQ_ljRGqv7NvIi2XY8xJ5QJuQl8/edit?gid=1557904948#gid=1557904948)
+
+<a id="3">[3]</a> [User Query Metadata Identification and Mapping full evaluation spreadsheet](https://docs.google.com/spreadsheets/d/1FqKFaPTDIvm7aRjToUXsPMFwCMD3EEj_oWLcxGej36k/edit?gid=1177637349#gid=1177637349)
+
 ## Appendix: Quantization of SLMs
 
 ### Introduction
@@ -271,6 +287,4 @@ In the analysis, the User Query Source Identification use case was tested across
 
 ### Conclusion
 
-Quantization techniques represent a powerful strategy for optimizing Small Language Models (SLMs) while minimizing performance loss. By reducing the precision of model weights, quantization not only decreases storage requirements but also enhances inference speed, making SLMs more efficient and accessible for a variety of applications. The analysis of different quantization methods—such as GGUF/GGML, bitsandbytes, and AWQ—demonstrates their effectiveness in maintaining performance levels even with reduced model sizes.
-
-The results from the User Query Source Identification use case highlight that quantized models can operate almost as effectively as their full-precision counterparts, offering a compelling case for their adoption in resource-constrained environments. As organizations continue to seek agile, cost-effective solutions for their AI needs, leveraging quantization in SLMs will be crucial for achieving operational efficiency and scalability without sacrificing accuracy. This approach not only aligns with the growing demand for sustainable AI practices but also opens the door to faster and more efficient deployment of intelligent systems across various domains.
+Quantization is a powerful strategy for optimizing SLMs, reducing storage requirements and enhancing inference speed. The analysis confirms that quantized models perform nearly as well as full-precision counterparts, supporting the adoption of quantization in resource-constrained environments. This approach aligns with the demand for sustainable AI practices and facilitates faster deployment across various domains.
