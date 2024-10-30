@@ -21,7 +21,8 @@ def load_json_file(file_path):
         print(data)
         return data
     except FileNotFoundError:
-        print(f"The file {file_path} was not found in {os.path.join(current_dir, relative_path)}")
+        # print(f"The file {file_path} was not found in {os.path.join(current_dir, relative_path)}")
+        print(f"The file {file_path} was not found")
     except json.JSONDecodeError:
         print(f"The file {file_path} does not contain valid JSON")
 
