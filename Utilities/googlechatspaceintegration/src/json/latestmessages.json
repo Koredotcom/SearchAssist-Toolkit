@@ -1,0 +1,157 @@
+{
+    "spaces/AAAABcXBTWI/threads/tZR5zSICqxI": {
+        "threads": [
+            "Anyone know the answer to this?",
+            "Hi @Richard Oldham \n\nIt shouldn't be possible to get answers without chunks. Chunks are created after you enable Answer Snippets and train the application.",
+            "For more details you can refer https://docs.kore.ai/searchassist/concepts/personalizing-results/about-answers/",
+            "https://docs.kore.ai/searchassist/concepts/personalizing-results/answer-snippets-support-across-content-sources/",
+            "That may be true.. but we are getting answers",
+            "Presume chunks are created and usual processing is happening… just no chunks visible in the UI",
+            "Thanks @Aditi Bhadouria - I’ll submit a support ticket"
+        ],
+        "createTime": "1730458379"
+    },
+    "spaces/AAAABcXBTWI/threads/ca0xZYXNSwM": {
+        "threads": [
+            "@Andy Pham is this the same problem we've been having in the Applied Search instance for a week or two?\n\n @J.D. Maloney",
+            "@Bharat Rekha / @Venkata Naresh Divi can somebody look into this?",
+            "@Bharat Rekha @Venkata Naresh Divi Hi Guys, any update on this one? its still the same.",
+            "@Aditi Bhadouria can you help here pls?"
+        ],
+        "createTime": "1730816995"
+    },
+    "spaces/AAAABcXBTWI/threads/IgW2hQEyB5M": {
+        "threads": [
+            "Custom connector will be available for XO 11 on Monday (4 Nov).",
+            "It is available for XO 10/Search AI standalone, you can check it out",
+            "In DE SearchAssist as well, right?",
+            "Yes"
+        ],
+        "createTime": "1730445692"
+    },
+    "spaces/AAAABcXBTWI/threads/BgtnW07n2UI": {
+        "threads": [
+            "@Aditi Bhadouria can you please check on this issue document and let me know?",
+            "@Raman Srinivasan can you share the app with me to check further?",
+            "@Aditi Bhadouria you have the access to the app. please check"
+        ],
+        "createTime": "1730729426"
+    },
+    "spaces/AAAABcXBTWI/threads/LqtFMc4z1og": {
+        "threads": [
+            "Do we have a Connector in the works for AWS within Search AI? Or OneDrive?",
+            "@Jon McCain AWS what - S3?",
+            "Yes S3. Sorry I forgot to include that.",
+            "@Jon McCain interestingly on the platform I see an S3 connector, but no mention of it in the documentation. https://docs.kore.ai/xo/searchai/content-sources/connectors/connector-directory/",
+            "@Prabhat Singh I think a documentation update might be required?",
+            "@Laurence Schoultz that is so strange. I logged in to https://searchassist.kore.ai as well as in XO 11 -> Search AI and that list stopped at JIRA I think in both places.",
+            "Yup. You're right. The others are showing up now. They didn't yesterday... I was showing a customer and they weren't there.\n\nI looked in both XO 10 and XO 11 yesterday. There is an issue with an update I think here... because just like you're screenshot you can see that connector images are missing.",
+            "We are going to add multiple connectors over the next few weeks. Looks like there is some disconnect between docs and the product. \n\n@Vaishali Addala @Nimisha Joseph @Prabhat Singh Please review and ensure to have all of them in synch.",
+            "Thank you  @Santhosh Kumar Myadam \n\nIt seems a check is needed in the release testing process to ensure that ALL of the connectors are visible and their appropriate icons are loaded.",
+            "@Vaishali Addala"
+        ],
+        "createTime": "1730771589"
+    },
+    "spaces/AAAABcXBTWI/threads/GrL1v9wVpiU": {
+        "threads": [
+            "@Santhosh Kumar Myadam - can we build this for our CS team using integrations with Zendesk, documentation, dev community for starters? @Eric Robeson @DK Sharma \nThis would drive a step change in performance for CS and also reduce tickets that are just questions.\nEVA might be a good foundation for this",
+            "@Martin Jahn \n\nThis definitely is an interesting use case. \n\nWe tried building a website bot that can answer anything about our company - products, customers, features, solutions etc. However, it did not proceed for a few reasons like availability of golden set of data, data ownership etc. \n\nMost of the capabilites in that doc can be achieved using Search AI and Eva. One thing that is missing is where they say the assistant is joining the calls alongside the SE, listening and helping SEs. There could be a few other gaps we might need to build. \n\nOverall, we do have the core capability but the packaging of this as a solution needs to be defined. \n\n@Girish Ahankari @Hari Krishna Poludasu",
+            "Thanks @Santhosh Kumar Myadam . I'm thinking this \"Digital CSM\" could be triggered by the CSM/CSD...if we could start with a bot CSMs can just ask questions....we may not need the \"listen\" function...I think it is critical that we have access to the right sources to be effective....if you guys have some bandwidth and can dedicate a 1 or 2 hours a week to this, I would love to work with u on this"
+        ],
+        "createTime": "1730686626"
+    },
+    "spaces/AAAABcXBTWI/threads/L39Yaxkvc30": {
+        "threads": [
+            "@David Martin What is the source type for these files? Are they going to be uploaded directly or will they be ingested via a connector?",
+            "I will check with the team and get back to you with a recommendation",
+            "@Aditi Bhadouria via json",
+            "Will the client add this manually via the UI/application or via the API?",
+            "@Aditi Bhadouria their preference is through the application, not the API.",
+            "Ok I'll get back to you",
+            "Please note the JSON connector requires you to upload the JSON in a specific format. You can find the details here https://docs.kore.ai/xo/searchai/content-sources/connectors/json/"
+        ],
+        "createTime": "1730874642"
+    },
+    "spaces/AAAABcXBTWI/threads/9qaHDYR__Gk": {
+        "threads": [
+            "Is there a standard for sending chunks to LLM? \nIs there a configuration that forces sending the top 5 chunks?",
+            "@Inseon Park When configuring Answer Snippets/Generative Model you can set the number of chunks sent to LLM"
+        ],
+        "createTime": "1730841595"
+    },
+    "spaces/AAAABcXBTWI/threads/8NCeCTUYg48": {
+        "threads": [
+            "How do I configure Search AI within XO 11?\n\nThe instructions show to enter the Stream ID and it should be the App Id... But I only see the following in the Search AI -> Digital Flow Screen.\n\nWhat am I missing?\n\nI have tried the Account ID as well as the App Id found in the main App settings. Neither will automatically have the Agent pull information from what is found in Search AI.",
+            "@all",
+            "@Jon McCain \n\nCan you elaborate how you are trying to use Search AI? \n\nIs this a fallback scenario? Or are you using search node? \nIn both cases JWT is not required. \n\nAre you trying to integrate in a different way?",
+            "Please share which instructions you are referring to",
+            "I'm trying to use it with Agent AI",
+            "it works in the fall back scenario just fine for the user",
+            "Search integration in XO 11 is for SearchAssist",
+            "Search AI is configured directly in the App in various ways",
+            "@Curtis Swartzentruber how in XO 11 does an Employee / Agent use what has been setup within Search AI?",
+            "so far it hasn't worked great for us in demos. I think there may still be some open work going on",
+            "do you have Answers enabled in App Profile",
+            "Yes.",
+            "It works in the user chat",
+            "ask this question in Agent AI space or open a ticket",
+            "Okay",
+            "@all \n\nToday Agent AI cannot use what has been configured within the application under Search AI. The only option is to connect to XO 10 SearchAssist which means you have to duplicate your effort with your sources if the external and internal users need to have the information made available to them.\n\n @Madhuluck Kumar said that soon an option will be made available to select the Search AI implementation within the same app... But today that is not the case.",
+            "Worthy of the rare interrobang reaction.",
+            "@Andrei Zaharia FYI"
+        ],
+        "createTime": "1730969828"
+    },
+    "spaces/AAAABcXBTWI/threads/m929szxubZI": {
+        "threads": [
+            "Automatic Updates to Model on Scheduled Basis\n\nI just left a call with Cirque du Soleil and they asked about whether we have the ability to automatically update the platform based upon a daily update to information from their website or other data sources configured within Search AI. \n\nAs far as I know there is not a means to accomplish this as one must click the TRAIN button to make the newly ingested information into the model. \n\nHow can they accomplish this in an automated manner?",
+            "You can set up schedules within the Website configuration to occur daily/week/monthly or yearly. These will occur in the future for the time and date youve specified.\nhttps://docs.kore.ai/xo/searchai/content-sources/web-crawl/",
+            "Thank you @Amar Malik.\n\nBut doesn't it still require a manual step of clicking TRAIN to make the new information available?",
+            "there is auto-train whenever there is new content. I set a schedule for the last website and once it was 3:53pm it recrawled and once successful started the auto-train",
+            "Ohhhh",
+            "@Amar Malik There appears to be an issue with the UI",
+            "oh. maybe try zooming in or out? or refreshing the page?",
+            "I tried those things. I'm using Firefox",
+            "ah try another browser, im using chrome. Im not sure why the UI is not working.",
+            "Yup. it's broken in Firefox...",
+            "Can you enter a bug for this please?\n\nWe need to have consistent functionality across Chrome, Firefox, and Edge.",
+            "@Amar Malik where do you set it to auto-train? I don't see that in any of the settings pages that I've looked at.",
+            "Presumably when you set the frequency in the scheduling widget that is auto-training?",
+            "\"daily\" vs \"weekly\"..",
+            "Okay we need confirmation here as the schedule feature is to pull the data in... the TRAINING portion needs to be manually initiated to make the new / updated information available.\n\n @Subrahmanyam Donepudi please confirm based on what we've done in the past.",
+            "I didnt find a toggle however it seems to be enabled by default when you have the scheduler enabled.",
+            "@Santhosh Kumar Myadam can you help me get confirmation of the expected behavior here as it isn't clear to me and isn't outlined in the documentation.",
+            "@Aditi Bhadouria",
+            "@Jon McCain As @Amar Malik correctly pointed out the application triggers auto-train whenever any content is added to the application. Be it via scheduler or manual updates",
+            "We showcase the same to the user via a banner that auto-train is in progress. Please refer @Amar Malik's screenshot"
+        ],
+        "createTime": "1730998180"
+    },
+    "spaces/AAAABcXBTWI/threads/e765JzrOSn8": {
+        "threads": [
+            "What is the maximum number of documents can be uploaded?\n\nIs there a tiered limit? \n\nHow do we configure that?",
+            "For XO 11, we don't have a limit on the number of documents. We will have a limit on the size of content based on user's plan. You can check the pricing details for more information",
+            "On high level\nEssential: 100 MB\nAdvanced: 300 MB\nEnterprise: 1 GB with 1 GB units extra if required",
+            "Thank you @Aditi Bhadouria \n\n\".... based on user's plan\"\n\nSo, we do have tiers. Are those outlined in the price book?",
+            "Yes they should be",
+            "@Robert Villacis can you find and share those here so others are aware?"
+        ],
+        "createTime": "1730986622"
+    },
+    "spaces/AAAABcXBTWI/threads/1Yj3LrArBQ0": {
+        "threads": [
+            "@Jon McCain ^^ Does this help? I saw it the other day 🙂",
+            "YES. Very much. @Robert Villacis @Richard Margiloff @Raksha Koneru \nSee above ^^^^ for Haivision Prep"
+        ],
+        "createTime": "1730917449"
+    },
+    "spaces/AAAABcXBTWI/threads/Ol4QIwsm22Q": {
+        "threads": [
+            "I see Support for Custom Connector as part of the release notes, but is it postponed to Nov? @Aditi Bhadouria",
+            "cc @Paul Chaigne",
+            "It is released and available in Production. Are you facing any issue? @Amit Baweja",
+            "Please could you share documentation and also advise when will be available for on-prem"
+        ],
+        "createTime": "1730976206"
+    }
+}

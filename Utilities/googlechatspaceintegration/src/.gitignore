@@ -1,0 +1,7 @@
+/node_modules
+
+/json/credentials.json
+/json/spacestoken.json
+/json/messagesstoken.json
+
+/.env
