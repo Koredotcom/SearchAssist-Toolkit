@@ -1,4 +1,4 @@
-## Optimizing Enterprise Search Relevancy: A Deep Dive
+## Optimizing Enterprise Search Relevancy
 
 ### Introduction
 
@@ -121,7 +121,7 @@ Special Notes
 
 By implementing these tailored configurations and prompt engineering, we were able to achieve the following results for our clients:
 
-1. **Improved Relevancy**: The answer relevancy increased from the initial 50-60% to a range of 80-90%, significantly enhancing the user experience.
+1. **Improved Relevancy**: The answer relevancy increased from the initial 50-60% to a range of 80-85%, significantly enhancing the user experience.
 2. **Effective Handling of Data Diversity**: The new configurations effectively handled clients' diverse data sets, including web pages, files, and structured content.
 3. **Reduced Bias and False Positives**: The changes to the embedding generation process helped minimize the bias introduced by source information, leading to more accurate and relevant search results.
 4. **Improved Handling of Industry-Specific Queries**: The hybrid search approach and prompt engineering enabled the system to better understand and respond to industry-specific terminology and requirements.
