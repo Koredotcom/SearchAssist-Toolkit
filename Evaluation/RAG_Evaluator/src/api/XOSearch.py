@@ -3,22 +3,20 @@ from typing import Dict, List, Tuple, Optional
 from config.configManager import ConfigManager
 from utils.jti import JTI
 
-
 def generate_JWT_token(client_id, client_secret):
       
-    jwt_token = JTI.get_hs_key(client_id, client_secret, "JWT", "HS256")
-    
+    jwt_token = JTI.get_hs_key(client_id, client_secret, "JWT", "HS256")    
     return jwt_token
 
-class SearchAssistAPI:
+class XOSearchAPI:
     def __init__(self):
         config = ConfigManager().get_config()
-        self.client_id = config.get('SA').get('client_id')
-        self.client_secret = config.get('SA').get('client_secret')
+        self.client_id = config.get('UXO').get('client_id')
+        self.client_secret = config.get('UXO').get('client_secret')
         self.auth_token = generate_JWT_token(self.client_id, self.client_secret)
-        self.app_id = config.get('SA').get('app_id')
-        self.domain = config.get('SA').get('domain')
-        self.base_url = f'https://{self.domain}/searchassistapi/external/stream/{self.app_id}'
+        self.app_id = config.get('UXO').get('app_id')
+        self.domain = config.get('UXO').get('domain')
+        self.base_url = f'https://{self.domain}/api/public/bot/{self.app_id}'
 
     def _make_request(self, endpoint: str, data: Dict) -> Optional[Dict]:
         headers = {
@@ -48,7 +46,7 @@ class AnswerProcessor:
     def get_context(answer: Dict) -> Tuple[List[str], str]:
         contexts = []
         context_urls = set()
-        for chunk in answer.get('template', {}).get('chunk_result', {}).get('generative', []):
+        for chunk in answer.get('chunk_result', {}).get('generative', []):
             source = chunk.get('_source', {})
             if source.get('sentToLLM'):
                 contexts.append(source.get('chunkText', ''))
@@ -57,9 +55,8 @@ class AnswerProcessor:
 
     @staticmethod
     def extract_answer(answer: Dict) -> str:
-        center_panel = (answer.get('template', {})
-                        .get('graph_answer', {})
-                        .get('payload', {})
+        center_panel = (answer.get('response', {})
+                        .get('answer_payload', {})
                         .get('center_panel', {}))
         if not center_panel:
             return "No Answer Found"
@@ -68,7 +65,7 @@ class AnswerProcessor:
         return answer_string
 
 
-def get_bot_response(api: SearchAssistAPI, query: str, truth: str) -> Optional[Dict]:
+def get_bot_response(api: XOSearchAPI, query: str, truth: str) -> Optional[Dict]:
     answer = api.advanced_search(query)
     if not answer:
         return None
@@ -87,7 +84,7 @@ def get_bot_response(api: SearchAssistAPI, query: str, truth: str) -> Optional[D
 
 # Example usage
 if __name__ == "__main__":
-    api = SearchAssistAPI()
+    api = XOSearchAPI()
     query = "what is eva?"
     truth = "Example ground truth"
     result = get_bot_response(api, query, truth)

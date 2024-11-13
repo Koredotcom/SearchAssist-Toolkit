@@ -1,8 +1,14 @@
 {
-    "auth_token":"<JWT TOKEN>",
-    "app_id":"<STREAM ID>",
-    "EVALUATION_MODEL_NAME": "<MODEL NAME>",
-    "domain": "searchassist-app.kore.ai",
+    "UXO or SA": {
+        "app_id": "<UXO or SA stream ID>",
+        "client_id": "<UXO or SA client ID>",
+        "client_secret": "<UXO or SA client secret>",
+        "domain": "<SA or UXO domain url>"
+    },
+    "openai": {
+        "model_name": "<EVALUATION_MODEL_NAME>",
+        "embedding_name": "<EVALUATION_EMBEDDING_NAME>"
+    },
     "azure": {
         "openai_api_version": "<API VERSION>",
         "base_url": "<BASE URL>",

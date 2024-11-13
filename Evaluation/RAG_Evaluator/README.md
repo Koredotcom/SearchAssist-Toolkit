@@ -2,7 +2,7 @@
 
 ## Overview
 
-This repo is designed to evaluate queries and ground truths using the Ragas and Crag evaluators. The evaluation can be performed using data from an Excel file and optionally fetching responses via the SearchAI API. The script supports both Ragas and Crag evaluations, and the results are saved to an output Excel file.
+This repo is designed to evaluate queries and ground truths using the Ragas and Crag evaluators. The evaluation can be performed using data from an Excel file and optionally fetching responses via the SearchAI API. The script supports both Ragas and Crag evaluations, and the results are saved to an output Excel file or can be stored in mongoDB.
 
 ## Installation
 
@@ -34,8 +34,8 @@ This repo is designed to evaluate queries and ground truths using the Ragas and 
 - `--evaluate_ragas`: Run only Ragas evaluation (optional).
 - `--evaluate_crag`: Run only Crag evaluation (optional).
 - `--use_search_api`: Use SearchAssist API to fetch responses (optional).
-
-Sure, here is a revised version of the specific block you provided:
+- `--save_db`: Save the evaluation results to MongoDB (optional).
+- `--llm_model`: Specify the LLM model to use for evaluation (optional) (To use azure openai model, set it to "azure").
 
 ### Running Your First Experiment
 
@@ -67,6 +67,20 @@ To run an evaluation using the Ragas evaluator, follow these steps:
 ```sh
 python main.py --input_file path/to/your/excel_file.xlsx --evaluate_ragas
 ```
+
+### Example 3: Using only Ragas Evaluator with Search AI API and saving results to MongoDB
+
+To run an evaluation using the Ragas evaluator with Azure openai model, Search AI API and save the results to MongoDB, follow these steps:
+
+1. Prepare your Excel file with the following columns:
+    - `query`: The query string.
+    - `ground_truth`: The expected ground truth for the query.
+
+2. Execute the script with the following command:
+    
+    ```sh
+    python main.py --input_file path/to/your/excel_file.xlsx  --evaluate_ragas --use_search_api --save_db -- llm_model azure
+    ```
 ## Additional Details
 
 ### Output
@@ -81,9 +95,15 @@ Linux
 ```sh
 export OPENAI_API_KEY="your_openai_api_key"
 ```
+```sh
+export AZURE_OPENAI_API_KEY="your_openai_api_key"
+```
 Windows
 ```sh
 $env:OPENAI_API_KEY="your_openai_api_key"
+```
+```sh
+$env:AZURE_OPENAI_API_KEY="your_openai_api_key"
 ```
 
 ###Configuration
@@ -94,20 +114,180 @@ Create a config.json file in the config directory with the necessary configurati
 
 ```json5
 {
-    "auth_token":"<SA API token>",
-    "app_id":"<SA stream ID>",
-    "EVALUATION_MODEL_NAME": "<Model to evaluate>",
-    "domain": "searchassist-app.kore.ai"
+    "<UXO or SA>": {
+        "app_id": "<UXO or SA stream ID>",
+        "client_id": "<UXO or SA client ID>",
+        "client_secret": "<UXO or SA client secret>",
+        "domain": "<SA or UXO domain url>"
+    },
+    "openai": {
+        "model_name": "<EVALUATION_MODEL_NAME>",
+        "embedding_name": "<EVALUATION_EMBEDDING_NAME>"
+    },
+    // use this if you are using azure openai model
+    "azure": {
+        {
+            "openai_api_version": "<your_openai_api_version>",
+            "base_url": "<your_base_url>",
+            "model_deployment": "<your_model_deployment>",
+            "model_name": "<your_model_name>",
+            "embedding_deployment": "<your_embedding_deployment>",
+            "embedding_name": "<your_embedding_name>"
+        }
+    },
+    "MongoDB": {
+        "url": "<MONGO URL>",
+        "dbName": "<DB NAME>",
+        "collectionName": "<COLLECTION NAME>"
+    }
+    
 }
 ```
-Replace `EVALUATION_MODEL_NAME` with the actual name of your model, and replace `app_id` and `auth_token` with the `streamId` and `JWT auth token` of your Search AI application.
+Replace the placeholders with your actual values. 
+- If saving to MongoDB, set `url`, `dbName`, and `collectionName` in the `MongoDB` section of the config.json file.
+
+- for Azure openai model, set `EVALUATION_MODEL_NAME`, `openai_api_version`, `base_url`, `model_deployment`, `model_name`, `embedding_deployment`, `embedding_name`, `model_version` in config.json file.
+
+```json5
+{
+    "openai_api_version": "v1",
+    "base_url": "https://api.openai.com",
+    "model_deployment": "azure",
+    "model_name": "gpt-3.5-turbo",
+    "model_version": "latest"
+}
+```
+
+---
+
+# API Documentation
+
+## Overview
+
+This FastAPI application provides two main endpoints: `/runeval` and `/mailService`. These endpoints allow users to run evaluations and send emails with the results, respectively.
+
+## Endpoints
+
+### 1. `/runeval`
+
+#### Method: POST
+
+**Summary**: Run Eval
+
+**Description**: This endpoint allows users to run an evaluation based on the provided Excel file, config file, and parameters.
+
+**Request Body**:
+- **Content Type**: `application/json`
+- **Schema**: `Body`
+  - **Properties**:
+    - `excel_file` (string): The path to the Excel file.
+    - `config_file` (string): The path to the config file.
+    - `params` (object): Evaluation parameters.
+      - **Schema**: `Params`
+        - **Properties**:
+          - `sheet_name` (string): The name of the sheet in the Excel file.
+          - `evaluate_ragas` (boolean): Whether to evaluate ragas. Default is `false`.
+          - `evaluate_crag` (boolean): Whether to evaluate crag. Default is `false`.
+          - `use_search_api` (boolean): Whether to use the search API. Default is `false`.
+          - `llm_model` (string): The LLM model to use.
+          - `save_db` (boolean): Whether to save the results to the database. Default is `false`.
+
+**Responses**:
+- **200**: Successful Response
+  - **Content Type**: `application/json`
+  - **Schema**: Empty object
+- **422**: Validation Error
+  - **Content Type**: `application/json`
+  - **Schema**: `HTTPValidationError`
+    - **Properties**:
+      - `detail` (array): List of validation errors.
+        - **Items**: `ValidationError`
+          - **Properties**:
+            - `loc` (array): Location of the error.
+              - **Items**: `string` or `integer`
+            - `msg` (string): Error message.
+            - `type` (string): Error type.
+
+### 2. `/mailService`
+
+#### Method: POST
+
+**Summary**: Mail Service
+
+**Description**: This endpoint allows users to send an email with the evaluation results.
+
+**Query Parameters**:
+- `send_mail` (boolean): Whether to send the email. Default is `false`.
+
+**Responses**:
+- **200**: Successful Response
+  - **Content Type**: `application/json`
+  - **Schema**: Empty object
+- **422**: Validation Error
+  - **Content Type**: `application/json`
+  - **Schema**: `HTTPValidationError`
+    - **Properties**:
+      - `detail` (array): List of validation errors.
+        - **Items**: `ValidationError`
+          - **Properties**:
+            - `loc` (array): Location of the error.
+              - **Items**: `string` or `integer`
+            - `msg` (string): Error message.
+            - `type` (string): Error type.
+
+## Components
+
+### Schemas
+
+#### `Body`
+- **Properties**:
+  - `excel_file` (string): The path to the Excel file.
+  - `config_file` (string): The path to the config file.
+  - `params` (object): Evaluation parameters.
+    - **Schema**: `Params`
+      - **Properties**:
+        - `sheet_name` (string): The name of the sheet in the Excel file.
+        - `evaluate_ragas` (boolean): Whether to evaluate ragas. Default is `false`.
+        - `evaluate_crag` (boolean): Whether to evaluate crag. Default is `false`.
+        - `use_search_api` (boolean): Whether to use the search API. Default is `false`.
+        - `llm_model` (string): The LLM model to use.
+        - `save_db` (boolean): Whether to save the results to the database. Default is `false`.
+
+#### `HTTPValidationError`
+- **Properties**:
+  - `detail` (array): List of validation errors.
+    - **Items**: `ValidationError`
+      - **Properties**:
+        - `loc` (array): Location of the error.
+          - **Items**: `string` or `integer`
+        - `msg` (string): Error message.
+        - `type` (string): Error type.
+
+#### `Params`
+- **Properties**:
+  - `sheet_name` (string): The name of the sheet in the Excel file.
+  - `evaluate_ragas` (boolean): Whether to evaluate ragas. Default is `false`.
+  - `evaluate_crag` (boolean): Whether to evaluate crag. Default is `false`.
+  - `use_search_api` (boolean): Whether to use the search API. Default is `false`.
+  - `llm_model` (string): The LLM model to use.
+  - `save_db` (boolean): Whether to save the results to the database. Default is `false`.
+
+#### `ValidationError`
+- **Properties**:
+  - `loc` (array): Location of the error.
+    - **Items**: `string` or `integer`
+  - `msg` (string): Error message.
+  - `type` (string): Error type.
+
+---
+
 
 ## Future Improvements
 
 - Add support for additional evaluators.
 - Generate User friendly reports.
 - Support for synthetic test data set generator.
-- Support for custom LLMs(Azure, Claude etc).
+- Support for custom LLMs(Claude etc).
 - More to come....!
 
 ## Contributing

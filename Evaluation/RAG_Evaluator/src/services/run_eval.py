@@ -21,10 +21,8 @@ async def process_files(excel_file, config_file):
     config_path = os.path.join(CONFIG_UPLOAD_FOLDER, 'config.json')
     
     # Save the uploaded files
-    print("excel_path:", excel_path)
     with open(config_file, 'r') as f:
         s = f.read()
-        print("s:", s)
         with open(config_path, 'w') as f2:
             f2.write(s)
             

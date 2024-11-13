@@ -8,11 +8,18 @@ from config.configManager import ConfigManager
 from evaluators.ragasEvaluator import RagasEvaluator
 from evaluators.cragEvaluator import CragEvaluator
 from utils.evaluationResult import ResultsConverter
-from api.SASearch import SearchAssistAPI, get_bot_response
 from utils.dbservice import dbService
 
-def call_searchassist_api(queries, ground_truths):
-    api = SearchAssistAPI()
+def call_search_api(queries, ground_truths):
+    config_manager = ConfigManager()
+    config = config_manager.get_config()    
+    if config.get('SA'):
+        from api.SASearch import SearchAssistAPI, get_bot_response
+        api = SearchAssistAPI()
+    elif config.get('UXO'):
+        from api.XOSearch import XOSearchAPI, get_bot_response
+        api = XOSearchAPI()
+        
     results = []
     for query, truth in zip(queries, ground_truths):
         response = get_bot_response(api, query, truth)
@@ -34,7 +41,7 @@ def load_data_and_call_api(excel_file, sheet_name, config):
     queries = df['query'].fillna('').tolist()
     ground_truths = df['ground_truth'].fillna('').tolist()
 
-    api_results = call_searchassist_api(queries, ground_truths)
+    api_results = call_search_api(queries, ground_truths)
 
     # Create a new DataFrame with API results
     results_df = pd.DataFrame(api_results)
@@ -89,7 +96,7 @@ def evaluate_with_ragas_and_crag(excel_file, sheet_name, config, run_ragas=True,
 
         if run_crag:
             openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            crag_evaluator = CragEvaluator(config['EVALUATION_MODEL_NAME'], openai_client)
+            crag_evaluator = CragEvaluator(config['openai']['model_name'], openai_client)
             crag_results = crag_evaluator.evaluate(queries, answers, ground_truths, contexts)
             
         total_set_result = ragas_results[1]
