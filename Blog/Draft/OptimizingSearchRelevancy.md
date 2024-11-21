@@ -117,9 +117,17 @@ Special Notes
 - **Do not mention** anything about the chunks in the final answer.
 
 ```
+With the above prompt we have covered the below aspects
+| **Aspect**                      | **Old Prompt**                                                                                                                                   | **New Prompt**                                                                                                                                                              |
+|----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Processing Complexity**       | - Extremely rigid referencing structure<br>- Focus solely on direct matching<br>- Limited processing instructions<br>- Minimal guidance on information synthesis | - Multi-step processing approach<br>- Encourages comprehensive analysis of chunks<br>- Explicit instructions for:<br>  - Identifying relevant information<br>  - Processing chunks independently and collectively<br>  - Constructing a cohesive answer |
+| **Information Extraction Methodology** | - Strict, mechanical extraction<br>- No mechanism for:<br>  - Contextual understanding<br>  - Cross-chunk information synthesis<br>  - Nuanced interpretation of related information | - Step-by-step processing instructions<br>- Explicit guidance to:<br>  - Review each chunk independently<br>  - Aggregate findings across multiple chunks<br>  - Create a comprehensive answer<br>- Allows for more intelligent information retrieval |
+| **Answer Construction Guidance** | - Minimal instructions on answer structure<br>- Forced immediate chunk referencing<br>- No guidance on presenting complex information<br>- Potentially breaks natural language flow | - Comprehensive answer formatting guidelines<br>- Encourages:<br>  - Logical presentation<br>  - Clear sectioning<br>  - Use of formatting (e.g., bullet points, numbered steps)<br>  - Maintaining a professional tone<br>- Provides context for answer construction |
+| **Interpretation Flexibility**   | - Treats information as discrete, disconnected units<br>- No mechanism for understanding contextual relationships<br>- Forced literal matching | - Allows for holistic chunk analysis<br>- Encourages finding connections between chunks<br>- Provides instructions for creating a cohesive narrative<br>- Supports more nuanced information interpretation |
+| **Error Handling and Ambiguity** | - No clear mechanism for handling:<br>  - Partial information<br>  - Ambiguous or interconnected data<br>- Strict binary approach (exact match or no answer) | - Explicit instructions for handling incomplete information<br>- Guidance on:<br>  - Providing the most complete answer possible<br>  - Avoiding fabrication<br>  - Maintaining accuracy<br>- More sophisticated error prevention |
 
 
-#### Consolidation Configuration
+#### 5. Consolidation Configuration
 
 | Optimization Area        | Default Configuration                            | Optimized Configuration                                                                                       |
 |--------------------------|-------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
@@ -137,7 +145,7 @@ Special Notes
 | Prompt Design            | Default prompt                                  | Customized prompt based on client industry and requirements                                                  |
 
   
-### Impact and Benefits
+#### 6. Impact and Benefits
 
 By implementing these tailored configurations and prompt engineering, we were able to achieve the following results for our clients:
 
@@ -147,7 +155,7 @@ By implementing these tailored configurations and prompt engineering, we were ab
 4. **Improved Handling of Industry-Specific Queries**: The hybrid search approach and prompt engineering enabled the system to better understand and respond to industry-specific terminology and requirements.
 5. **Increased Chunk Prioritization**: Sending more relevant chunks to the language model improved the overall quality and coherence of the search results.
 
-### Conclusion
+#### 7. Conclusion
 
 Optimizing enterprise search relevancy is a complex and ongoing challenge, but the insights and solutions we've shared in this blog post can serve as a starting point for enterprises looking to enhance their search capabilities. By understanding the unique data characteristics, search patterns, and industry requirements, you can tailor your search application configuration and prompt engineering to achieve remarkable improvements in answer relevancy and user satisfaction.
 
