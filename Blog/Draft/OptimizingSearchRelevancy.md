@@ -34,8 +34,28 @@ To address these challenges, we took a comprehensive approach to analyzing the i
 - **Chunk Prioritization**: For page-based chunking, we sent the top 10 chunks to the language model. For text-based chunking, we increased this to the top 20 chunks to ensure that the relevant information was not fragmented across multiple files.
 
 #### 4. Prompt Engineering
-- **Prompt Optimization**: We carefully fine-tuned the prompts used to generate the answers, taking into account the specific requirements and terminology of the client's industry. Below is the prompt we created which includes most of the scenarions.
+When we evaluated why our existing default prompt is unable to answer from the chunks which are contexually relevant to the user query, we identified some of the key problems in the overall prompt structure which leads to multiple answer failures.
 
+**Current Prompt Processing Flow**
+```
+Input → Literal Match → Strict Referencing → Potential Failure
+```
+With the above flow, the prompt majorly suffers from a fundamentally mechanical approach to information processing:
+
+- Treats information as discrete, disconnected units
+- No understanding of context or meaning
+- Forced to match exactly or fail
+- Cannot synthesize broader insights
+- Breaks natural language communication
+
+**Prompt Optimization**: We then restructured our entire prompt by carefully considering what are all we miss in our existing prompt, taking into account the specific requirements and terminology of the client's industry. Below is the prompt where we transform our old prompt which is Like a Strict Translator to the new one which is Like an Expert Interpreter where it Understands cultural nuances, Captures deeper meanings & Provide accurate, contextual answering.
+
+**New Prompt Processing Flow**
+```
+Input → Comprehensive Analysis → Contextual Understanding → Semantic Interpretation → Intelligent Synthesis → Comprehensive, Referenced Answer
+```
+
+**Prompt**
 ```
 Role
 You are an AI system designed to generate comprehensive, clear, and accurate answers based on the user-provided context.
