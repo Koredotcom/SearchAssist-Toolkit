@@ -23,7 +23,7 @@ To address these challenges, we took a comprehensive approach to analyzing the i
 #### 1. Extraction Configuration
 - **Web Pages**: For clients with more than 500 web pages, we recommended a page-based chunking strategy or increasing the chunk length to 5,000 tokens. For smaller data sets, the default 400-token chunking remained effective.
 - **Files**: For clients with more than 200 pages across multiple files, we suggested a page-based chunking strategy or increasing the chunk length to 5,000 tokens. For smaller data sets, the default 400-token chunking was suitable.
-- **Structured Data**: When the data contained tables and images, we implemented a layout-aware extraction strategy to preserve the context and structure of the information.
+- **Structured Documents**: When the data contained tables and images, we implemented a layout-aware extraction strategy to preserve the context and structure of the information.
 
 #### 2. Indexing Configuration
 - **Embeddings**: We included only the title and content of the chunks in the embeddings, removing the source information. This helped reduce the bias introduced by the default approach.
@@ -32,6 +32,20 @@ To address these challenges, we took a comprehensive approach to analyzing the i
 #### 3. Search Configuration
 - **Hybrid Search**: For queries that contained industry-specific terms or non-generic keywords, we implemented a hybrid search approach that combined vector search and text-based search.
 - **Chunk Prioritization**: For page-based chunking, we sent the top 10 chunks to the language model. For text-based chunking, we increased this to the top 20 chunks to ensure that the relevant information was not fragmented across multiple files.
+
+##### Challenges with Vector Search
+- **Semantic Dilution Problem**
+1. False semantic matches due to similar but irrelevant content
+2. Context fragmentation from chunking
+3. Semantic drift in large document collections
+
+- **Impact on Retrieval Quality**
+1. Reduced precision in search results
+2. Missing or incomplete context in responses
+3. Difficulty maintaining topic coherence
+
+### When to Use Vector and Hybrid Search
+
 
 #### 4. Prompt Engineering
 When we evaluated why our existing default prompt is unable to answer from the chunks which are contexually relevant to the user query, we identified some of the key problems in the overall prompt structure which leads to multiple answer failures.
@@ -134,7 +148,7 @@ With the above prompt we have covered the below aspects
 | **Extraction Configuration** |                                                                                         |                                                                                                               |
 | Web Pages                | 400-token chunking                              | - Page-based chunking for >500 web pages<br>- 5,000-token chunking for >500 web pages                        |
 | Files                    | 400-token chunking                              | - Page-based chunking for >200 pages across files<br>- 5,000-token chunking for >200 pages across files      |
-| Structured Data          | Standard text extraction                        | Layout-aware extraction for data with tables and images                                                      |
+| Structured Documents          | Standard text extraction                        | Layout-aware extraction for data with tables and images                                                      |
 | **Indexing Configuration** |                                                                                         |                                                                                                               |
 | Embeddings               | Include title, content, and source name         | Include only title and content                                                                               |
 | Source Name              | Always included in embeddings                   | Include only if file names are unique                                                                        |
