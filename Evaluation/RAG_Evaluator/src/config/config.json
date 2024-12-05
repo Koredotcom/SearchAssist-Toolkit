@@ -17,6 +17,10 @@
         "embedding_deployment": "<EMBEDDING DEPLOYMENT>",
         "embedding_name": "<EMBEDDING NAME>"
     },
+    "cost_of_model":{
+        "input": 0.00000015,
+        "output": 0.0000006
+    },
     "MongoDB": {
         "url": "<MONGO URL>",
         "dbName": "<DB NAME>",
