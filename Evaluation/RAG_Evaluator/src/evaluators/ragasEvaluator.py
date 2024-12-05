@@ -28,7 +28,6 @@ class RagasEvaluator(BaseEvaluator):
         # Wrap the model in the Langchain wrapper
         if model == "azure":
             azure_llm = AzureChatOpenAI(
-                api_key= config["azure"]["api_key"],
                 openai_api_version= config["azure"]["openai_api_version"],
                 azure_endpoint= config["azure"]["base_url"],
                 azure_deployment= config["azure"]["model_deployment"],
@@ -37,7 +36,6 @@ class RagasEvaluator(BaseEvaluator):
             )
 
             azure_embeddings = AzureOpenAIEmbeddings(
-                api_key= config["azure"]["api_key"],
                 openai_api_version= config["azure"]["openai_api_version"],
                 azure_endpoint= config["azure"]["base_url"],
                 azure_deployment= config["azure"]["embedding_deployment"],
