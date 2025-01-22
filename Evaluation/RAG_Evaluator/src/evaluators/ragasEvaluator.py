@@ -13,6 +13,7 @@ from ragas.metrics import (
 from langchain_openai.chat_models import AzureChatOpenAI
 from langchain_openai.embeddings import AzureOpenAIEmbeddings
 from ragas.llms import LangchainLLMWrapper
+from ragas.cost import get_token_usage_for_openai
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
@@ -28,7 +29,6 @@ class RagasEvaluator(BaseEvaluator):
         # Wrap the model in the Langchain wrapper
         if model == "azure":
             azure_llm = AzureChatOpenAI(
-                api_key= config["azure"]["api_key"],
                 openai_api_version= config["azure"]["openai_api_version"],
                 azure_endpoint= config["azure"]["base_url"],
                 azure_deployment= config["azure"]["model_deployment"],
@@ -37,7 +37,6 @@ class RagasEvaluator(BaseEvaluator):
             )
 
             azure_embeddings = AzureOpenAIEmbeddings(
-                api_key= config["azure"]["api_key"],
                 openai_api_version= config["azure"]["openai_api_version"],
                 azure_endpoint= config["azure"]["base_url"],
                 azure_deployment= config["azure"]["embedding_deployment"],
@@ -67,7 +66,11 @@ class RagasEvaluator(BaseEvaluator):
             'reference': ground_truths
         }
         dataset = Dataset.from_dict(data)
-        result = evaluate(dataset, metrics=metrics)
+        result = evaluate(dataset, metrics=metrics, token_usage_parser=get_token_usage_for_openai)
+        inputcost = config["cost_of_model"]["input"]
+        outputcost = config["cost_of_model"]["output"]
+        print(f"Total Tokens for Evaluation: Input={result.total_tokens().input_tokens} Output={result.total_tokens().output_tokens}")
+        print(f"Total Cost in $: {result.total_cost(cost_per_input_token=inputcost, cost_per_output_token=outputcost)}")
         result_df = result.to_pandas()
         return result_df, result
 
