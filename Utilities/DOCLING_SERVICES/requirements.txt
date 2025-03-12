@@ -1,9 +1,0 @@
-docling==2.21.0
-docling-core==2.18.0
-docling-ibm-models==3.3.1
-docling-parse==3.3.0
-easyocr==1.7.2
-fastapi==0.115.8
-python-dotenv==1.0.1
-python-multipart==0.0.20
-uvicorn==0.34.0
