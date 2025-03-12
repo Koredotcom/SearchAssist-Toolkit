@@ -12,7 +12,7 @@ class ProcessingController {
 
         try {
             logger.info(`Starting to process PDF: ${filename} (ID: ${uniqueId || 'N/A'})`);
-            const result = await this.processingService.processPDF(filePath, include_base64, uniqueId);
+            const result = await this.processingService.processPDF(filePath, filename, include_base64, uniqueId);
             logger.info(`Completed processing PDF: ${filename} (ID: ${uniqueId || 'N/A'})`);
             return result;
         } catch (error) {
