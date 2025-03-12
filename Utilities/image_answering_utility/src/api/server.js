@@ -37,7 +37,6 @@ const logger = createLogger('api-service');
 
 // Replace hardcoded values with environment variables
 // const DOWNLOADS_DIR = path.join(__dirname, '../../', process.env.DOWNLOADS_DIR);
-const MAX_CONCURRENT_PROCESSING = parseInt(process.env.MAX_CONCURRENT_PROCESSING, 10);
 const PORT = process.env.PORT || 3000;
 
 // // Create downloads directory if it doesn't exist
@@ -59,6 +58,15 @@ MongoManager.connect()
             logger.info(`Server is running on port ${PORT} (without MongoDB)`);
         });
     });
+
+// Set up periodic cleanup of old directories (every 1 hour)
+setInterval(async () => {
+    try {
+        await storageManager.cleanupOldDirectories();
+    } catch (error) {
+        logger.error(`Error during periodic cleanup: ${error.message}`);
+    }
+}, 60 * 60 * 1000); // 1 hour
 
 // Update the processDirectoryFromUrl function to use the functions from queue-config
 async function processDirectoryFromUrl(downloadUrl, include_base64, uniqueId) {
@@ -107,12 +115,13 @@ async function processDirectoryFromUrl(downloadUrl, include_base64, uniqueId) {
     }
 }
 
-// Add system load monitoring
+// Track active processing count
 let activeProcessingCount = 0;
 
-// Function to check system load
+// Function to check if system is overloaded
 function isSystemOverloaded() {
-    return activeProcessingCount >= MAX_CONCURRENT_PROCESSING;
+    const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_PROCESSING, 10) || 3;
+    return activeProcessingCount >= MAX_CONCURRENT;
 }
 
 // Function to get accurate queue position
