@@ -1,0 +1,174 @@
+2025-03-03 10:24:44,855 | INFO | Started server process [681250]
+2025-03-03 10:24:44,855 | INFO | Waiting for application startup.
+2025-03-03 10:24:44,855 - markdown-service - INFO - Starting PDF Markdown Service on 0.0.0.0:8000
+2025-03-03 10:24:44,855 | INFO | Starting PDF Markdown Service on 0.0.0.0:8000
+2025-03-03 10:24:44,855 - markdown-service - INFO - Thread pool size: 3
+2025-03-03 10:24:44,855 | INFO | Thread pool size: 3
+2025-03-03 10:24:44,856 | INFO | Application startup complete.
+2025-03-03 10:24:44,856 | INFO | Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2025-03-03 10:29:26,270 | INFO | [MARKDOWN] Starting processing for file: MLA.pdf
+2025-03-03 10:29:26,270 | INFO | [MARKDOWN] Start time: 2025-03-03T10:29:26.270215
+2025-03-03 10:29:26,312 | INFO | Started processing Document /tmp/tmpxyckcm3c/MLA.pdf
+2025-03-03 10:29:26,330 | INFO | Going to convert document batch...
+2025-03-03 10:29:26,332 | INFO | Accelerator device: 'cpu'
+2025-03-03 10:29:26,679 | INFO | Accelerator device: 'cpu'
+2025-03-03 10:29:28,141 | INFO | Processing document MLA.pdf
+2025-03-03 10:29:37,995 | INFO | Finished converting document MLA.pdf in 11.68 sec.
+2025-03-03 10:29:37,995 | INFO | Document /tmp/tmpxyckcm3c/MLA.pdf converted in 11.68 seconds.
+2025-03-03 10:29:37,998 | INFO | [MARKDOWN] Completed processing for file: MLA.pdf
+2025-03-03 10:29:37,998 | INFO | [MARKDOWN] Processing time: 11.73 seconds
+2025-03-03 10:29:37,998 | INFO | [MARKDOWN] End time: 2025-03-03T10:29:37.998824
+2025-03-03 10:29:37,999 | INFO | 127.0.0.1:58944 - "POST /process-pdf-markdown/ HTTP/1.1" 200
+2025-03-03 10:33:28,569 | INFO | [MARKDOWN] Starting processing for file: MLA.pdf
+2025-03-03 10:33:28,569 | INFO | [MARKDOWN] Start time: 2025-03-03T10:33:28.569167
+2025-03-03 10:33:28,575 | INFO | Started processing Document /tmp/tmpl0iiv_mg/MLA.pdf
+2025-03-03 10:33:28,594 | INFO | Going to convert document batch...
+2025-03-03 10:33:28,595 | INFO | Accelerator device: 'cpu'
+2025-03-03 10:33:28,958 | INFO | Accelerator device: 'cpu'
+2025-03-03 10:33:30,241 | INFO | Processing document MLA.pdf
+2025-03-03 10:33:40,560 | INFO | Finished converting document MLA.pdf in 11.98 sec.
+2025-03-03 10:33:40,560 | INFO | Document /tmp/tmpl0iiv_mg/MLA.pdf converted in 11.98 seconds.
+2025-03-03 10:33:40,562 | INFO | [MARKDOWN] Completed processing for file: MLA.pdf
+2025-03-03 10:33:40,563 | INFO | [MARKDOWN] Processing time: 11.99 seconds
+2025-03-03 10:33:40,563 | INFO | [MARKDOWN] End time: 2025-03-03T10:33:40.563114
+2025-03-03 10:33:40,563 | INFO | 127.0.0.1:41482 - "POST /process-pdf-markdown/ HTTP/1.1" 200
+2025-03-03 10:35:08,930 | INFO | [MARKDOWN] Starting processing for file: ocindex_profile_canada_2023.pdf
+2025-03-03 10:35:08,930 | INFO | [MARKDOWN] Start time: 2025-03-03T10:35:08.930530
+2025-03-03 10:35:08,936 | INFO | Started processing Document /tmp/tmp871xi9wf/ocindex_profile_canada_2023.pdf
+2025-03-03 10:35:08,954 | INFO | Going to convert document batch...
+2025-03-03 10:35:08,955 | INFO | Accelerator device: 'cpu'
+2025-03-03 10:35:09,291 | INFO | Accelerator device: 'cpu'
+2025-03-03 10:35:09,661 | INFO | Processing document ocindex_profile_canada_2023.pdf
+2025-03-03 10:35:16,526 | INFO | Finished converting document ocindex_profile_canada_2023.pdf in 7.59 sec.
+2025-03-03 10:35:16,527 | INFO | Document /tmp/tmp871xi9wf/ocindex_profile_canada_2023.pdf converted in 7.59 seconds.
+2025-03-03 10:35:16,540 | INFO | [MARKDOWN] Completed processing for file: ocindex_profile_canada_2023.pdf
+2025-03-03 10:35:16,540 | INFO | [MARKDOWN] Processing time: 7.61 seconds
+2025-03-03 10:35:16,540 | INFO | [MARKDOWN] End time: 2025-03-03T10:35:16.540739
+2025-03-03 10:35:16,541 | INFO | 127.0.0.1:40456 - "POST /process-pdf-markdown/ HTTP/1.1" 200
+2025-03-11 07:40:07,752 | INFO | Started server process [2643]
+2025-03-11 07:40:07,753 | INFO | Waiting for application startup.
+2025-03-11 07:40:07,753 - markdown-service - INFO - Starting PDF Markdown Service on 0.0.0.0:8000
+2025-03-11 07:40:07,753 | INFO | Starting PDF Markdown Service on 0.0.0.0:8000
+2025-03-11 07:40:07,753 - markdown-service - INFO - Thread pool size: 3
+2025-03-11 07:40:07,753 | INFO | Thread pool size: 3
+2025-03-11 07:40:07,753 | INFO | Application startup complete.
+2025-03-11 07:40:07,753 | INFO | Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2025-03-11 07:42:55,372 | INFO | 127.0.0.1:52752 - "POST /process-pdf-markdown/ HTTP/1.1" 400
+2025-03-11 07:44:56,138 | INFO | 127.0.0.1:46418 - "POST /process-pdf-markdown/ HTTP/1.1" 400
+2025-03-11 07:46:23,594 | ERROR | [MARKDOWN] Error processing ocindex_profile: 400: File must be a PDF
+2025-03-11 07:46:23,595 | INFO | 127.0.0.1:40764 - "POST /process-pdf-markdown/ HTTP/1.1" 500
+2025-03-11 07:46:38,611 | INFO | [MARKDOWN] Starting processing for file path: ocindex_profile_france.pdf
+2025-03-11 07:46:38,611 | INFO | [MARKDOWN] Start time: 2025-03-11T07:46:38.611798
+2025-03-11 07:46:38,640 | INFO | Started processing Document ./ocindex_profile_france.pdf
+2025-03-11 07:46:38,641 | ERROR | Error processing document ./ocindex_profile_france.pdf: [Errno 2] No such file or directory: 'ocindex_profile_france.pdf'
+2025-03-11 07:46:38,644 | ERROR | [MARKDOWN] Error processing ocindex_profile_france.pdf: Error processing document: [Errno 2] No such file or directory: 'ocindex_profile_france.pdf'
+2025-03-11 07:46:38,645 | INFO | 127.0.0.1:33406 - "POST /process-pdf-markdown/ HTTP/1.1" 500
+2025-03-11 07:46:55,290 | INFO | [MARKDOWN] Starting processing for file path: ocindex_profile_france_2023.pdf
+2025-03-11 07:46:55,291 | INFO | [MARKDOWN] Start time: 2025-03-11T07:46:55.290931
+2025-03-11 07:46:55,295 | INFO | Started processing Document ./ocindex_profile_france_2023.pdf
+2025-03-11 07:46:55,326 | INFO | Going to convert document batch...
+2025-03-11 07:46:55,330 | INFO | Accelerator device: 'cpu'
+2025-03-11 07:46:55,988 | INFO | Accelerator device: 'cpu'
+2025-03-11 07:46:56,685 | INFO | Processing document ocindex_profile_france_2023.pdf
+2025-03-11 07:47:03,032 | INFO | Finished converting document ocindex_profile_france_2023.pdf in 7.74 sec.
+2025-03-11 07:47:03,032 | INFO | Document ./ocindex_profile_france_2023.pdf converted in 7.74 seconds.
+2025-03-11 07:47:03,045 | INFO | [MARKDOWN] Completed processing for file: ocindex_profile_france_2023.pdf
+2025-03-11 07:47:03,045 | INFO | [MARKDOWN] Processing time: 7.75 seconds
+2025-03-11 07:47:03,045 | INFO | [MARKDOWN] End time: 2025-03-11T07:47:03.045464
+2025-03-11 07:47:03,045 | INFO | 127.0.0.1:37970 - "POST /process-pdf-markdown/ HTTP/1.1" 200
+2025-03-11 11:24:53,752 | INFO | Started server process [7177]
+2025-03-11 11:24:53,752 | INFO | Waiting for application startup.
+2025-03-11 11:24:53,752 - markdown-service - INFO - Starting PDF Markdown Service on 0.0.0.0:8000
+2025-03-11 11:24:53,752 | INFO | Starting PDF Markdown Service on 0.0.0.0:8000
+2025-03-11 11:24:53,752 - markdown-service - INFO - Thread pool size: 3
+2025-03-11 11:24:53,752 | INFO | Thread pool size: 3
+2025-03-11 11:24:53,752 | INFO | Application startup complete.
+2025-03-11 11:24:53,753 | INFO | Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2025-03-11 11:25:10,570 | INFO | [MARKDOWN] Starting processing for file path: ocindex_profile_france_2023.pdf
+2025-03-11 11:25:10,570 | INFO | [MARKDOWN] Start time: 2025-03-11T11:25:10.570356
+2025-03-11 11:25:10,570 | INFO | Processing existing file at path: ./ocindex_profile_france_2023.pdf
+2025-03-11 11:25:10,599 | INFO | Started processing Document ./ocindex_profile_france_2023.pdf
+2025-03-11 11:25:10,616 | INFO | Going to convert document batch...
+2025-03-11 11:25:10,618 | INFO | Accelerator device: 'cpu'
+2025-03-11 11:25:11,006 | INFO | Accelerator device: 'cpu'
+2025-03-11 11:25:11,366 | INFO | Processing document ocindex_profile_france_2023.pdf
+2025-03-11 11:25:17,223 | INFO | Finished converting document ocindex_profile_france_2023.pdf in 6.62 sec.
+2025-03-11 11:25:17,223 | INFO | Document ./ocindex_profile_france_2023.pdf converted in 6.62 seconds.
+2025-03-11 11:25:17,236 | INFO | Successfully processed existing file: ./ocindex_profile_france_2023.pdf
+2025-03-11 11:25:17,237 | INFO | [MARKDOWN] Completed processing for file: ocindex_profile_france_2023.pdf
+2025-03-11 11:25:17,237 | INFO | [MARKDOWN] Processing time: 6.67 seconds
+2025-03-11 11:25:17,237 | INFO | [MARKDOWN] End time: 2025-03-11T11:25:17.237325
+2025-03-11 11:25:17,238 | INFO | 127.0.0.1:43608 - "POST /process-pdf-markdown/ HTTP/1.1" 200
+2025-03-11 13:09:26,913 | INFO | [MARKDOWN] Starting processing for file path: ocindex_profile_france_2023.pdf
+2025-03-11 13:09:26,913 | INFO | [MARKDOWN] Start time: 2025-03-11T13:09:26.913516
+2025-03-11 13:09:26,913 | INFO | Processing existing file at path: ./ocindex_profile_france_2023.pdf
+2025-03-11 13:09:26,918 | INFO | Started processing Document ./ocindex_profile_france_2023.pdf
+2025-03-11 13:09:26,935 | INFO | Going to convert document batch...
+2025-03-11 13:09:26,937 | INFO | Accelerator device: 'cpu'
+2025-03-11 13:09:27,329 | INFO | Accelerator device: 'cpu'
+2025-03-11 13:09:27,679 | INFO | Processing document ocindex_profile_france_2023.pdf
+2025-03-11 13:09:33,533 | INFO | Finished converting document ocindex_profile_france_2023.pdf in 6.61 sec.
+2025-03-11 13:09:33,533 | INFO | Document ./ocindex_profile_france_2023.pdf converted in 6.62 seconds.
+2025-03-11 13:09:33,546 | INFO | Successfully processed existing file: ./ocindex_profile_france_2023.pdf
+2025-03-11 13:09:33,546 | INFO | [MARKDOWN] Completed processing for file: ocindex_profile_france_2023.pdf
+2025-03-11 13:09:33,546 | INFO | [MARKDOWN] Processing time: 6.63 seconds
+2025-03-11 13:09:33,546 | INFO | [MARKDOWN] End time: 2025-03-11T13:09:33.546706
+2025-03-11 13:09:33,547 | INFO | 127.0.0.1:34022 - "POST /process-pdf-markdown/ HTTP/1.1" 200
+2025-03-11 13:10:18,183 | INFO | Shutting down
+2025-03-11 13:10:18,283 | INFO | Waiting for application shutdown.
+2025-03-11 13:10:18,284 | INFO | Application shutdown complete.
+2025-03-11 13:10:18,284 | INFO | Finished server process [7177]
+2025-03-11 13:10:28,230 | INFO | Started server process [8251]
+2025-03-11 13:10:28,230 | INFO | Waiting for application startup.
+2025-03-11 13:10:28,230 - markdown-service - INFO - Starting PDF Markdown Service on 0.0.0.0:8000
+2025-03-11 13:10:28,230 | INFO | Starting PDF Markdown Service on 0.0.0.0:8000
+2025-03-11 13:10:28,231 - markdown-service - INFO - Thread pool size: 3
+2025-03-11 13:10:28,231 | INFO | Thread pool size: 3
+2025-03-11 13:10:28,231 | INFO | Application startup complete.
+2025-03-11 13:10:28,231 | INFO | Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2025-03-11 13:10:35,347 | INFO | [MARKDOWN] Starting processing for file path: ocindex_profile_france_2023.pdf
+2025-03-11 13:10:35,347 | INFO | [MARKDOWN] Start time: 2025-03-11T13:10:35.347004
+2025-03-11 13:10:35,347 | INFO | Processing existing file at path: ./ocindex_profile_france_2023.pdf
+2025-03-11 13:10:35,379 | INFO | Started processing Document ./ocindex_profile_france_2023.pdf
+2025-03-11 13:10:35,396 | INFO | Going to convert document batch...
+2025-03-11 13:10:35,398 | INFO | Accelerator device: 'cpu'
+2025-03-11 13:10:35,715 | INFO | Accelerator device: 'cpu'
+2025-03-11 13:10:36,063 | INFO | Processing document ocindex_profile_france_2023.pdf
+2025-03-11 13:10:41,887 | INFO | Finished converting document ocindex_profile_france_2023.pdf in 6.51 sec.
+2025-03-11 13:10:41,887 | INFO | Document ./ocindex_profile_france_2023.pdf converted in 6.51 seconds.
+2025-03-11 13:10:41,900 | INFO | Successfully processed existing file: ./ocindex_profile_france_2023.pdf
+2025-03-11 13:10:41,900 | INFO | [MARKDOWN] Completed processing for file: ocindex_profile_france_2023.pdf
+2025-03-11 13:10:41,900 | INFO | [MARKDOWN] Processing time: 6.55 seconds
+2025-03-11 13:10:41,901 | INFO | [MARKDOWN] End time: 2025-03-11T13:10:41.900998
+2025-03-11 13:10:41,901 | INFO | 127.0.0.1:57406 - "POST /process-pdf-markdown/ HTTP/1.1" 200
+2025-03-11 13:10:54,626 | INFO | [MARKDOWN] Starting processing for file path: ocindex_profile_france_2023.pdf
+2025-03-11 13:10:54,626 | INFO | [MARKDOWN] Start time: 2025-03-11T13:10:54.626124
+2025-03-11 13:10:54,626 | INFO | Processing existing file at path: ./ocindex_profile_france_2023.pdf
+2025-03-11 13:10:54,631 | INFO | Started processing Document ./ocindex_profile_france_2023.pdf
+2025-03-11 13:10:54,648 | INFO | Going to convert document batch...
+2025-03-11 13:10:54,649 | INFO | Accelerator device: 'cpu'
+2025-03-11 13:10:54,973 | INFO | Accelerator device: 'cpu'
+2025-03-11 13:10:55,330 | INFO | Processing document ocindex_profile_france_2023.pdf
+2025-03-11 13:11:01,081 | INFO | Finished converting document ocindex_profile_france_2023.pdf in 6.45 sec.
+2025-03-11 13:11:01,081 | INFO | Document ./ocindex_profile_france_2023.pdf converted in 6.45 seconds.
+2025-03-11 13:11:01,094 | INFO | Successfully processed existing file: ./ocindex_profile_france_2023.pdf
+2025-03-11 13:11:01,094 | INFO | [MARKDOWN] Completed processing for file: ocindex_profile_france_2023.pdf
+2025-03-11 13:11:01,094 | INFO | [MARKDOWN] Processing time: 6.47 seconds
+2025-03-11 13:11:01,094 | INFO | [MARKDOWN] End time: 2025-03-11T13:11:01.094773
+2025-03-11 13:11:01,095 | INFO | 127.0.0.1:44026 - "POST /process-pdf-markdown/ HTTP/1.1" 200
+2025-03-11 13:11:01,108 | INFO | [MARKDOWN] Starting processing for file path: ocindex_profile_france_2023.pdf
+2025-03-11 13:11:01,108 | INFO | [MARKDOWN] Start time: 2025-03-11T13:11:01.108781
+2025-03-11 13:11:01,109 | INFO | Processing existing file at path: ./ocindex_profile_france_2023.pdf
+2025-03-11 13:11:01,113 | INFO | Started processing Document ./ocindex_profile_france_2023.pdf
+2025-03-11 13:11:01,130 | INFO | Going to convert document batch...
+2025-03-11 13:11:01,131 | INFO | Accelerator device: 'cpu'
+2025-03-11 13:11:01,543 | INFO | Accelerator device: 'cpu'
+2025-03-11 13:11:01,899 | INFO | Processing document ocindex_profile_france_2023.pdf
+2025-03-11 13:11:07,572 | INFO | Finished converting document ocindex_profile_france_2023.pdf in 6.46 sec.
+2025-03-11 13:11:07,573 | INFO | Document ./ocindex_profile_france_2023.pdf converted in 6.46 seconds.
+2025-03-11 13:11:07,585 | INFO | Successfully processed existing file: ./ocindex_profile_france_2023.pdf
+2025-03-11 13:11:07,585 | INFO | [MARKDOWN] Completed processing for file: ocindex_profile_france_2023.pdf
+2025-03-11 13:11:07,585 | INFO | [MARKDOWN] Processing time: 6.48 seconds
+2025-03-11 13:11:07,585 | INFO | [MARKDOWN] End time: 2025-03-11T13:11:07.585906
+2025-03-11 13:11:07,586 | INFO | 127.0.0.1:54510 - "POST /process-pdf-markdown/ HTTP/1.1" 200
+2025-03-11 13:11:29,304 | INFO | 127.0.0.1:56786 - "GET /health HTTP/1.1" 200
