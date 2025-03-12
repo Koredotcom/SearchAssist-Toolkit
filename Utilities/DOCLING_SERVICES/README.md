@@ -68,6 +68,9 @@ curl -X POST "http://localhost:8000/process-pdf-markdown/" \
 curl -X POST "http://localhost:8000/process-pdf-markdown/" \
   -H "Content-Type: multipart/form-data" \
   -F "file=@/path/to/your/document.pdf"
+
+3. For doing health Check of the Docling Service
+curl http://localhost:8000/health
 ```
 
 ### Response Format
