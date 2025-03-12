@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const logger = require('./logger');
 const { FileRecord } = require('../models/FileRecord');
 const { MongoManager } = require('./MongoManager');
+const mongoose = require('mongoose');
 
 class FileTracker {
     constructor() {
@@ -19,45 +20,57 @@ class FileTracker {
         try {
             await MongoManager.reconnectIfNeeded();
             
-            const record = new FileRecord({
-                uniqueId,
-                filename,
-                filePath,
-                status: 'processing',
-                startTime: new Date()
-            });
-
-            await record.save();
+            // Use findOneAndUpdate with upsert to handle duplicates
+            const record = await FileRecord.findOneAndUpdate(
+                { uniqueId },
+                {
+                    filename,
+                    filePath,
+                    status: 'processing',
+                    startTime: new Date(),
+                    lastUpdated: new Date()
+                },
+                { 
+                    upsert: true,
+                    new: true,
+                    setDefaultsOnInsert: true
+                }
+            );
+            
             logger.info(`Tracking file: ${filename} (ID: ${uniqueId})`);
+            return record;
         } catch (error) {
             logger.error(`Error tracking file ${filename}: ${error.message}`);
             throw error;
         }
     }
 
-    async updateStatus(uniqueId, status, details = {}) {
+    async updateStatus(uniqueId, status, additionalData = {}) {
         try {
             await MongoManager.reconnectIfNeeded();
             
             const updateData = {
                 status,
                 lastUpdated: new Date(),
-                ...details
+                ...additionalData
             };
-
-            if (status === 'completed' || status === 'failed') {
+            
+            if (status === 'completed') {
                 updateData.completedTime = new Date();
             }
-
+            
             const record = await FileRecord.findOneAndUpdate(
                 { uniqueId },
                 updateData,
                 { new: true }
             );
-
-            if (record) {
-                logger.info(`Updated status for ${uniqueId} to ${status}`);
+            
+            if (!record) {
+                throw new Error(`No record found for ID: ${uniqueId}`);
             }
+            
+            logger.info(`Updated status for ${uniqueId} to ${status}`);
+            return record;
         } catch (error) {
             logger.error(`Error updating status for ${uniqueId}: ${error.message}`);
             throw error;
@@ -67,12 +80,10 @@ class FileTracker {
     async getStatus(uniqueId) {
         try {
             await MongoManager.reconnectIfNeeded();
-            
-            const record = await FileRecord.findOne({ uniqueId });
-            return record ? record.toObject() : null;
+            return await FileRecord.findOne({ uniqueId });
         } catch (error) {
             logger.error(`Error getting status for ${uniqueId}: ${error.message}`);
-            return null;
+            throw error;
         }
     }
 
