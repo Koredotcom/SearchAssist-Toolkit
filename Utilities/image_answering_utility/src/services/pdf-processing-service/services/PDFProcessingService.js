@@ -19,8 +19,7 @@ class PDFProcessingService {
         this.imageController = new ImageController();
     }
 
-    async processPDF(filePath, include_base64 = false, uniqueId = null) {
-        const filename = path.basename(filePath);
+    async processPDF(filePath, filename, include_base64 = false, uniqueId = null) {
         const startTime = Date.now();
         
         // Use provided uniqueId or generate new one
@@ -148,7 +147,7 @@ class PDFProcessingService {
                 try {
                     // Use the same uniqueId format for batch files
                     const fileUniqueId = uniqueId || await this.fileTracker.generateUniqueId(path.basename(filePath));
-                    const result = await this.processPDF(filePath, include_base64, fileUniqueId);
+                    const result = await this.processPDF(filePath, path.basename(filePath), include_base64, fileUniqueId);
                     results.push(result);
                 } catch (error) {
                     const filename = path.basename(filePath);
