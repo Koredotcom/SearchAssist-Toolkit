@@ -266,47 +266,42 @@ app.get('/queue-status', async (req, res) => {
     }
 });
 
-// Enhanced processing status endpoint
-app.get('/processing-status/:processingId', async (req, res) => {
-    const { processingId } = req.params;
-
+// Add file status endpoint for individual file tracking
+app.get('/file-status/:uniqueId', async (req, res) => {
     try {
-        // Get processing status from controller
-        const status = await processingController.getProcessingStatus(processingId);
-
-        // Check queue for this processing ID if no status found
-        if (!status) {
-            const jobs = await pdfQueue.getJobs();
-            const queuedJob = jobs.find(job => job.data.uniqueId === processingId);
-
-            if (queuedJob) {
-                return res.json({
-                    status: 'success',
-                    processingStatus: {
-                        processingId,
-                        queueStatus: {
-                            status: await queuedJob.getState(),
-                            progress: await queuedJob.progress(),
-                            position: await queuedJob.queue.getJobCounts()
-                        }
-                    }
-                });
-            }
+        const { uniqueId } = req.params;
+        
+        const fileStatus = await FileStatus.findOne({ uniqueId });
+        
+        if (!fileStatus) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'File status not found'
+            });
         }
 
         res.json({
             status: 'success',
-            processingStatus: status || { processingId, status: 'not_found' }
+            data: {
+                uniqueId: fileStatus.uniqueId,
+                filename: fileStatus.filename,
+                status: fileStatus.status,
+                s3Url: fileStatus.s3Url,
+                error: fileStatus.error,
+                createdAt: fileStatus.createdAt,
+                updatedAt: fileStatus.updatedAt
+            }
         });
     } catch (error) {
+        logger.error('Error fetching file status:', error);
         res.status(500).json({
             status: 'error',
-            message: error.message
+            message: 'Internal server error'
         });
     }
 });
 
-// Add new endpoint for processing local directory
+// Add endpoint for processing local directory
 app.post('/process-local-directory', async (req, res) => {
     try {
         const { directoryPath, include_base64 = false } = req.body;
@@ -396,41 +391,6 @@ app.post('/process-local-directory', async (req, res) => {
                 message: error.message
             });
         }
-    }
-});
-
-// Add new endpoint for file status
-app.get('/file-status/:uniqueId', async (req, res) => {
-    try {
-        const { uniqueId } = req.params;
-        
-        const fileStatus = await FileStatus.findOne({ uniqueId });
-        
-        if (!fileStatus) {
-            return res.status(404).json({
-                status: 'error',
-                message: 'File status not found'
-            });
-        }
-
-        res.json({
-            status: 'success',
-            data: {
-                uniqueId: fileStatus.uniqueId,
-                filename: fileStatus.filename,
-                status: fileStatus.status,
-                s3Url: fileStatus.s3Url,
-                error: fileStatus.error,
-                createdAt: fileStatus.createdAt,
-                updatedAt: fileStatus.updatedAt
-            }
-        });
-    } catch (error) {
-        logger.error('Error fetching file status:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'Internal server error'
-        });
     }
 });
 
