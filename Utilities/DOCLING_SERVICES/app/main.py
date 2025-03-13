@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 import uvicorn
 from app.routes.pdf_processing import router as pdf_router
-from app.routes.health import router as health_router
 from app.utils.logger import setup_logger
 import app.config as config
 
@@ -17,7 +16,6 @@ logger = setup_logger('markdown-service')
 
 # Include routes
 app.include_router(pdf_router)
-app.include_router(health_router)
 
 @app.on_event("startup")
 async def startup_event():
