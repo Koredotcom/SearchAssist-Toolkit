@@ -141,24 +141,45 @@ class PDFProcessingService {
                 return tempFile;
             }));
 
-            // Process all files
+            // Get concurrency limit from env or default to 3
+            const BATCH_SIZE = parseInt(process.env.MAX_CONCURRENT_PROCESSING, 10) || 3;
+            logger.info(`Processing PDFs with batch size: ${BATCH_SIZE}`);
+
+            // Process files in concurrent batches
             const results = [];
-            for (const filePath of tempFiles) {
-                try {
-                    // Use the same uniqueId format for batch files
-                    const fileUniqueId = uniqueId || await this.fileTracker.generateUniqueId(path.basename(filePath));
-                    const result = await this.processPDF(filePath, path.basename(filePath), include_base64, fileUniqueId);
-                    results.push(result);
-                } catch (error) {
-                    const filename = path.basename(filePath);
-                    const errorUniqueId = uniqueId || await this.fileTracker.generateUniqueId(filename);
-                    results.push({
-                        filename,
-                        success: false,
-                        error: error.message,
-                        uniqueId: errorUniqueId
-                    });
-                }
+            for (let i = 0; i < tempFiles.length; i += BATCH_SIZE) {
+                const batch = tempFiles.slice(i, i + BATCH_SIZE);
+                logger.info(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(tempFiles.length/BATCH_SIZE)}`);
+                
+                const batchResults = await Promise.all(batch.map(async (filePath) => {
+                    try {
+                        const filename = path.basename(filePath);
+                        // Create a unique ID for each file that includes the batch ID
+                        const fileUniqueId = uniqueId ? 
+                            `${uniqueId}_${filename.replace(/\.[^/.]+$/, '')}` : 
+                            await this.fileTracker.generateUniqueId(filename);
+                            
+                        logger.info(`Starting to process ${filename} with ID: ${fileUniqueId}`);
+                        const result = await this.processPDF(filePath, filename, include_base64, fileUniqueId);
+                        logger.info(`Completed processing ${filename}`);
+                        return result;
+                    } catch (error) {
+                        const filename = path.basename(filePath);
+                        logger.error(`Error processing ${filename}: ${error.message}`);
+                        const errorUniqueId = uniqueId ? 
+                            `${uniqueId}_${filename.replace(/\.[^/.]+$/, '')}` : 
+                            await this.fileTracker.generateUniqueId(filename);
+                        return {
+                            filename,
+                            success: false,
+                            error: error.message,
+                            uniqueId: errorUniqueId
+                        };
+                    }
+                }));
+
+                results.push(...batchResults);
+                logger.info(`Completed batch ${Math.floor(i/BATCH_SIZE) + 1}`);
             }
 
             return results;
