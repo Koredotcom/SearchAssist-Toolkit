@@ -1,36 +1,62 @@
 const logger = require('./logger');
 const { s3Config } = require('../config/s3Config');
 const { CallbackService } = require('../services/CallbackService');
+const { FileRecord } = require('../models/FileRecord');
 
 class ResultsManager {
     constructor() {
         this.callbackService = new CallbackService();
     }
 
-    async saveResults(filename, markdownResult, imageResult, uniqueId) {
+    async saveResults(filename, markdownResult, imageResults, uniqueId) {
         try {
             // Combine results
-            const combinedResult = await this.combineResults(filename, markdownResult, imageResult, uniqueId);
+            const combinedResult = await this.combineResults(filename, markdownResult, imageResults, uniqueId);
+
+            // Update database directly instead of using callback
+            await FileRecord.findOneAndUpdate(
+                { uniqueId },
+                {
+                    status: 'completed',
+                    s3Url: combinedResult.s3_url,
+                    completedTime: new Date(),
+                    lastUpdated: new Date()
+                },
+                { new: true }
+            );
             
-            // Send callback with the S3 URL
-            await this.callbackService.sendCallback(filename, combinedResult.s3_url, true, null, uniqueId);
+            // Comment out callback service
+            // await this.callbackService.sendCallback(filename, combinedResult.s3_url, true, null, uniqueId);
             
-            logger.info(`Results saved and callback sent for ${filename} (ID: ${uniqueId})`);
+            logger.info(`Results saved for ${filename} (ID: ${uniqueId})`);
             return combinedResult;
         } catch (error) {
             logger.error(`Error in saveResults for ${filename} (ID: ${uniqueId}): ${error.message}`);
-            await this.callbackService.sendCallback(
-                filename,
-                null,
-                false,
-                error.message,
-                uniqueId
+            
+            // Update database with error status
+            await FileRecord.findOneAndUpdate(
+                { uniqueId },
+                {
+                    status: 'failed',
+                    error: error.message,
+                    lastUpdated: new Date()
+                },
+                { new: true }
             );
+
+            // Comment out callback service
+            // await this.callbackService.sendCallback(
+            //     filename,
+            //     null,
+            //     false,
+            //     error.message,
+            //     uniqueId
+            // );
             throw error;
         }
     }
 
-    async combineResults(filename, markdownResult, imageResult, uniqueId) {
+    async combineResults(filename, markdownResult, imageResults, uniqueId) {
         try {
             // Extract relevant data from both results
             const combinedData = {
@@ -46,12 +72,12 @@ class ResultsManager {
                 throw new Error('Invalid markdown result structure');
             }
 
-            if (!Array.isArray(imageResult)) {
+            if (!Array.isArray(imageResults)) {
                 throw new Error('Invalid image result structure');
             }
 
             // Sort image results by page number
-            const sortedImageResults = imageResult.sort((a, b) => a.page_number - b.page_number);
+            const sortedImageResults = imageResults.sort((a, b) => a.page_number - b.page_number);
 
             // Combine page data
             for (let i = 0; i < sortedImageResults.length; i++) {
