@@ -1,8 +1,14 @@
 const IExtractionLogic = require('../interfaces/IExtractionLogic');
 const config = require('../config/config');
 const ShareConstants = require('../constants/ShareConstants');
+const ExternalProcessingService = require('../services/ExternalProcessingService');
 
 class CustomExtractionLogic extends IExtractionLogic {
+  constructor() {
+    super();
+    this.externalService = new ExternalProcessingService();
+  }
+
   async extract(requestWrapper) {
     const sys_content_type = requestWrapper.getSysContentType();
     const strategy = this.getStrategy(sys_content_type);
@@ -13,7 +19,7 @@ class CustomExtractionLogic extends IExtractionLogic {
     const { CONFIGURED_CONNECTORS, AIRBYTE_CONNECTORS } = config.CONNECTORS;
     switch (sys_content_type) {
       case 'file':
-        return new FileExtractionStrategy();
+        return new FileExtractionStrategy(this.externalService);
       case 'web':
         return new WebExtractionStrategy();
       case 'data':
@@ -39,46 +45,51 @@ class ExtractionStrategy {
 
 // Concrete Strategies
 class FileExtractionStrategy extends ExtractionStrategy {
-  execute(requestWrapper) {
-    var file_title = requestWrapper.getFileTitle();
-    var file_content = requestWrapper.getFileContent();
-    var file_content_object = requestWrapper.getFileContentObject();
-    var file_url = requestWrapper.getFileUrl();
-    // Download the file and save it to the local file system
-    var download_path = this.downloadFile(file_url);
-    return this.extractChunks(file_content_object, file_title, file_url, downloadPath);  }
-
-  downloadFile(file_url) {
-    const fs = require('fs');
-    const https = require('https');
-    const path = require('path');
-
-    // Generate a unique filename
-    const uniqueNumber = Date.now();
-    const tempFileName = `tempfile${uniqueNumber}`;
-    const downloadPath = path.join(__dirname, tempFileName);
-
-    const file = fs.createWriteStream(downloadPath);
-    https.get(file_url, function(response) {
-      response.pipe(file);
-      file.on('finish', function() {
-        file.close();  // close() is async, call cb after close completes.
-        console.log(`Downloaded file saved as ${downloadPath}`);
-      });
-    }).on('error', function(err) { // Handle errors
-      fs.unlink(downloadPath); // Delete the file async. (But we don't check the result)
-      console.error(`Error downloading file: ${err.message}`);
-    });
-    return downloadPath;
+  constructor(externalService) {
+    super();
+    this.externalService = externalService;
   }
 
-  extractChunks(file_content_object, file_title, file_url, downloadPath){
-    console.log("file_content_object", file_content_object);
-    console.log("file_title", file_title);
-    console.log("file_url", file_url);
-    console.log("downloadPath", downloadPath);
-    //Your Extraction Logic Here
-    return [{ chunkText: "File extraction", chunkTitle: "File" }];
+  async execute(requestWrapper) {
+    try {
+      const downloadUrl = requestWrapper.getDownloadUrl() || requestWrapper.getFileUrl();
+      
+      if (!downloadUrl) {
+        throw new Error(config.ERROR_MESSAGES.DOWNLOAD_URL_REQUIRED);
+      }
+
+      // Initiate processing with external service
+      const initResponse = await this.externalService.initiateProcessing(downloadUrl);
+      
+      if (initResponse.status === 'error') {
+        throw new Error(initResponse.message);
+      }
+
+      // Poll for completion
+      const processedData = await this.externalService.pollStatus(initResponse.uniqueId);
+      
+      // Fetch and process the data
+      const extractedData = await this.externalService.fetchProcessedData(processedData.s3Url);
+      
+      return this.transformToChunks(extractedData, requestWrapper);
+    } catch (error) {
+      console.error('File extraction error:', error);
+      throw error;
+    }
+  }
+
+  transformToChunks(extractedData, requestWrapper) {
+    // Transform the extracted data into chunks
+    return [{
+      chunkId: requestWrapper.getChunkId() || "",
+      docId: requestWrapper.getDocumentId() || "",
+      sourceId: requestWrapper.getSourceId() || "",
+      searchIndexId: requestWrapper.getSearchIndexId() || "",
+      chunkText: extractedData.text || extractedData.content || "",
+      chunkTitle: requestWrapper.getTitle() || "File Extraction",
+      extractionMethod: requestWrapper.getExtractionMethod() || "externalService",
+      metadata: requestWrapper.getDocumentMeta() || {}
+    }];
   }
 }
 
