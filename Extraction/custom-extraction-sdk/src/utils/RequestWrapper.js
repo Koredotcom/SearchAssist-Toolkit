@@ -40,12 +40,32 @@ class RequestWrapper {
     if (rootValue) return rootValue;
 
     // Check in documentMeta
-    const metaValue = this._body?.documentMeta?.[key];
-    if (metaValue) return metaValue;
+    const documentMeta = this._body?.document_meta;
+    if (documentMeta) {
+      for (const meta of documentMeta) {
+        try {
+          const parsedMeta = JSON.parse(meta);
+          if (parsedMeta[key]) return parsedMeta[key];
+        } catch (e) {
+          console.error('Error parsing documentMeta:', e);
+        }
+      }
+    }
 
     // Check in meta_data inside documentMeta
-    const metaDataValue = this._body?.documentMeta?.meta_data?.[key];
-    return metaDataValue || null;
+    const metaData = this._body?.metadata;
+    if (metaData) {
+      for (const meta of metaData) {
+        try {
+          const parsedMeta = JSON.parse(meta);
+          if (parsedMeta[key]) return parsedMeta[key];
+        } catch (e) {
+          console.error('Error parsing metadata:', e);
+        }
+      }
+    }
+
+    return null;
   }
 
   // Add new direct getters for document fields
@@ -123,12 +143,10 @@ class RequestWrapper {
   getRelevanceScore() {
     return this.getDocumentField('relevanceScore') || 0;
   }
-
   // Object Fields with defaults
   getProcessingMetrics() {
     return this.getDocumentField('processingMetrics') || {};
   }
-
   getValidationResults() {
     return this.getDocumentField('validationResults') || {};
   }
@@ -308,6 +326,24 @@ class RequestWrapper {
   getSysFileType() {
     return this.getDocumentField('sys_file_type');
   }
+  getFileTitle() {
+    return this.getDocumentField('file_title');
+  }
+  getFileContent() {
+    return this.getDocumentField('file_content');
+  }
+  getFileContentObject() {
+    return this.getDocumentField('file_content_object');
+  }
+
+  getFileUrl() {
+    return this.getDocumentField('file_url');
+  }
+  getPageHtml() {
+    return this.getDocumentField('page_html');
+  }
+
+  
 
   getSourceName() {
     return this.getDocumentField('sourceName');
