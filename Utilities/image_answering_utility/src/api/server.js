@@ -18,7 +18,7 @@ require('dotenv').config({ path: path.join(__dirname, '../../config/.env') });
 const ensureLogsDirectory = require('../utils/ensure-logs-dir');
 const { StorageManager } = require('../services/pdf-processing-service/utils/StorageManager');
 const os = require('os');
-const { FileStatus } = require('../services/pdf-processing-service/models/FileStatus');
+const { FileRecord } = require('../services/pdf-processing-service/models/FileRecord');
 const mongoose = require('mongoose');
 const { MongoManager } = require('../services/pdf-processing-service/utils/MongoManager');
 
@@ -176,6 +176,28 @@ app.post('/process-directory-from-url', async (req, res) => {
         if (isSystemOverloaded()) {
             logger.info(`System overloaded, queueing request for ${downloadUrl}`);
             
+            // Create initial entry with queued status
+            try {
+                await FileRecord.findOneAndUpdate(
+                    { uniqueId },
+                    {
+                        uniqueId,
+                        filename,
+                        status: 'queued',
+                        startTime: new Date(),
+                        lastUpdated: new Date()
+                    },
+                    { upsert: true, new: true }
+                );
+                logger.info(`Created queued status entry for ${uniqueId}`);
+            } catch (error) {
+                logger.error(`Failed to create queue status for ${uniqueId}: ${error.message}`);
+                return res.status(500).json({
+                    status: 'error',
+                    message: 'Failed to initialize request tracking'
+                });
+            }
+            
             // Add to queue with uniqueId
             const job = await pdfQueue.add({
                 downloadUrl,
@@ -196,7 +218,7 @@ app.post('/process-directory-from-url', async (req, res) => {
                 pdfQueue.getJobCounts()
             ]);
 
-            return res.json({
+            return res.status(202).json({
                 status: 'queued',
                 message: 'Request queued for processing',
                 jobId: job.id,
@@ -211,7 +233,7 @@ app.post('/process-directory-from-url', async (req, res) => {
         logger.info(`Starting download from: ${downloadUrl}`);
         
         // Send acknowledgment with uniqueId
-        res.json({
+        res.status(202).json({
             status: 'processing',
             message: 'PDF processing started',
             uniqueId
@@ -244,7 +266,7 @@ app.get('/queue-status', async (req, res) => {
         const activeJobs = await pdfQueue.getActive();
         const waitingJobs = await pdfQueue.getWaiting();
 
-        res.json({
+        res.status(200).json({
             status: 'success',
             activeProcessing: activeProcessingCount,
             queueCounts: counts,
@@ -271,7 +293,7 @@ app.get('/file-status/:uniqueId', async (req, res) => {
     try {
         const { uniqueId } = req.params;
         
-        const fileStatus = await FileStatus.findOne({ uniqueId });
+        const fileStatus = await FileRecord.findOne({ uniqueId });
         
         if (!fileStatus) {
             return res.status(404).json({
@@ -280,7 +302,7 @@ app.get('/file-status/:uniqueId', async (req, res) => {
             });
         }
 
-        res.json({
+        res.status(200).json({
             status: 'success',
             data: {
                 uniqueId: fileStatus.uniqueId,
@@ -288,8 +310,9 @@ app.get('/file-status/:uniqueId', async (req, res) => {
                 status: fileStatus.status,
                 s3Url: fileStatus.s3Url,
                 error: fileStatus.error,
-                createdAt: fileStatus.createdAt,
-                updatedAt: fileStatus.updatedAt
+                startTime: fileStatus.startTime,
+                lastUpdated: fileStatus.lastUpdated,
+                completedTime: fileStatus.completedTime
             }
         });
     } catch (error) {
@@ -336,6 +359,28 @@ app.post('/process-local-directory', async (req, res) => {
         if (isSystemOverloaded()) {
             logger.info(`System overloaded, queueing request for directory: ${directoryPath}`);
             
+            // Create initial entry with queued status
+            try {
+                await FileRecord.findOneAndUpdate(
+                    { uniqueId },
+                    {
+                        uniqueId,
+                        filename: path.basename(directoryPath),
+                        status: 'queued',
+                        startTime: new Date(),
+                        lastUpdated: new Date()
+                    },
+                    { upsert: true, new: true }
+                );
+                logger.info(`Created queued status entry for ${uniqueId}`);
+            } catch (error) {
+                logger.error(`Failed to create queue status for ${uniqueId}: ${error.message}`);
+                return res.status(500).json({
+                    status: 'error',
+                    message: 'Failed to initialize request tracking'
+                });
+            }
+            
             // Add to queue
             const job = await pdfQueue.add({
                 type: 'local_directory',
@@ -350,7 +395,7 @@ app.post('/process-local-directory', async (req, res) => {
                 }
             });
 
-            return res.json({
+            return res.status(202).json({
                 status: 'queued',
                 message: 'Request queued for processing',
                 jobId: job.id,
@@ -363,7 +408,7 @@ app.post('/process-local-directory', async (req, res) => {
         activeProcessingCount++;
         logger.info(`Starting processing for directory: ${directoryPath}`);
         
-        res.json({
+        res.status(202).json({
             status: 'processing',
             message: 'Directory processing started',
             uniqueId
