@@ -2,10 +2,11 @@
   "name": "pdf-processor",
   "version": "1.0.0",
   "description": "PDF processing service",
-  "main": "server.js",
+  "main": "src/api/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "setup": "npm install && node src/scripts/install-mongodb.js && node src/scripts/init-mongodb.js",
+    "start": "node src/api/server.js",
+    "dev": "nodemon src/api/server.js",
     "init-mongodb": "node src/scripts/init-mongodb.js",
     "install-mongodb": "node src/scripts/install-mongodb.js"
   },
