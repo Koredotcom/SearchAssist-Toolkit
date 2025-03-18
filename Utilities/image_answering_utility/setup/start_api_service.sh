@@ -28,6 +28,32 @@ else
     fi
 fi
 
+# Navigate to project root
+cd "$(dirname "$0")/.."
+
+# Check if node_modules exists and run setup if needed
+if [ ! -d "node_modules" ]; then
+    echo "Running initial setup..."
+    npm run setup
+else
+    # Check MongoDB installation
+    if ! command -v mongod &> /dev/null; then
+        echo "MongoDB not found. Installing MongoDB..."
+        npm run install-mongodb
+    fi
+fi
+
+# Check if MongoDB is running
+if ! pgrep mongod > /dev/null; then
+    echo "MongoDB is not running. Starting MongoDB..."
+    sudo systemctl start mongod
+    sleep 5  # Wait for MongoDB to start
+fi
+
+# Initialize MongoDB if needed
+echo "Initializing MongoDB..."
+npm run init-mongodb
+
 # Check if Redis is running
 if ! pgrep redis-server > /dev/null; then
     echo "Redis server is not running. Starting Redis..."
@@ -35,17 +61,8 @@ if ! pgrep redis-server > /dev/null; then
     sleep 2
 fi
 
-# Navigate to project root
-cd "$(dirname "$0")/.."
-
-# Check if node_modules exists
-if [ ! -d "node_modules" ]; then
-    echo "Installing Node.js dependencies..."
-    npm install
-fi
-
 # Create required directories
-# mkdir -p logs storage/processing
+mkdir -p logs storage/processing
 
 # Check if GraphicsMagick is installed
 if ! command -v gm &> /dev/null; then
