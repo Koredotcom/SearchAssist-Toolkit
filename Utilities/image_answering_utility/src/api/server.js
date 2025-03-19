@@ -70,6 +70,7 @@ setInterval(async () => {
 
 // Update the processDirectoryFromUrl function to use the functions from queue-config
 async function processDirectoryFromUrl(downloadUrl, include_base64, uniqueId) {
+    logger.info(`Processing URL with uniqueId: ${uniqueId}`);
     const tempDir = await storageManager.createTempDirectory(uniqueId);
     
     try {
@@ -93,16 +94,19 @@ async function processDirectoryFromUrl(downloadUrl, include_base64, uniqueId) {
         
         // Retrieve all PDF files in the temp directory
         const pdfFiles = await storageManager.getAllPDFFiles(tempDir);
+        logger.info(`Found ${pdfFiles.length} PDF files in temp directory for uniqueId: ${uniqueId}`);
         
         let results;
         if (pdfFiles.length === 1) {
             const singlePDFPath = pdfFiles[0];
+            logger.info(`Processing single PDF: ${path.basename(singlePDFPath)} with uniqueId: ${uniqueId}`);
             const singleResult = await processingController.processSinglePDF(singlePDFPath, {
                 include_base64,
                 uniqueId
             });
             results = [singleResult];
         } else {
+            logger.info(`Processing multiple PDFs with uniqueId: ${uniqueId}`);
             results = await processingController.processDirectory(tempDir, {
                 include_base64,
                 uniqueId
@@ -156,6 +160,9 @@ app.get('/health', (req, res) => {
 
 // Modified processing endpoint with queue support
 app.post('/process-directory-from-url', async (req, res) => {
+    const startTime = new Date();
+    logger.info(`Request started at: ${startTime.toISOString()}`);
+    
     try {
         const { downloadUrl, include_base64 = false } = req.body;
 
@@ -171,6 +178,28 @@ app.post('/process-directory-from-url', async (req, res) => {
         const filename = path.basename(urlObj.pathname).split('?')[0];
         const timestamp = Date.now();
         const uniqueId = `${filename.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}`;
+
+        // Create initial database entry with received status
+        try {
+            await FileRecord.findOneAndUpdate(
+                { uniqueId },
+                {
+                    uniqueId,
+                    filename,
+                    status: 'received',
+                    startTime: new Date(),
+                    lastUpdated: new Date()
+                },
+                { upsert: true, new: true }
+            );
+            logger.info(`Created initial status entry for ${uniqueId} with status: received`);
+        } catch (error) {
+            logger.error(`Failed to create initial status for ${uniqueId}: ${error.message}`);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Failed to initialize request tracking'
+            });
+        }
 
         // Check if system is overloaded
         if (isSystemOverloaded()) {
@@ -246,6 +275,10 @@ app.post('/process-directory-from-url', async (req, res) => {
             logger.info(`Failed: ${results.filter(r => !r.success).length}`);
         } finally {
             activeProcessingCount--;
+            const endTime = new Date();
+            const processingTime = (endTime - startTime) / 1000; // in seconds
+            logger.info(`Request completed at: ${endTime.toISOString()}`);
+            logger.info(`Total processing time: ${processingTime.toFixed(2)} seconds`);
         }
 
     } catch (error) {
@@ -326,6 +359,9 @@ app.get('/file-status/:uniqueId', async (req, res) => {
 
 // Add endpoint for processing local directory
 app.post('/process-local-directory', async (req, res) => {
+    const startTime = new Date();
+    logger.info(`Request started at: ${startTime.toISOString()}`);
+    
     try {
         const { directoryPath, include_base64 = false } = req.body;
 
@@ -354,6 +390,28 @@ app.post('/process-local-directory', async (req, res) => {
 
         // Generate unique ID
         const uniqueId = `local_${Date.now()}`;
+
+        // Create initial database entry with received status
+        try {
+            await FileRecord.findOneAndUpdate(
+                { uniqueId },
+                {
+                    uniqueId,
+                    filename: path.basename(directoryPath),
+                    status: 'received',
+                    startTime: new Date(),
+                    lastUpdated: new Date()
+                },
+                { upsert: true, new: true }
+            );
+            logger.info(`Created initial status entry for ${uniqueId} with status: received`);
+        } catch (error) {
+            logger.error(`Failed to create initial status for ${uniqueId}: ${error.message}`);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Failed to initialize request tracking'
+            });
+        }
 
         // Check if system is overloaded
         if (isSystemOverloaded()) {
@@ -426,6 +484,10 @@ app.post('/process-local-directory', async (req, res) => {
 
         } finally {
             activeProcessingCount--;
+            const endTime = new Date();
+            const processingTime = (endTime - startTime) / 1000; // in seconds
+            logger.info(`Request completed at: ${endTime.toISOString()}`);
+            logger.info(`Total processing time: ${processingTime.toFixed(2)} seconds`);
         }
 
     } catch (error) {
