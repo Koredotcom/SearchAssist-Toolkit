@@ -25,6 +25,12 @@ class PDFProcessingService {
         // Use provided uniqueId or generate new one
         const fileUniqueId = uniqueId || await this.fileTracker.generateUniqueId(filename);
         
+        if (uniqueId) {
+            logger.info(`Using provided uniqueId: ${fileUniqueId}`);
+        } else {
+            logger.info(`Generated new uniqueId: ${fileUniqueId}`);
+        }
+        
         try {
             // Verify file exists and is accessible
             try {
@@ -130,6 +136,13 @@ class PDFProcessingService {
 
     async processAllPDFs(inputFolderPath, include_base64 = false, uniqueId = null) {
         const processId = uniqueId || `batch_${Date.now()}`;
+        
+        if (uniqueId) {
+            logger.info(`Using provided batch uniqueId: ${processId}`);
+        } else {
+            logger.info(`Generated new batch uniqueId: ${processId}`);
+        }
+        
         const tempDir = await this.storageManager.createTempDirectory(processId);
         
         try {
@@ -160,6 +173,10 @@ class PDFProcessingService {
                             await this.fileTracker.generateUniqueId(filename);
                             
                         logger.info(`Starting to process ${filename} with ID: ${fileUniqueId}`);
+                        // Log explicitly that we're using a derived uniqueId
+                        if (uniqueId) {
+                            logger.info(`Using derived uniqueId from batch: ${fileUniqueId}`);
+                        }
                         const result = await this.processPDF(filePath, filename, include_base64, fileUniqueId);
                         logger.info(`Completed processing ${filename}`);
                         return result;
