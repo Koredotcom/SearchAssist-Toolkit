@@ -78,6 +78,26 @@ const pdfQueue = new Queue('pdf-processing', {
 // Process URL type jobs
 async function processUrlJob(job) {
     const { downloadUrl, include_base64, uniqueId } = job.data;
+    
+    // Log the uniqueId we're processing to track it
+    logger.info(`Processing queued URL job with uniqueId: ${uniqueId}`);
+    
+    // Update status to processing in database before starting actual work
+    try {
+        const { FileRecord } = require('../services/pdf-processing-service/models/FileRecord');
+        await FileRecord.findOneAndUpdate(
+            { uniqueId },
+            { 
+                status: 'processing',
+                lastUpdated: new Date()
+            },
+            { new: true }
+        );
+        logger.info(`Updated status to processing for queued job with uniqueId: ${uniqueId}`);
+    } catch (error) {
+        logger.error(`Failed to update status for ${uniqueId}: ${error.message}`);
+    }
+    
     const tempDir = await storageManager.createTempDirectory(uniqueId);
     
     try {
@@ -93,15 +113,30 @@ async function processUrlJob(job) {
             await fs.unlink(downloadedFile);
         }
         
-        const results = await processingController.processDirectory(tempDir, {
-            include_base64,
-            uniqueId
-        });
+        // Pass the original uniqueId explicitly
+        const pdfFiles = await storageManager.getAllPDFFiles(tempDir);
+        
+        let results;
+        if (pdfFiles.length === 1) {
+            const singlePDFPath = pdfFiles[0];
+            const singleResult = await processingController.processSinglePDF(singlePDFPath, {
+                include_base64,
+                uniqueId  // Ensure uniqueId is passed correctly
+            });
+            results = [singleResult];
+        } else {
+            results = await processingController.processDirectory(tempDir, {
+                include_base64,
+                uniqueId  // Ensure uniqueId is passed correctly
+            });
+        }
         
         job.progress(100);
         
+        logger.info(`Completed URL job with uniqueId: ${uniqueId}`);
         return {
             status: 'completed',
+            uniqueId, // Return the uniqueId in the result
             successful: results.filter(r => r.success).length,
             failed: results.filter(r => !r.success).length
         };
@@ -114,22 +149,47 @@ async function processUrlJob(job) {
 async function processLocalDirectoryJob(job) {
     const { directoryPath, include_base64, uniqueId } = job.data;
     
+    // Log the uniqueId we're processing to track it
+    logger.info(`Processing queued local directory job with uniqueId: ${uniqueId}`);
+    
+    // Update status to processing in database before starting actual work
+    try {
+        const { FileRecord } = require('../services/pdf-processing-service/models/FileRecord');
+        await FileRecord.findOneAndUpdate(
+            { uniqueId },
+            { 
+                status: 'processing',
+                lastUpdated: new Date()
+            },
+            { new: true }
+        );
+        logger.info(`Updated status to processing for queued job with uniqueId: ${uniqueId}`);
+    } catch (error) {
+        logger.error(`Failed to update status for ${uniqueId}: ${error.message}`);
+    }
+    
     const results = await processingController.processDirectory(directoryPath, {
         include_base64,
-        uniqueId
+        uniqueId // Ensure uniqueId is passed correctly
     });
     
     job.progress(100);
     
+    logger.info(`Completed local directory job with uniqueId: ${uniqueId}`);
     return {
         status: 'completed',
+        uniqueId, // Return the uniqueId in the result
         successful: results.filter(r => r.success).length,
         failed: results.filter(r => !r.success).length
     };
 }
 
 // Set maximum concurrent jobs from environment variable
-pdfQueue.process(parseInt(process.env.QUEUE_CONCURRENCY, 10), async (job) => {
+// But limit to 1 for PDF processing to ensure sequential processing
+const MAX_CONCURRENCY = Math.min(parseInt(process.env.QUEUE_CONCURRENCY, 10) || 1, 1);
+logger.info(`Setting queue concurrency to ${MAX_CONCURRENCY} to ensure sequential processing`);
+
+pdfQueue.process(MAX_CONCURRENCY, async (job) => {
     try {
         logger.info(`Processing queued job ${job.id}`);
 
@@ -148,7 +208,7 @@ pdfQueue.process(parseInt(process.env.QUEUE_CONCURRENCY, 10), async (job) => {
 
 // Log queue events
 pdfQueue.on('completed', (job, result) => {
-    logger.info(`Job ${job.id} completed. Success: ${result.successful}, Failed: ${result.failed}`);
+    logger.info(`Job ${job.id} completed. Success: ${result.successful}, Failed: ${result.failed}, UniqueId: ${result.uniqueId || job.data.uniqueId || 'unknown'}`);
 });
 
 pdfQueue.on('failed', (job, error) => {
