@@ -20,7 +20,23 @@ class FileTracker {
         try {
             await MongoManager.reconnectIfNeeded();
             
-            // Use findOneAndUpdate with upsert to handle duplicates
+            // First check if record already exists with processing status
+            const existingRecord = await FileRecord.findOne({ uniqueId });
+            
+            if (existingRecord && existingRecord.status === 'processing') {
+                // Record already exists with processing status, just update lastUpdated
+                logger.info(`File ${filename} (ID: ${uniqueId}) already in processing state, continuing processing`);
+                await FileRecord.findOneAndUpdate(
+                    { uniqueId },
+                    {
+                        lastUpdated: new Date()
+                    },
+                    { new: true }
+                );
+                return existingRecord;
+            }
+            
+            // Otherwise create or update record with processing status
             const record = await FileRecord.findOneAndUpdate(
                 { uniqueId },
                 {
