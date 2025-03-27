@@ -44,7 +44,8 @@ class ExternalProcessingService {
 
   async pollStatus(uniqueId) {
     let attempts = 0;
-    
+    console.log("UniqueId",uniqueId);
+    await new Promise(resolve => setTimeout(resolve, 10000));
     while (attempts < this.polling.MAX_ATTEMPTS) {
       const statusResponse = await this.checkStatus(uniqueId);
       

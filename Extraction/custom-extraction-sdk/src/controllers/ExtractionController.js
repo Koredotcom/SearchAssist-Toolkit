@@ -98,7 +98,7 @@ class ExtractionController extends BaseController {
         const extractedData = await this.extractionLogic.extract(requestWrapper);
 
         // Post-processing: First convert to chunks
-        const chunks = await this.postProcessor.postProcess(extractedData, type);
+        const chunks = await this.postProcessor.postProcess(extractedData, type,requestWrapper);
 
         // Send chunks in batches
         await this.callbackService.sendBatchedCallback(

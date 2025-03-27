@@ -7,10 +7,10 @@ class CallbackService {
       const response = await axios.post(callbackUrl, payload, {
         headers: {
           'Content-Type': 'application/json',
-          'apikey': API.HEADERS.API_KEY
+          'apikey': API.HEADERS.API_KEY,
+          // 'x_api_key': API.HEADERS.X_API_KEY
         }
       });
-      console.log('Callback response:', response.status, response.data);
       return response;
     } catch (error) {
       console.error('Callback error:', error.message);

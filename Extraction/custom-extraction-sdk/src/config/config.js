@@ -1,11 +1,12 @@
 module.exports = {
   SERVER: {
-    PORT: 6606,
+    PORT: 6607,
     BASE_PATH: '/searchAssistant/checkCustom/'
   },
   API: {
     HEADERS: {
-      API_KEY: 'yktyderjdzfwhhM3wQkjhsfiaHqSBxTpc4XXOP7v/rHdPYfD6qA9Zc='
+      // X_API_KEY: 'ec30d94c-022c-5bec-b3ce-2366c2840f8d11',
+      API_KEY: ''
     }
   },
   PROCESSING: {

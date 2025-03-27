@@ -14,6 +14,7 @@ class ChunkBuilder {
       sourceName: '',
       docName: '',
       recordTitle: '',
+      recordUrl: '',
       chunkContent: '',
       chunkVector: '',
       answerType: '',
@@ -27,7 +28,6 @@ class ChunkBuilder {
       extractionStrategy: '',
       createdOn: '',
       modifiedOn: '',
-      recordUrl: '',
       sourceUrl: '',
       cfa1: undefined,
       cfa2: undefined,
@@ -97,6 +97,11 @@ class ChunkBuilder {
     return this;
   }
 
+  withRecordUrl(url) {
+    this.chunk.recordUrl = url;
+    return this;
+  }
+
   withChunkContent(content) {
     this.chunk.chunkContent = content;
     return this;
@@ -162,11 +167,6 @@ class ChunkBuilder {
     return this;
   }
 
-  withRecordUrl(url) {
-    this.chunk.recordUrl = url;
-    return this;
-  }
-
   withSourceUrl(url) {
     this.chunk.sourceUrl = url;
     return this;
@@ -200,9 +200,9 @@ class CustomPostProcessor extends IPostProcessor {
     this.batchSize = batchSize;
   }
 
-  async postProcess(extractedData, type) {
+  async postProcess(extractedData, type,requestWrapper) {
     const postProcessMethod = this.getPostProcessMethod(type);
-    return await postProcessMethod(extractedData);
+    return await postProcessMethod(extractedData,requestWrapper);
   }
 
   getPostProcessMethod(type) {
@@ -215,62 +215,47 @@ class CustomPostProcessor extends IPostProcessor {
     }
   }
 
-  async postProcessBuilder(extractedData) {
-    return extractedData.map(data => {
+  async postProcessBuilder(extractedData,requestWrapper) {
+    if (!extractedData || !extractedData.pages || !Array.isArray(extractedData.pages)) {
+      console.warn('No pages found in extracted data');
+      return [];
+    }
+    return extractedData.pages.map((page, index) => {
       return new ChunkBuilder()
-        .withChunkId(data.chunkId || "")
-        .withChunkTitle(data.chunkTitle || "Title")
-        .withChunkText(data.chunkText || "Text")
-        .withDocId(data.docId || "fk")
-        .withSourceId(data.sourceId || "")
-        .withPageNumber(data.pageNumber || 6)
-        .withChunkContent(data.chunkContent || "scsc")
-        .withChunkMeta(data.chunkMeta || {})
-        .withCreatedOn(data.createdOn || new Date().toISOString())
-        .withModifiedOn(data.modifiedOn || new Date().toISOString())
+        .withChunkTitle(requestWrapper.getFileTitle() || "Untitled Document")
+        .withChunkText(page.markdown_text || "empty text")
+        .withPageNumber(page.page_number || (index + 1))
+        .withRecordUrl(page.image_url || "")
+        .withChunkMeta({
+          pageCount: extractedData.pages.length,
+          currentPage: page.page_number || (index + 1),
+          imageUrl: page.image_url || ""
+        })
+        .withCreatedOn(new Date().toISOString())
+        .withModifiedOn(new Date().toISOString())
         .build();
     });
   }
 
-  async postProcessJson(extractedData) {
-    return extractedData.map(data => {
+  async postProcessJson(extractedData, requestWrapper) {
+    if (!extractedData || !extractedData.pages || !Array.isArray(extractedData.pages)) {
+      console.warn('No pages found in extracted data');
+      return [];
+    }
+
+    return extractedData.pages.map((page, index) => {
       return {
-        chunkId: data.chunkId || "",
-        chunkTitle: data.chunkTitle || "Title",
-        chunkText: data.chunkText || "Text",
-        docId: data.docId || "fk",
-        sourceId: data.sourceId || "",
-        searchIndexId: data.searchIndexId || "",
-        streamId: data.streamId || "",
-        pageNumber: data.pageNumber || 6,
-        sourceName: data.sourceName || "",
-        docName: data.docName || "",
-        recordTitle: data.recordTitle || "",
-        chunkContent: data.chunkContent || "scsc",
-        chunkVector: data.chunkVector || "",
-        answerType: data.answerType || "",
-        extractionMethod: data.extractionMethod || "",
-        chunkType: data.chunkType || "",
-        sourceType: data.sourceType || "",
-        sourceAcl: data.sourceAcl || [],
-        fileType: data.fileType || "",
-        chunkMeta: data.chunkMeta || {},
-        pipelineId: data.pipelineId || "",
-        extractionStrategy: data.extractionStrategy || "",
-        createdOn: data.createdOn || new Date().toISOString(),
-        modifiedOn: data.modifiedOn || new Date().toISOString(),
-        recordUrl: data.recordUrl || "",
-        sourceUrl: data.sourceUrl || "",
-        cfa1: data.cfa1,
-        cfa2: data.cfa2,
-        cfa3: data.cfa3,
-        cfa4: data.cfa4,
-        cfa5: data.cfa5,
-        cfs1: data.cfs1 || "",
-        cfs2: data.cfs2 || "",
-        cfs3: data.cfs3 || "",
-        cfs4: data.cfs4 || "",
-        cfs5: data.cfs5 || ""
+        chunkTitle: requestWrapper.getFileTitle() || "Untitled Document",
+        chunkText: page.markdown_text || "",
+        pageNumber: page.page_number || (index + 1),
+        recordUrl: page.image_url || "",
+        chunkMeta: {
+          pageCount: extractedData.pages.length,
+          currentPage: page.page_number || (index + 1),
+          imageUrl: page.image_url || ""
+        },
+        createdOn: new Date().toISOString(),
+        modifiedOn: new Date().toISOString()
       };
     });
   }

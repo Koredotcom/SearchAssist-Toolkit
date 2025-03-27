@@ -1,6 +1,5 @@
 const IExtractionLogic = require('../interfaces/IExtractionLogic');
 const config = require('../config/config');
-const ShareConstants = require('../constants/ShareConstants');
 const ExternalProcessingService = require('../services/ExternalProcessingService');
 
 class CustomExtractionLogic extends IExtractionLogic {
@@ -71,25 +70,11 @@ class FileExtractionStrategy extends ExtractionStrategy {
       // Fetch and process the data
       const extractedData = await this.externalService.fetchProcessedData(processedData.s3Url);
       
-      return this.transformToChunks(extractedData, requestWrapper);
+      return extractedData ;
     } catch (error) {
       console.error('File extraction error:', error);
       throw error;
     }
-  }
-
-  transformToChunks(extractedData, requestWrapper) {
-    // Transform the extracted data into chunks
-    return [{
-      chunkId: requestWrapper.getChunkId() || "",
-      docId: requestWrapper.getDocumentId() || "",
-      sourceId: requestWrapper.getSourceId() || "",
-      searchIndexId: requestWrapper.getSearchIndexId() || "",
-      chunkText: extractedData.text || extractedData.content || "",
-      chunkTitle: requestWrapper.getTitle() || "File Extraction",
-      extractionMethod: requestWrapper.getExtractionMethod() || "externalService",
-      metadata: requestWrapper.getDocumentMeta() || {}
-    }];
   }
 }
 
