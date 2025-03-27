@@ -1,6 +1,5 @@
 const IExtractionLogic = require('../interfaces/IExtractionLogic');
 const config = require('../config/config');
-const ShareConstants = require('../constants/ShareConstants');
 const ExternalProcessingService = require('../services/ExternalProcessingService');
 
 class CustomExtractionLogic extends IExtractionLogic {
@@ -45,54 +44,11 @@ class ExtractionStrategy {
 
 // Concrete Strategies
 class FileExtractionStrategy extends ExtractionStrategy {
-  constructor(externalService) {
-    super();
-    this.externalService = externalService;
-  }
-
-  async execute(requestWrapper) {
-    try {
-      const downloadUrl = requestWrapper.getDownloadUrl() || requestWrapper.getFileUrl();
-      
-      if (!downloadUrl) {
-        throw new Error(config.ERROR_MESSAGES.DOWNLOAD_URL_REQUIRED);
-      }
-
-      // Initiate processing with external service
-      const initResponse = await this.externalService.initiateProcessing(downloadUrl);
-      
-      if (initResponse.status === 'error') {
-        throw new Error(initResponse.message);
-      }
-
-      // Poll for completion
-      const processedData = await this.externalService.pollStatus(initResponse.uniqueId);
-      
-      // Fetch and process the data
-      const extractedData = await this.externalService.fetchProcessedData(processedData.s3Url);
-      
-      return this.transformToChunks(extractedData, requestWrapper);
-    } catch (error) {
-      console.error('File extraction error:', error);
-      throw error;
-    }
-  }
-
-  transformToChunks(extractedData, requestWrapper) {
-    // Transform the extracted data into chunks
-    return [{
-      chunkId: requestWrapper.getChunkId() || "",
-      docId: requestWrapper.getDocumentId() || "",
-      sourceId: requestWrapper.getSourceId() || "",
-      searchIndexId: requestWrapper.getSearchIndexId() || "",
-      chunkText: extractedData.text || extractedData.content || "",
-      chunkTitle: requestWrapper.getTitle() || "File Extraction",
-      extractionMethod: requestWrapper.getExtractionMethod() || "externalService",
-      metadata: requestWrapper.getDocumentMeta() || {}
-    }];
+  execute(requestWrapper) {
+    // Implement web extraction logic
+    return [{ chunkText: "File extraction", chunkTitle: "File" }];
   }
 }
-
 class WebExtractionStrategy extends ExtractionStrategy {
   execute(requestWrapper) {
     // Implement web extraction logic
