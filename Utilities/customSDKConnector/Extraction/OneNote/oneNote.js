@@ -134,7 +134,7 @@ async function formatContent(content){
     return formattedContent
 }
 
-// Example usage
+
 async function executeExtraction() {
     try {
         const accessToken = process.env.ONE_NOTE_ACCESS_TOKEN;

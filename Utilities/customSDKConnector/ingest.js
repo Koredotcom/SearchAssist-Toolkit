@@ -1,6 +1,6 @@
 const axios = require('axios');
 require('dotenv').config();
-const { executeExtraction, formatContent } = require('./Extraction/oneNote');
+const { executeExtraction, formatContent } = require('./Extraction/OneNote/oneNote');
 
 
 async function ingestData(chunks) {
