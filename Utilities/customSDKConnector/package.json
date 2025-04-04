@@ -1,0 +1,16 @@
+{
+  "name": "customsdkconnector",
+  "version": "1.0.0",
+  "description": "",
+  "main": "ingest.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "raguls",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.8.4",
+    "dotenv": "^16.4.7",
+    "jsdom": "^26.0.0"
+  }
+}
