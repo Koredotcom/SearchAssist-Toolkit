@@ -42,10 +42,174 @@ The OneNote connector is included as an example implementation to demonstrate ho
 - Transform document structure into SearchAI-compatible format
 - Manage batch ingestion process to searchai
 
-To run the ingestion after configuration:
+### Prerequisites
+1. **Azure App Registration**
+   - Navigate to [Azure Portal](https://portal.azure.com)
+   - Go to `Azure Active Directory` > `App registrations`
+   - Click `+ New registration`
+   - Configure the following:
+     ```
+     Name: OneNoteConnector
+     Supported account types: "Accounts in this organizational directory only"
+     Redirect URI: Web - Your_Callback_url
+     ```
+   - Click `Register`
+
+2. **Configure API Permissions**
+   - In your registered app, go to `API permissions`
+   - Click `+ Add a permission`
+   - Select `Microsoft Graph`
+   - Choose `Delegated permissions`
+   - Add the following permissions:
+     - `Notes.Read` or `Notes.Read.All`
+     - `User.Read`
+     - `offline_access`
+   - Click `Grant admin consent`
+
+3. **Generate Client Secret**
+   - Go to `Certificates & secrets`
+   - Click `+ New client secret`
+   - Add description and set expiration
+   - Copy the generated secret immediately (it won't be visible later)
+
+4. **Collect Required Credentials**
+   Save these values for your `.env` file:
+   ```
+   client_id: Application (client) ID
+   client_secret: Generated client secret
+   tenant_id: Directory (tenant) ID
+   redirect_uri: Registered redirect URI
+
+### Authentication Flow
+
+1. **Get Authorization Code**
 ```bash
-node ingest.js
+https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize?
+client_id={client_id}
+&response_type=code
+&redirect_uri={redirect_uri}
+&response_mode=query
+&scope=offline_access%20Notes.Read%20User.Read
+&state=12345
 ```
+
+2. **Exchange Code for Access Token**
+```bash
+curl -X POST https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id={client_id}" \
+  -d "client_secret={client_secret}" \
+  -d "code={authorization_code}" \
+  -d "grant_type=authorization_code" \
+  -d "redirect_uri={redirect_uri}"
+```
+
+### API Endpoints
+
+The connector uses the following Microsoft Graph API endpoints:
+
+1. **Get All Notebooks**
+```bash
+GET https://graph.microsoft.com/v1.0/me/onenote/notebooks
+```
+
+2. **Get Sections of a Notebook**
+```bash
+GET https://graph.microsoft.com/v1.0/me/onenote/notebooks/{notebook-id}/sections
+```
+
+
+3. **Get Pages in a Section**
+```bash
+GET https://graph.microsoft.com/v1.0/me/onenote/sections/{section-id}/pages
+```
+
+4. **Get Page Content**
+```bash
+GET https://graph.microsoft.com/v1.0/me/onenote/pages/{page-id}/content
+```
+
+### Data Processing
+
+The connector processes OneNote content using the following structure:
+
+```javascript
+{
+    "sourceName": "OneNoteConnector",
+    "sourceType": "json",
+    "documents": [
+        {
+            "title": "NotebookName",
+            "chunks": [
+                {
+                    "chunkTitle": "Notebook Name - Section - Page Title",
+                    "chunkText": "Cleaned HTML text content",
+                    "recordUrl": "https://onenote.office.com/...",
+                    "cfs1": "2025-04-01T12:34:00Z", // Created Date
+                    "cfs4": "John Doe" // Author
+                }
+            ]
+        }
+    ]
+}
+```
+
+### Content Extraction
+
+The connector uses Cheerio for HTML parsing:
+
+```javascript
+const cheerio = require('cheerio');
+
+function extractText(html) {
+    const $ = cheerio.load(html);
+    return $('body').text().trim();
+}
+```
+
+### Usage Example
+
+1. **Authentication Setup**
+   
+   a. First, obtain an authorization code by visiting this URL in your browser (replace placeholders):
+   ```bash
+   https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize?
+   client_id={client_id}
+   &response_type=code
+   &redirect_uri={redirect_uri}
+   &response_mode=query
+   &scope=offline_access%20Notes.Read%20User.Read
+   &state=12345
+   ```
+
+   b. After authorization, you'll receive a code in the redirect URL. Use this code to get your access token:
+   ```bash
+   curl -X POST https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "client_id={client_id}" \
+     -d "client_secret={client_secret}" \
+     -d "code={authorization_code}" \
+     -d "grant_type=authorization_code" \
+     -d "redirect_uri={redirect_uri}"
+   ```
+
+2. **Configure Environment Variables**
+   
+   Copy `.env.sample` to `.env` and add your credentials:
+   ```bash
+   SEARCHAI_HOST_NAME="your_searchai_host"
+   SEARCHAI_JWT_TOKEN="your_jwt_token"
+   STREAM_ID="your_stream_id"
+   ONE_NOTE_ACCESS_TOKEN="access_token_from_step_1"  # Add the access token received from authentication
+   INGESTION_BATCH_SIZE="10"
+   ```
+
+3. **Run the Connector**
+   ```bash
+   node ingest.js
+   ```
+
+Note: The access token typically expires after a certain period. For production use, implement token refresh logic using the refresh token received during authentication.
 
 ## Configuration Options
 
