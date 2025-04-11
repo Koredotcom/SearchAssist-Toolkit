@@ -1,11 +1,9 @@
 const IExtractionLogic = require('../interfaces/IExtractionLogic');
 const config = require('../config/config');
-const ExternalProcessingService = require('../services/ExternalProcessingService');
 
 class CustomExtractionLogic extends IExtractionLogic {
   constructor() {
     super();
-    this.externalService = new ExternalProcessingService();
   }
 
   async extract(requestWrapper) {
@@ -18,7 +16,7 @@ class CustomExtractionLogic extends IExtractionLogic {
     const { CONFIGURED_CONNECTORS, AIRBYTE_CONNECTORS } = config.CONNECTORS;
     switch (sys_content_type) {
       case 'file':
-        return new FileExtractionStrategy(this.externalService);
+        return new FileExtractionStrategy();
       case 'web':
         return new WebExtractionStrategy();
       case 'data':
