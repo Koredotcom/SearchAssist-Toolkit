@@ -1,0 +1,41 @@
+{
+    "sites": [
+        {
+            "url": "your-target-url",
+            "maxDepth": 2,
+            "maxPages": 2,
+            "enabled": true,
+            "urlPatterns": []
+        }
+    ],
+    "delay": 20000,
+    "outputDirectories": {
+        "html": "htmls",
+        "logs": "logs",
+        "chromeProfile": "chrome_profile"
+    },
+    "ingest": {
+        "hostUrl": "your-searchAi-host-url",
+        "streamId": "your-stream-id",
+        "authToken": "your-auth-token",
+        "timeout": 10000,
+        "name": "SSO Crawler Utility"
+    },
+    "browser": {
+        "chromePath": "your-google-chromePath",
+        "headless": false,
+        "args": [
+            "--disable-blink-features=AutomationControlled",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-infobars",
+            "--disable-notifications",
+            "--start-maximized",
+            "--disable-web-security",
+            "--allow-running-insecure-content",
+            "--incognito",
+            "--disable-gpu",
+            "--disable-software-rasterizer"
+        ]
+    }
+} 
