@@ -89,18 +89,19 @@ def evaluate_with_ragas_and_crag(excel_file, sheet_name, config, run_ragas=True,
 
         ragas_results = pd.DataFrame([])
         crag_results = pd.DataFrame([])
+        total_set_result = {}  # Initialize as empty dict instead of None
 
         if run_ragas:
             ragas_evaluator = RagasEvaluator()
-            ragas_results = ragas_evaluator.evaluate(queries, answers, ground_truths, contexts, model=llm_model)
+            ragas_eval_result = ragas_evaluator.evaluate(queries, answers, ground_truths, contexts, model=llm_model)
+            ragas_results = ragas_eval_result[0]  # DataFrame
+            total_set_result = ragas_eval_result[1].__dict__ if len(ragas_eval_result) > 1 else {}  # Convert result object to dict
 
         if run_crag:
             openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
             crag_evaluator = CragEvaluator(config['openai']['model_name'], openai_client)
             crag_results = crag_evaluator.evaluate(queries, answers, ground_truths, contexts)
             
-        total_set_result = ragas_results[1]
-        ragas_results = ragas_results[0]
         result_converter = ResultsConverter(ragas_results, crag_results)
 
         if run_ragas:
@@ -109,17 +110,20 @@ def evaluate_with_ragas_and_crag(excel_file, sheet_name, config, run_ragas=True,
         if run_crag:
             result_converter.convert_crag_results()
 
+        # Single return point based on review feedback
+        final_results = pd.DataFrame([])
         if len(ragas_results.index) > 0 and len(crag_results.index) > 0:
-            combined_results = result_converter.get_combined_results()
-            return combined_results
+            final_results = result_converter.get_combined_results()
         elif len(ragas_results.index) > 0:
-            return result_converter.get_ragas_results(), total_set_result   
+            final_results = result_converter.get_ragas_results()
         elif len(crag_results.index) > 0:
-            return result_converter.get_crag_results()
+            final_results = result_converter.get_crag_results()
+        
+        return final_results, total_set_result
+        
     except Exception as e:
         print("Encountered error while running evaluation: ", traceback.format_exc())
-        raise Exception(e)
-
+        return pd.DataFrame([]), {}
 
 # for running from api
 def run(input_file, sheet_name="", evaluate_ragas=False, evaluate_crag=False, use_search_api=False, llm_model=None, save_db=False):
@@ -162,12 +166,16 @@ def run(input_file, sheet_name="", evaluate_ragas=False, evaluate_crag=False, us
                                                     run_ragas=run_ragas,
                                                     use_search_api=use_search_api, 
                                                     llm_model=llm_model)
-                results[0].to_excel(writer, sheet_name=sheet_name, index=False)
-                if(save_db):
-                    dbService(results[0], results[1], timestamp)
-
-                print(f"Results for sheet '{sheet_name}' saved to '{output_filename}'.")
                 
+                # Handle the case where results might be None or empty
+                if results and len(results) >= 1 and not results[0].empty:
+                    results[0].to_excel(writer, sheet_name=sheet_name, index=False)
+                    if(save_db):
+                        dbService(results[0], results[1], timestamp)
+                    print(f"Results for sheet '{sheet_name}' saved to '{output_filename}'.")
+                else:
+                    print(f"No results to save for sheet '{sheet_name}'. Skipping.")
+
         print(f"All results have been saved to '{output_filename}'.")
         return f"All results have been saved to '{output_filename}'."
     except Exception as e:
@@ -222,11 +230,15 @@ def main():
                                                        run_ragas=run_ragas,
                                                        use_search_api=args.use_search_api, 
                                                        llm_model=llm_model)
-                results[0].to_excel(writer, sheet_name=sheet_name, index=False)
-                if(args.save_db):
-                    dbService(results[0], results[1], timestamp)
-
-                print(f"Results for sheet '{sheet_name}' saved to '{output_filename}'.")
+                
+                # Handle the case where results might be None or empty
+                if results and len(results) >= 1 and not results[0].empty:
+                    results[0].to_excel(writer, sheet_name=sheet_name, index=False)
+                    if(args.save_db):
+                        dbService(results[0], results[1], timestamp)
+                    print(f"Results for sheet '{sheet_name}' saved to '{output_filename}'.")
+                else:
+                    print(f"No results to save for sheet '{sheet_name}'. Skipping.")
 
         print(f"All results have been saved to '{output_filename}'.")
     except Exception as e:
