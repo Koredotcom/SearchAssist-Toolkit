@@ -36,7 +36,14 @@ async def runeval(excel_file, config_file, params):
     
     excel_path = await process_files(excel_file, config_file)
     try:
-        return run(excel_path, evaluate_ragas=params.get("evaluate_ragas"), evaluate_crag=params.get("evaluate_crag"), use_search_api=params.get("use_search_api"), llm_model=params.get("llm_model"), save_db=params.get("save_db"))
+        return await run(excel_path, 
+                        evaluate_ragas=params.get("evaluate_ragas"), 
+                        evaluate_crag=params.get("evaluate_crag"), 
+                        use_search_api=params.get("use_search_api"), 
+                        llm_model=params.get("llm_model"), 
+                        save_db=params.get("save_db"),
+                        batch_size=params.get("batch_size", 10),
+                        max_concurrent=params.get("max_concurrent", 5))
     except Exception as e:
         raise Exception("Error in running evaluation: " + str(e))
     

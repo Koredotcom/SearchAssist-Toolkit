@@ -95,3 +95,95 @@ if __name__ == "__main__":
         print(result)
     else:
         print("Failed to get response")
+
+# Async version for batch processing
+import aiohttp
+import asyncio
+from asyncio import Semaphore
+
+class AsyncSearchAssistAPI:
+    def __init__(self):
+        config = ConfigManager().get_config()
+        sa_config = config.get('SA', {})
+        
+        self.client_id = sa_config.get('client_id')
+        self.client_secret = sa_config.get('client_secret')
+        self.app_id = sa_config.get('app_id')
+        self.domain = sa_config.get('domain', '').strip()
+        
+        # Validate configuration
+        if not all([self.client_id, self.client_secret, self.app_id, self.domain]):
+            missing = []
+            if not self.client_id: missing.append('client_id')
+            if not self.client_secret: missing.append('client_secret')
+            if not self.app_id: missing.append('app_id')
+            if not self.domain: missing.append('domain')
+            raise ValueError(f"Missing SearchAssist configuration: {', '.join(missing)}")
+        
+        # Clean and validate domain
+        if self.domain.startswith('http://') or self.domain.startswith('https://'):
+            # Remove protocol if provided
+            self.domain = self.domain.replace('https://', '').replace('http://', '')
+        
+        if not self.domain or self.domain in ['<SA domain url>', '<UXO domain url>']:
+            raise ValueError(f"Invalid domain configuration: '{self.domain}'. Please provide a valid domain.")
+        
+        try:
+            self.auth_token = generate_JWT_token(self.client_id, self.client_secret)
+        except Exception as e:
+            raise ValueError(f"Failed to generate JWT token: {e}")
+            
+        self.base_url = f'https://{self.domain}/searchassistapi/external/stream/{self.app_id}'
+        print(f"Initialized AsyncSearchAssistAPI with URL: {self.base_url}")
+
+    async def _make_async_request(self, session: aiohttp.ClientSession, endpoint: str, data: Dict) -> Optional[Dict]:
+        headers = {
+            'auth': self.auth_token,
+            'Content-Type': 'application/json'
+        }
+        
+        full_url = f"{self.base_url}/{endpoint}"
+        print(f"Making request to: {full_url}")
+        
+        try:
+            async with session.post(full_url, json=data, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    print(f"API request failed with status {response.status}: {await response.text()}")
+                    return None
+        except aiohttp.ClientConnectorError as e:
+            print(f"Connection error - check domain configuration: {e}")
+            print(f"Attempted URL: {full_url}")
+            return None
+        except aiohttp.ClientError as e:
+            print(f"Async request failed: {e}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error in async request: {e}")
+            return None
+
+    async def advanced_search_async(self, session: aiohttp.ClientSession, query: str) -> Optional[Dict]:
+        data = {
+            "query": query,
+            "includeChunksInResponse": True
+        }
+        print(f"Making async SA search call for query: {query[:50]}...")
+        return await self._make_async_request(session, 'advancedSearch', data)
+
+
+async def get_bot_response_async(api: AsyncSearchAssistAPI, session: aiohttp.ClientSession, query: str, truth: str) -> Optional[Dict]:
+    answer = await api.advanced_search_async(session, query)
+    if not answer:
+        return None
+
+    context_data, context_url = AnswerProcessor.get_context(answer)
+    bot_answer = AnswerProcessor.extract_answer(answer)
+
+    return {
+        'query': query,
+        'ground_truth': truth,
+        'context': context_data,
+        'context_url': context_url,
+        'answer': bot_answer
+    }
