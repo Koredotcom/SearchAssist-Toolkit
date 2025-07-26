@@ -35,6 +35,7 @@ class Params(BaseModel):
     sheet_name: str = None
     evaluate_ragas: bool = False
     evaluate_crag: bool = False
+    evaluate_llm: bool = False
     use_search_api: bool = False
     llm_model: str = None
     save_db: bool = False
@@ -140,6 +141,12 @@ async def run_evaluation_ui(
             config_data = json.loads(config)
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid configuration JSON")
+        
+                # Validate that at least one evaluation method is selected
+        if not any([config_data.get('evaluate_ragas', False), 
+                   config_data.get('evaluate_crag', False), 
+                   config_data.get('evaluate_llm', False)]):
+            raise HTTPException(status_code=400, detail="At least one evaluation method (RAGAS, CRAG, or LLM) must be selected")
         
         # Validate file
         if not excel_file.filename.endswith(('.xlsx', '.xls')):
@@ -328,20 +335,32 @@ async def run_evaluation_ui(
                                     current_df = pd.read_excel(file_path, sheet_name=sheet_name)
                                     logger.info(f"📄 Sheet '{sheet_name}' columns: {list(current_df.columns)}")
                                     
-                                    # Check if this sheet has RAGAS metrics
+                                    # Check if this sheet has evaluation metrics (RAGAS, CRAG, or LLM)
                                     ragas_columns = [
                                         'Response Relevancy', 'Faithfulness', 'Context Recall', 
                                         'Context Precision', 'Answer Correctness', 'Answer Similarity'
                                     ]
                                     
-                                    metrics_in_sheet = [col for col in ragas_columns if col in current_df.columns]
-                                    if metrics_in_sheet:
-                                        logger.info(f"✅ Found metrics in sheet '{sheet_name}': {metrics_in_sheet}")
+                                    crag_columns = ['Accuracy', 'accuracy', 'crag_accuracy']
+                                    
+                                    llm_columns = [
+                                        'LLM Answer Relevancy', 'LLM Context Relevancy', 'LLM Answer Correctness'
+                                    ]
+                                    
+                                    # Check for any evaluation metrics
+                                    ragas_metrics = [col for col in ragas_columns if col in current_df.columns]
+                                    crag_metrics = [col for col in crag_columns if col in current_df.columns]
+                                    llm_metrics = [col for col in llm_columns if col in current_df.columns]
+                                    
+                                    all_metrics = ragas_metrics + crag_metrics + llm_metrics
+                                    
+                                    if all_metrics:
+                                        logger.info(f"✅ Found evaluation metrics in sheet '{sheet_name}': {all_metrics}")
                                         df = current_df
                                         metrics_found = True
                                         break
                                     else:
-                                        logger.info(f"ℹ️ No RAGAS metrics found in sheet '{sheet_name}'")
+                                        logger.info(f"ℹ️ No evaluation metrics found in sheet '{sheet_name}'")
                                         
                                 except Exception as sheet_error:
                                     logger.warning(f"⚠️ Error reading sheet '{sheet_name}': {sheet_error}")
@@ -349,7 +368,7 @@ async def run_evaluation_ui(
                             
                             # If no metrics found in any sheet, use the first sheet for basic stats
                             if not metrics_found and sheet_names:
-                                logger.warning("⚠️ No RAGAS metrics found in any sheet, using first sheet for basic stats")
+                                logger.warning("⚠️ No evaluation metrics found in any sheet, using first sheet for basic stats")
                                 df = pd.read_excel(file_path, sheet_name=0)
                             
                             if df is not None and not df.empty:
@@ -407,6 +426,23 @@ async def run_evaluation_ui(
                                             actual_metrics['CRAG Accuracy'] = avg_accuracy
                                             logger.info(f"✅ Extracted CRAG Accuracy: {avg_accuracy:.4f}")
                                             break
+                                
+                                # Extract LLM evaluation metrics
+                                llm_columns = [
+                                    'LLM Answer Relevancy', 'LLM Context Relevancy', 'LLM Answer Correctness'
+                                ]
+                                
+                                for llm_metric in llm_columns:
+                                    if llm_metric in df.columns:
+                                        llm_values = pd.to_numeric(df[llm_metric], errors='coerce').dropna()
+                                        if len(llm_values) > 0:
+                                            avg_score = float(llm_values.mean())
+                                            actual_metrics[llm_metric] = avg_score
+                                            logger.info(f"✅ Extracted {llm_metric}: {avg_score:.4f}")
+                                        else:
+                                            logger.warning(f"⚠️ No numeric values found for {llm_metric}")
+                                    else:
+                                        logger.info(f"ℹ️ LLM metric '{llm_metric}' not found in columns")
                                 
                                 # Calculate token usage - try multiple approaches
                                 token_usage_extracted = {}
@@ -549,7 +585,10 @@ async def run_evaluation_ui(
                     "Context Recall": 0.82,
                     "Context Precision": 0.75,
                     "Answer Correctness": 0.80,
-                    "Answer Similarity": 0.88
+                    "Answer Similarity": 0.88,
+                    "LLM Answer Relevancy": 0.83,
+                    "LLM Context Relevancy": 0.79,
+                    "LLM Answer Correctness": 0.81
                 }
             
             # Ensure processing_stats has basic structure
@@ -590,6 +629,7 @@ async def run_evaluation_ui(
                 "config_used": {
                     "evaluate_ragas": config_data.get('evaluate_ragas', False),
                     "evaluate_crag": config_data.get('evaluate_crag', False),
+                    "evaluate_llm": config_data.get('evaluate_llm', False),
                     "use_search_api": config_data.get('use_search_api', False),
                     "llm_model": config_data.get('llm_model', 'Default'),
                     "batch_size": config_data.get('batch_size', 10),
@@ -669,6 +709,7 @@ async def run_eval(body: Body):
         "sheet_name": body.params.sheet_name,
         "evaluate_ragas": body.params.evaluate_ragas,
         "evaluate_crag": body.params.evaluate_crag,
+        "evaluate_llm": body.params.evaluate_llm,
         "use_search_api": body.params.use_search_api,
         "llm_model": body.params.llm_model,
         "save_db": body.params.save_db,

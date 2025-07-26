@@ -87,7 +87,10 @@ class RAGEvaluatorUI {
                     "Context Recall": 0.79,
                     "Context Precision": 0.85,
                     "Answer Correctness": 0.88,
-                    "Answer Similarity": 0.91
+                    "Answer Similarity": 0.91,
+                    "LLM Answer Relevancy": 0.84,
+                    "LLM Context Relevancy": 0.89,
+                    "LLM Answer Correctness": 0.86
                 },
                 "detailed_results": [
                     {
@@ -99,7 +102,10 @@ class RAGEvaluatorUI {
                         "Context Recall": 0.85,
                         "Context Precision": 0.90,
                         "Answer Correctness": 0.87,
-                        "Answer Similarity": 0.93
+                        "Answer Similarity": 0.93,
+                        "LLM Answer Relevancy": 0.90,
+                        "LLM Context Relevancy": 0.85,
+                        "LLM Answer Correctness": 0.89
                     },
                     {
                         "query": "How does machine learning work?",
@@ -110,7 +116,10 @@ class RAGEvaluatorUI {
                         "Context Recall": 0.82,
                         "Context Precision": 0.88,
                         "Answer Correctness": 0.90,
-                        "Answer Similarity": 0.87
+                        "Answer Similarity": 0.87,
+                        "LLM Answer Relevancy": 0.88,
+                        "LLM Context Relevancy": 0.84,
+                        "LLM Answer Correctness": 0.92
                     },
                     {
                         "query": "What are neural networks?",
@@ -149,6 +158,7 @@ class RAGEvaluatorUI {
                 "config_used": {
                     "evaluate_ragas": true,
                     "evaluate_crag": false,
+                    "evaluate_llm": true,
                     "use_search_api": true,
                     "llm_model": "openai-4o",
                     "batch_size": 10,
@@ -166,9 +176,12 @@ class RAGEvaluatorUI {
                 "Context Recall": 0.79,
                 "Context Precision": 0.85,
                 "Answer Correctness": 0.88,
-                "Answer Similarity": 0.91
+                "Answer Similarity": 0.91,
+                "LLM Answer Relevancy": 0.84,
+                "LLM Context Relevancy": 0.89,
+                "LLM Answer Correctness": 0.86
             };
-            console.log('🧪 Testing chart with real metrics:', realMetrics);
+            console.log('🧪 Testing chart with RAGAS + LLM metrics:', realMetrics);
             this.createMetricsChart(realMetrics);
         };
         window.debugMetricExtraction = (mockResult) => {
@@ -176,7 +189,10 @@ class RAGEvaluatorUI {
             const testResult = mockResult || {
                 metrics: {
                     "Response Relevancy": 0.87,
-                    "Faithfulness": 0.82
+                    "Faithfulness": 0.82,
+                    "LLM Answer Relevancy": 0.84,
+                    "LLM Context Relevancy": 0.89,
+                    "LLM Answer Correctness": 0.86
                 },
                 ragas_results: {
                     "answer_relevancy": 0.78,
@@ -190,6 +206,13 @@ class RAGEvaluatorUI {
             const extracted = this.extractMetricsFromResult(testResult);
             console.log('✅ Extracted metrics:', extracted);
             return extracted;
+        };
+        
+        window.testFullLLMOutput = () => {
+            console.log('🧪 Testing complete RAGAS + LLM output display...');
+            this.setTestMetrics();
+            console.log('📋 Result data with LLM metrics:', this.resultData);
+            console.log('📊 Extracted metrics:', this.extractMetricsFromResult(this.resultData));
         };
         
         console.log('✅ Event listeners setup complete');
@@ -302,7 +325,7 @@ class RAGEvaluatorUI {
 
     setupFormHandlers() {
         // Monitor form changes for validation
-        const formInputs = document.querySelectorAll('#batch-size, #max-concurrent, #use-search-api, #evaluate-ragas, #evaluate-crag');
+        const formInputs = document.querySelectorAll('#batch-size, #max-concurrent, #use-search-api, #evaluate-ragas, #evaluate-crag, #evaluate-llm');
         formInputs.forEach(input => {
             input.addEventListener('change', () => {
                 this.estimateProcessingTime();
@@ -320,6 +343,34 @@ class RAGEvaluatorUI {
                 this.validateForm();
             });
         }
+
+        // Handle evaluation method changes
+        const ragasCheckbox = document.getElementById('evaluate-ragas');
+        const cragCheckbox = document.getElementById('evaluate-crag');
+        const llmCheckbox = document.getElementById('evaluate-llm');
+        
+        if (ragasCheckbox) {
+            ragasCheckbox.addEventListener('change', () => {
+                this.estimateProcessingTime();
+                this.validateForm();
+            });
+        }
+        
+        if (cragCheckbox) {
+            cragCheckbox.addEventListener('change', () => {
+                this.estimateProcessingTime();
+                this.validateForm();
+            });
+        }
+        
+        if (llmCheckbox) {
+            llmCheckbox.addEventListener('change', () => {
+                this.estimateProcessingTime();
+                this.validateForm();
+            });
+        }
+        
+
 
         // Handle LLM Model configuration visibility
         const llmModelSelect = document.getElementById('llm-model');
@@ -873,6 +924,7 @@ class RAGEvaluatorUI {
         const useSearchApi = document.getElementById('use-search-api')?.checked || false;
         const evaluateRagas = document.getElementById('evaluate-ragas')?.checked || false;
         const evaluateCrag = document.getElementById('evaluate-crag')?.checked || false;
+        const evaluateLlm = document.getElementById('evaluate-llm')?.checked || false;
         const selectedSheet = document.getElementById('sheet-name')?.value || '';
         
         // Calculate actual query count
@@ -896,7 +948,7 @@ class RAGEvaluatorUI {
         }
         
         // Improved time estimation based on real-world benchmarks
-        let timePerQuery = this.calculateTimePerQuery(useSearchApi, evaluateRagas, evaluateCrag);
+        let timePerQuery = this.calculateTimePerQuery(useSearchApi, evaluateRagas, evaluateCrag, evaluateLlm);
         
         // Account for batch processing and concurrency
         const effectiveBatchSize = Math.min(batchSize, totalQueries);
@@ -938,7 +990,7 @@ class RAGEvaluatorUI {
         }
         
         // Update estimates info
-        this.updateEstimationDetails(totalQueries, finalTime, useSearchApi, evaluateRagas, evaluateCrag);
+        this.updateEstimationDetails(totalQueries, finalTime, useSearchApi, evaluateRagas, evaluateCrag, evaluateLlm);
         
         // Show estimation details
         const detailsContainer = document.getElementById('estimation-details');
@@ -949,7 +1001,7 @@ class RAGEvaluatorUI {
         // No longer needed - preset details are shown in modal
     }
 
-    calculateTimePerQuery(useSearchApi, evaluateRagas, evaluateCrag) {
+    calculateTimePerQuery(useSearchApi, evaluateRagas, evaluateCrag, evaluateLlm) {
         // Base time for basic processing
         let timePerQuery = 0.5; // 0.5 seconds base
         
@@ -958,21 +1010,35 @@ class RAGEvaluatorUI {
             timePerQuery += 2.5; // Average API response time
         }
         
+        // Calculate parallel evaluation time - evaluators run concurrently
+        const evaluationTimes = [];
+        
         // RAGAS evaluation time (most time-consuming)
         if (evaluateRagas) {
-            timePerQuery += 12; // RAGAS is computationally expensive
+            evaluationTimes.push(12); // RAGAS is computationally expensive
         }
         
         // CRAG evaluation time
         if (evaluateCrag) {
-            timePerQuery += 3; // CRAG is lighter than RAGAS
+            evaluationTimes.push(3); // CRAG is lighter than RAGAS
+        }
+        
+        // LLM evaluation time (3 API calls per query, but concurrent)
+        if (evaluateLlm) {
+            evaluationTimes.push(4); // Improved with parallel processing within LLM evaluator
+        }
+        
+        // When running in parallel, take the maximum time (longest running evaluator)
+        // rather than sum of all times
+        if (evaluationTimes.length > 0) {
+            timePerQuery += Math.max(...evaluationTimes);
         }
         
         // Minimum time
         return Math.max(0.5, timePerQuery);
     }
 
-    updateEstimationDetails(queries, time, useSearchApi, evaluateRagas, evaluateCrag) {
+    updateEstimationDetails(queries, time, useSearchApi, evaluateRagas, evaluateCrag, evaluateLlm) {
         // Create or update estimation breakdown
         let detailsContainer = document.getElementById('estimation-details');
         if (!detailsContainer) {
@@ -990,6 +1056,7 @@ class RAGEvaluatorUI {
         if (useSearchApi) components.push('Search API');
         if (evaluateRagas) components.push('RAGAS Evaluation');
         if (evaluateCrag) components.push('CRAG Evaluation');
+        if (evaluateLlm) components.push('LLM Evaluation');
         
         detailsContainer.innerHTML = `
             <div class="estimation-breakdown">
@@ -1015,17 +1082,18 @@ class RAGEvaluatorUI {
 
         const evaluateRagas = document.getElementById('evaluate-ragas')?.checked || false;
         const evaluateCrag = document.getElementById('evaluate-crag')?.checked || false;
+        const evaluateLlm = document.getElementById('evaluate-llm')?.checked || false;
         const useSearchApi = document.getElementById('use-search-api')?.checked || false;
         const llmModel = document.getElementById('llm-model')?.value || '';
         
-        let isValid = this.uploadedFile && (evaluateRagas || evaluateCrag);
+        let isValid = this.uploadedFile && (evaluateRagas || evaluateCrag || evaluateLlm);
         let errorMessage = '';
         
         if (!this.uploadedFile) {
             errorMessage = '<i class="fas fa-upload"></i> Upload File First';
             isValid = false;
-        } else if (!evaluateRagas && !evaluateCrag) {
-            errorMessage = '<i class="fas fa-exclamation-triangle"></i> Select Evaluation Method';
+        } else if (!evaluateRagas && !evaluateCrag && !evaluateLlm) {
+            errorMessage = '<i class="fas fa-exclamation-triangle"></i> Select at least one Evaluation Method';
             isValid = false;
         }
         
@@ -1117,6 +1185,7 @@ class RAGEvaluatorUI {
             sheet_name: document.getElementById('sheet-name')?.value || '',
             evaluate_ragas: document.getElementById('evaluate-ragas')?.checked || false,
             evaluate_crag: document.getElementById('evaluate-crag')?.checked || false,
+            evaluate_llm: document.getElementById('evaluate-llm')?.checked || false,
             use_search_api: document.getElementById('use-search-api')?.checked || false,
             save_db: document.getElementById('save-db')?.checked || false,
             llm_model: document.getElementById('llm-model')?.value || '',
@@ -1387,7 +1456,10 @@ class RAGEvaluatorUI {
             'Context Recall': 0.82,
             'Context Precision': 0.75,
             'Answer Correctness': 0.80,
-            'Answer Similarity': 0.88
+            'Answer Similarity': 0.88,
+            'LLM Answer Relevancy': 0.83,
+            'LLM Context Relevancy': 0.79,
+            'LLM Answer Correctness': 0.81
         };
     }
 
@@ -1859,6 +1931,7 @@ class RAGEvaluatorUI {
                         <div class="config-list">
                             <div>RAGAS: ${config.evaluate_ragas ? '✅ Enabled' : '❌ Disabled'}</div>
                             <div>CRAG: ${config.evaluate_crag ? '✅ Enabled' : '❌ Disabled'}</div>
+                            <div>LLM Evaluation: ${config.evaluate_llm ? '✅ Enabled' : '❌ Disabled'}</div>
                             <div>Search API: ${config.use_search_api ? '✅ Enabled' : '❌ Disabled'}</div>
                             <div>LLM Model: ${config.llm_model || 'Default'}</div>
                             <div>Batch Size: ${config.batch_size || 10}</div>

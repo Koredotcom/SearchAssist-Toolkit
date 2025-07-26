@@ -141,8 +141,9 @@ class AsyncXOSearchAPI:
         
         full_url = f"{self.base_url}/{endpoint}"        
         try:
-            async with session.post(full_url, json=data, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
+            async with session.post(full_url, json=data, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as response:
                 if response.status == 200:
+                    print(f"API request successful with status {response.status}")
                     return await response.json()
                 else:
                     print(f"API request failed with status {response.status}: {await response.text()}")

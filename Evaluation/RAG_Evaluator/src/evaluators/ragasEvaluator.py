@@ -124,13 +124,21 @@ class RagasEvaluator(BaseEvaluator):
             
             # Run RAGAS evaluation in this thread (now with proper event loop)
             print("🔄 Running RAGAS evaluation with thread event loop...")
+            print(f"📊 Dataset shape: {len(dataset)} rows")
+            print(f"📊 Dataset columns: {list(dataset.column_names)}")
+            print(f"📊 Metrics to evaluate: {[metric.__class__.__name__ for metric in metrics]}")
+            
             result = evaluate(dataset, metrics=metrics, token_usage_parser=get_token_usage_for_openai)
             
             inputcost = self.config["cost_of_model"]["input"]
             outputcost = self.config["cost_of_model"]["output"]
-            print(f"Total Tokens for Evaluation: Input={result.total_tokens().input_tokens} Output={result.total_tokens().output_tokens}")
-            print(f"Total Cost in $: {result.total_cost(cost_per_input_token=inputcost, cost_per_output_token=outputcost)}")
+            print(f"💰 Total Tokens for Evaluation: Input={result.total_tokens().input_tokens} Output={result.total_tokens().output_tokens}")
+            print(f"💰 Total Cost in $: {result.total_cost(cost_per_input_token=inputcost, cost_per_output_token=outputcost)}")
+            
             result_df = result.to_pandas()
+            print(f"📈 RAGAS result DataFrame shape: {result_df.shape}")
+            print(f"📈 RAGAS result columns: {list(result_df.columns)}")
+            print(f"📈 RAGAS sample row: {result_df.iloc[0].to_dict() if len(result_df) > 0 else 'No data'}")
             
             return result_df, result
             

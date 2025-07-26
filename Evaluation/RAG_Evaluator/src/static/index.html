@@ -96,11 +96,21 @@
                                     </label>
                                 </div>
                                 <div class="checkbox-item">
-                                    <input type="checkbox" id="evaluate-crag" checked>
+                                    <input type="checkbox" id="evaluate-crag">
                                     <label for="evaluate-crag">
                                         <div>
                                             <strong><i class="fas fa-bullseye"></i> CRAG Evaluation</strong>
                                             <small>Accuracy assessment using LLM judgment with detailed scoring</small>
+                                        </div>
+                                    </label>
+                                </div>
+                                <div class="checkbox-item">
+                                    <input type="checkbox" id="evaluate-llm" checked>
+                                    <label for="evaluate-llm">
+                                        <div>
+                                            <strong><i class="fas fa-robot"></i> LLM Evaluation</strong>
+                                            <small>Answer Correctness, Answer Relevancy, and Context Relevancy using OpenAI</small>
+                                            <small style="color: #6366f1; font-style: italic;"><i class="fas fa-magic"></i> Auto-enabled with RAGAS/CRAG</small>
                                         </div>
                                     </label>
                                 </div>

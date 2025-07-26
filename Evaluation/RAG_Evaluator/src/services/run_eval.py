@@ -3,6 +3,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from werkzeug.utils import secure_filename
 import pandas as pd
+import shutil
 from main import run
 
 async def process_files(excel_file, config_file):
@@ -26,8 +27,10 @@ async def process_files(excel_file, config_file):
         with open(config_path, 'w') as f2:
             f2.write(s)
             
-    excelFile = pd.read_excel(excel_file)
-    excelFile.to_excel(excel_path, index=False)
+    # Instead of reading and saving with pandas (which only reads first sheet),
+    # copy the entire Excel file to preserve all sheets
+    shutil.copy2(excel_file, excel_path)
+    print(f"Copied Excel file with all sheets from {excel_file} to {excel_path}")
     
     return excel_path
 
@@ -39,6 +42,7 @@ async def runeval(excel_file, config_file, params):
         return await run(excel_path, 
                         evaluate_ragas=params.get("evaluate_ragas"), 
                         evaluate_crag=params.get("evaluate_crag"), 
+                        evaluate_llm=params.get("evaluate_llm"), 
                         use_search_api=params.get("use_search_api"), 
                         llm_model=params.get("llm_model"), 
                         save_db=params.get("save_db"),
