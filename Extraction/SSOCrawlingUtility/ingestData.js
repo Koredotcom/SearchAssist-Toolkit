@@ -18,36 +18,76 @@ async function ingestData(data) {
         return;
     }
 
-    const config = {
-        url: `${ingestConfig.hostUrl}/searchassistapi/external/stream/${ingestConfig.streamId}/ingest?contentSource=manual&extractionType=data&index=true`,
-        method: 'POST',
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Auth': `${ingestConfig.authToken}`
-        },
-        timeout: ingestConfig.timeout,
-        validateStatus: status => status < 500,
-        data: {
-            "documents": [
-                {
-                    "title": data.title,
-                    "content": data.content,
-                    "url": data.url
-                }
-            ],
-            "name": ingestConfig.name
-        }
-    };
+    let config;
+    logger.info('Ingesting data of Title: ', data?.title);
+    if (ingestConfig.isUnifiedXO) {
+        // UXO API configuration
+        const uxoUrl = ingestConfig.apiUrls.uxo.replace('{streamId}', ingestConfig.streamId);
+        config = {
+            url: `${ingestConfig.hostUrl}${uxoUrl}`,
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Auth': `${ingestConfig.authToken}`
+            },
+            timeout: ingestConfig.timeout,
+            validateStatus: status => status < 500,
+            data: {
+                "sourceName": ingestConfig.name,
+                "sourceType": "json",
+                "documents": [
+                    {
+                        "title": data.title,
+                        "chunks": [
+                            {
+                                "chunkTitle": data.title,
+                                "chunkText": data.content,
+                                "recordUrl": data.url
+                            }
+                        ]
+                    }
+                ]
+            }
+        };
+    } else {
+        // SearchAssist API configuration
+        const searchAssistUrl = ingestConfig.apiUrls.searchAssist.replace('{streamId}', ingestConfig.streamId);
+        config = {
+            url: `${ingestConfig.hostUrl}${searchAssistUrl}`,
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Auth': `${ingestConfig.authToken}`
+            },
+            timeout: ingestConfig.timeout,
+            validateStatus: status => status < 500,
+            data: {
+                "documents": [
+                    {
+                        "title": data?.title,
+                        "content": data?.content,
+                        "url": data?.url
+                    }
+                ],
+                "name": ingestConfig.name
+            }
+        };
+    }
 
     try {
         const response = await axios.request(config);
+        logger.info(response.data);
         logger.info('Data ingested successfully', { 
-            status: response.status
+            status: response.status,
+            apiType: ingestConfig.isUnifiedXO ? 'UXO' : 'SearchAssist',
+            jobId: response?.data?.data?.jobId
         });
     } catch (error) {
         logger.error('Error ingesting data', {
-            error: error.response?.data || error.message
+            error: error.response?.data || error.message,
+            apiType: ingestConfig.isUnifiedXO ? 'UXO' : 'SearchAssist'
         });
     }
 }

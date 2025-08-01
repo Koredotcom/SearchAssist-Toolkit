@@ -57,7 +57,7 @@ const manualLogin = async (page, loginUrl) => {
     try {
         await delay(20000);
         await page.goto(loginUrl, { waitUntil: 'networkidle0' });
-        logger.info("Please complete the login manually in the browser.");
+        logger.info("Please complete the login manually in the browser, and then press Enter in this terminal after completing the login");
 
         // Wait for the user to press Enter after completing login
         await new Promise(resolve => {
