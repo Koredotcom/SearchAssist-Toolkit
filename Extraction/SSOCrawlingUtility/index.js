@@ -72,6 +72,7 @@ const manualLogin = async (page, loginUrl) => {
         fs.writeFileSync('cookies.json', JSON.stringify(cookies));
     } catch (error) {
         logger.error(`Error during manual login: ${error.message}`);
+        throw error;
     }
 };
 
