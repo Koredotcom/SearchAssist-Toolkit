@@ -86,9 +86,9 @@ The crawler is configured through `config/crawler.json`. Here's an example confi
 - **delay**: Delay between page visits (in milliseconds)
 - **outputDirectories**: Directory configuration for outputs
 - **ingest**: Search assist API configuration
-  - `isUnifiedXO`: Boolean flag to determine which API to use
-    - `true`: Uses UXO API with chunk-based data structure
-    - `false`: Uses SearchAssist API with document-based structure
+  - `isUnifiedXO`: Boolean flag to determine Searchassist or SearchAI
+    - `true`: For Xo11
+    - `false`: For Xo10
   - `hostUrl`: Base URL for the search assist API
   - `streamId`: Stream Id of the Application
   - `authToken`: Authentication token for API access
