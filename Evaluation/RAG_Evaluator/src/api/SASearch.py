@@ -102,8 +102,9 @@ import asyncio
 from asyncio import Semaphore
 
 class AsyncSearchAssistAPI:
-    def __init__(self):
-        config = ConfigManager().get_config()
+    def __init__(self, config=None):
+        if config is None:
+            config = ConfigManager().get_config()
         sa_config = config.get('SA', {})
         
         self.client_id = sa_config.get('client_id')

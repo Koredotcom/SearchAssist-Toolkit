@@ -99,8 +99,9 @@ import asyncio
 from asyncio import Semaphore
 
 class AsyncXOSearchAPI:
-    def __init__(self):
-        config = ConfigManager().get_config()
+    def __init__(self, config=None):
+        if config is None:
+            config = ConfigManager().get_config()
         uxo_config = config.get('UXO', {})
         
         self.client_id = uxo_config.get('client_id')

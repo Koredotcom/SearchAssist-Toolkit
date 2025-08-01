@@ -24,20 +24,38 @@ from typing import List, Dict, Tuple, Optional
 import time
 
 async def call_search_api_batch(queries: List[str], ground_truths: List[str], 
-                               batch_size: int = 10, max_concurrent: int = 5) -> List[Dict]:
+                               config: Dict, batch_size: int = 10, max_concurrent: int = 5) -> List[Dict]:
     """Process search API calls asynchronously in batches."""
-    config_manager = ConfigManager()
-    config = config_manager.get_config()
+    # Use the provided session-specific config instead of creating a new one
+    print(f"🔧 Using provided config for API calls with keys: {list(config.keys())}")
     
     # Initialize the appropriate async API with fallback handling
     api = None
     get_bot_response_async = None
     
-    if config.get('SA'):
+    # Check for valid (non-placeholder) API configurations
+    sa_config = config.get('SA', {})
+    uxo_config = config.get('UXO', {})
+    
+    # A config is valid if it has real values (not placeholders starting with '<')
+    def is_valid_api_config(api_conf):
+        if not isinstance(api_conf, dict):
+            return False
+        app_id = api_conf.get('app_id', '')
+        return app_id and not app_id.startswith('<') and app_id.strip() != ''
+    
+    sa_valid = is_valid_api_config(sa_config)
+    uxo_valid = is_valid_api_config(uxo_config)
+    
+    print(f"🔍 API Config Validation:")
+    print(f"   SA valid: {sa_valid} (app_id: {'***' if sa_valid else sa_config.get('app_id', 'Missing')})")
+    print(f"   UXO valid: {uxo_valid} (app_id: {'***' if uxo_valid else uxo_config.get('app_id', 'Missing')})")
+    
+    if sa_valid:
         print("🔄 Using SearchAssist (SA) API configuration...")
         try:
             from api.SASearch import AsyncSearchAssistAPI, get_bot_response_async
-            api = AsyncSearchAssistAPI()
+            api = AsyncSearchAssistAPI(config)
             print("✅ SearchAssist API initialized successfully")
         except ValueError as e:
             print(f"❌ SearchAssist configuration error: {e}")
@@ -47,14 +65,21 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
             print(f"❌ SearchAssist initialization failed: {e}")
             print("⚠️  Continuing with empty responses for all queries")
             api = None
-    elif config.get('UXO'):
+    elif uxo_valid:
         print("🔄 Using UXO API configuration...")
+        print(f"🔍 UXO Config Debug:")
+        for key, value in uxo_config.items():
+            if key in ['client_secret']:
+                print(f"   {key}: {'***' if value else 'EMPTY'}")
+            else:
+                print(f"   {key}: {value if value else 'EMPTY'}")
         try:
             from api.XOSearch import AsyncXOSearchAPI, get_bot_response_async
-            api = AsyncXOSearchAPI()
+            api = AsyncXOSearchAPI(config)
             print("✅ UXO API initialized successfully")
         except ValueError as e:
             print(f"❌ UXO configuration error: {e}")
+            print("💡 Required fields: client_id, client_secret, app_id, domain")
             print("⚠️  Continuing with empty responses for all queries")
             api = None
         except Exception as e:
@@ -63,6 +88,10 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
             api = None
     else:
         print("❌ No valid API configuration found (SA or UXO)")
+        print("💡 To use Search API, please configure API credentials in the UI:")
+        print("   - Select 'Use Search API' checkbox")
+        print("   - Choose API type (SearchAssist or XO Platform)")
+        print("   - Fill in App ID, Client ID, Client Secret, and Domain")
         print("⚠️  Continuing with empty responses for all queries")
         api = None
     
@@ -199,7 +228,7 @@ async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
         
         # Call search API with error handling
         try:
-            responses = await call_search_api_batch(queries, ground_truths, batch_size, max_concurrent)
+            responses = await call_search_api_batch(queries, ground_truths, config, batch_size, max_concurrent)
             
             processing_time = time.time() - start_time
             print(f"API processing completed in {processing_time:.2f} seconds")
@@ -297,10 +326,19 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
                 
                 if isinstance(ragas_eval_result, tuple) and len(ragas_eval_result) == 2:
                     results_df = ragas_eval_result[0]
-                    total_result = ragas_eval_result[1].__dict__ if hasattr(ragas_eval_result[1], '__dict__') else {}
+                    enhanced_result = ragas_eval_result[1]
+                    
+                    # Extract token usage information if available
+                    if isinstance(enhanced_result, dict) and 'token_usage' in enhanced_result:
+                        token_info = enhanced_result['token_usage']
+                        print(f"💰 Token usage captured: {token_info}")
+                    else:
+                        # Fallback to extract from result object if needed
+                        enhanced_result = enhanced_result.__dict__ if hasattr(enhanced_result, '__dict__') else {}
+                    
                     print(f"✅ RAGAS evaluation completed: {len(results_df)} rows")
                     print(f"✅ RAGAS columns returned: {list(results_df.columns)}")
-                    return results_df, total_result
+                    return results_df, enhanced_result
                 else:
                     print(f"⚠️ Unexpected RAGAS result format: {type(ragas_eval_result)}")
                     return pd.DataFrame(), {}
@@ -375,6 +413,36 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
         ragas_result = results[0] if not isinstance(results[0], Exception) else (pd.DataFrame(), {})
         crag_result = results[1] if not isinstance(results[1], Exception) else pd.DataFrame()
         llm_result = results[2] if not isinstance(results[2], Exception) else (pd.DataFrame(), {})
+        
+        # Extract token usage information from RAGAS and LLM results
+        total_token_usage = {}
+        
+        # Extract RAGAS token usage
+        if isinstance(ragas_result, tuple) and len(ragas_result) == 2:
+            ragas_df, ragas_metadata = ragas_result
+            if isinstance(ragas_metadata, dict) and 'token_usage' in ragas_metadata:
+                total_token_usage = ragas_metadata['token_usage'].copy()
+                print(f"💰 RAGAS token usage extracted: {total_token_usage}")
+        
+        # Extract and aggregate LLM token usage
+        if isinstance(llm_result, tuple) and len(llm_result) == 2:
+            llm_df, llm_metadata = llm_result
+            if isinstance(llm_metadata, dict) and 'token_usage' in llm_metadata:
+                llm_token_usage = llm_metadata['token_usage']
+                print(f"💰 LLM token usage extracted: {llm_token_usage}")
+                
+                # Aggregate with RAGAS token usage
+                if total_token_usage:
+                    # Add LLM tokens to RAGAS tokens
+                    total_token_usage['prompt_tokens'] += llm_token_usage.get('prompt_tokens', 0)
+                    total_token_usage['completion_tokens'] += llm_token_usage.get('completion_tokens', 0)
+                    total_token_usage['total_tokens'] += llm_token_usage.get('total_tokens', 0)
+                    total_token_usage['estimated_cost_usd'] += llm_token_usage.get('estimated_cost_usd', 0)
+                    print(f"💰 Combined RAGAS + LLM token usage: {total_token_usage}")
+                else:
+                    # Only LLM tokens available
+                    total_token_usage = llm_token_usage.copy()
+                    print(f"💰 Using LLM token usage only: {total_token_usage}")
         
         # Extract DataFrames and metrics
         if isinstance(ragas_result, tuple) and len(ragas_result) == 2:
@@ -550,10 +618,32 @@ async def process_single_sheet(input_file: str, sheet_name: str, config: Dict,
 async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = False,
              evaluate_crag: bool = False, evaluate_llm: bool = False, use_search_api: bool = False,
              llm_model: Optional[str] = None, save_db: bool = False,
-             batch_size: int = 10, max_concurrent: int = 5) -> str:
-    """Main run function for API usage."""
+             batch_size: int = 10, max_concurrent: int = 5, session_id: Optional[str] = None,
+             session_config_path: Optional[str] = None) -> str:
+    """Main run function for API usage with session-specific configuration support."""
+    total_token_usage = {}  # Initialize token usage tracking
     try:
-        config_manager = ConfigManager()
+        # Use session-specific config if provided, otherwise use default
+        if session_config_path and os.path.exists(session_config_path):
+            # Security validation: ensure config path is within session directory if session_id provided
+            if session_id:
+                if "session_" in session_config_path and session_id in session_config_path:
+                    config_manager = ConfigManager.create_session_config_manager(session_config_path)
+                    print(f"🔐 Using session-specific config for secure multi-user operation")
+                else:
+                    print(f"⚠️ Invalid session config path, falling back to default config")
+                    config_manager = ConfigManager()
+            else:
+                # No session ID but valid config path - use it anyway (legacy support)
+                config_manager = ConfigManager.create_session_config_manager(session_config_path)
+                print(f"🔧 Using provided config file (legacy mode): {session_config_path}")
+        else:
+            config_manager = ConfigManager()
+            if session_config_path:
+                print(f"⚠️ Session config path doesn't exist: {session_config_path}, using default config")
+            else:
+                print(f"🔧 No session config provided, using default minimal config")
+        
         config = config_manager.get_config()
 
         # Default to RAGAS evaluation if none specified
@@ -565,23 +655,74 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
         #     evaluate_llm = True
         #     print("🤖 LLM Evaluation automatically enabled alongside RAGAS/CRAG")
 
-        # Get sheet names
+        # Enhanced input file validation with debugging
+        print(f"🚀 Starting evaluation process...")
+        print(f"📄 Input file: {input_file}")
+        print(f"📋 Sheet selection: '{sheet_name}' (empty = all sheets)")
+        print(f"⚙️ Session ID: {session_id[:8] if session_id else 'None'}")
+        
+        print(f"🔍 Checking if input file exists: {input_file}")
+        if not os.path.exists(input_file):
+            print(f"❌ Input file NOT found: {input_file}")
+            # List files in the directory to help debug
+            input_dir = os.path.dirname(input_file)
+            if os.path.exists(input_dir):
+                print(f"📂 Files in directory {input_dir}:")
+                for file in os.listdir(input_dir):
+                    print(f"   - {file}")
+            else:
+                print(f"❌ Input directory doesn't exist: {input_dir}")
+            raise FileNotFoundError(f"Excel file not found: {input_file}")
+        else:
+            print(f"✅ Input file found: {input_file}")
+            print(f"✅ File size: {os.path.getsize(input_file)} bytes")
+
+        # Get sheet names based on user selection
         if sheet_name:
-            sheet_names = [sheet_name]
+            # Validate that the specified sheet exists in the file
+            try:
+                excel_file = pd.ExcelFile(input_file, engine='openpyxl')
+                available_sheets = excel_file.sheet_names
+                excel_file.close()
+                
+                if sheet_name not in available_sheets:
+                    raise ValueError(f"Specified sheet '{sheet_name}' not found in Excel file. Available sheets: {available_sheets}")
+                
+                sheet_names = [sheet_name]
+                print(f"📋 Processing SPECIFIC SHEET: '{sheet_name}' (validated)")
+            except Exception as e:
+                raise Exception(f"Error validating sheet name: {e}")
         else:
             try:
                 sheet_names = pd.ExcelFile(input_file, engine='openpyxl').sheet_names
+                print(f"📋 Processing ALL SHEETS: {sheet_names}")
             except Exception as e:
                 raise Exception(f"Error reading Excel file: {e}")
 
-        # Setup output file
+        # Setup output file with session-specific directory
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        output_dir = os.path.join(current_dir, "outputs")
+        
+        if session_id:
+            # Use session-specific directory
+            from utils.sessionManager import get_session_manager
+            session_manager = get_session_manager()
+            output_dir = session_manager.get_session_directory(session_id)
+            print(f"🔐 Using session-specific output directory: {output_dir}")
+        else:
+            # Fallback to general outputs directory for backward compatibility
+            output_dir = os.path.join(current_dir, "outputs")
+            print(f"⚠️ No session ID provided, using general output directory: {output_dir}")
+        
         os.makedirs(output_dir, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         base_filename = os.path.splitext(os.path.basename(input_file))[0]
-        output_filename = f"{base_filename}_evaluation_output_{timestamp}.xlsx"
+        
+        if session_id:
+            output_filename = f"{base_filename}_evaluation_output_{session_id[:8]}_{timestamp}.xlsx"
+        else:
+            output_filename = f"{base_filename}_evaluation_output_{timestamp}.xlsx"
+            
         output_file_path = os.path.join(output_dir, output_filename)
 
         if use_search_api:
@@ -673,6 +814,11 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
                 })
                 summary_df.to_excel(writer, sheet_name="Processing_Summary", index=False)
 
+        # Add output file to session manager if session_id provided
+        if session_id and os.path.exists(output_file_path):
+            session_manager.add_output_file(session_id, output_file_path)
+            print(f"📂 Output file registered with session {session_id[:8]}...")
+        
         # Generate summary
         if successful_sheets == 0:
             return f"⚠️ No sheets processed successfully. Check the output file for error details: {output_file_path}"
@@ -683,6 +829,12 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
         success_message += f"\n⚡ Processing time: {parallel_processing_time:.2f} seconds (parallel execution)"
         success_message += f"\n📁 Output file: {output_file_path}"
         success_message += f"\n📊 File size: {os.path.getsize(output_file_path):,} bytes"
+        
+        # Include token usage information if available (captured from RAGAS evaluation)
+        if total_token_usage and 'total_tokens' in total_token_usage:
+            success_message += f"\n💰 Total Tokens for Evaluation: Input={total_token_usage.get('prompt_tokens', 0)} Output={total_token_usage.get('completion_tokens', 0)}"
+            if 'estimated_cost_usd' in total_token_usage:
+                success_message += f"\n💰 Total Cost in $: {total_token_usage['estimated_cost_usd']}"
         
         return success_message
 

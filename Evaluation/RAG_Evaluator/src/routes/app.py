@@ -1,12 +1,13 @@
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from services.run_eval import runeval
 from services.mailService import mailService
+from utils.sessionManager import get_session_manager, create_user_session, validate_session, get_session_latest_file, add_session_file
 import pandas as pd
 import tempfile
 import json
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app with metadata
 app = FastAPI(
     title="RAG Evaluator API",
-    description="Advanced RAG System Performance Evaluation with RAGAS & CRAG Metrics",
+    description="Advanced RAG System Performance Evaluation",
     version="2.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc"
@@ -46,6 +47,9 @@ class Body(BaseModel):
     excel_file: str
     config_file: str
     params: Params
+
+class SessionRequest(BaseModel):
+    client_info: Optional[dict] = None
 
 
 # UI Routes
@@ -73,21 +77,29 @@ async def serve_ui():
 @app.post('/api/get-sheet-names')
 async def get_sheet_names(file: UploadFile = File(...)):
     """Extract sheet names from uploaded Excel file"""
+    logger.info(f"📄 Received request to extract sheet names from file: {file.filename}")
+    
     try:
         # Validate file type
         if not file.filename.endswith(('.xlsx', '.xls')):
+            logger.warning(f"❌ Invalid file type: {file.filename}")
             raise HTTPException(status_code=400, detail="Invalid file type. Please upload an Excel file.")
+        
+        logger.info(f"✅ File type validation passed for: {file.filename}")
         
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
             content = await file.read()
             tmp_file.write(content)
             tmp_file_path = tmp_file.name
+            logger.info(f"💾 Saved temporary file: {tmp_file_path} (size: {len(content)} bytes)")
         
         try:
             # Read Excel file and get sheet names with row counts
+            logger.info(f"📖 Reading Excel file with pandas...")
             excel_file = pd.ExcelFile(tmp_file_path, engine='openpyxl')
             sheet_names = excel_file.sheet_names
+            logger.info(f"📋 Found sheets: {sheet_names}")
             
             # Get row counts for each sheet
             row_counts = {}
@@ -95,6 +107,7 @@ async def get_sheet_names(file: UploadFile = File(...)):
             
             for sheet_name in sheet_names:
                 try:
+                    logger.info(f"📊 Analyzing sheet: '{sheet_name}'")
                     # Read Excel sheet to get row count
                     df = pd.read_excel(tmp_file_path, sheet_name=sheet_name, nrows=None)
                     # Filter out empty rows
@@ -111,31 +124,80 @@ async def get_sheet_names(file: UploadFile = File(...)):
             
             logger.info(f"📈 Total rows across all sheets: {total_rows}")
             
-            return JSONResponse(content={
+            response_data = {
                 "status": "success",
                 "sheet_names": sheet_names,
                 "total_sheets": len(sheet_names),
                 "row_counts": row_counts,
                 "total_rows": total_rows
-            })
+            }
+            
+            logger.info(f"✅ Returning response: {response_data}")
+            return JSONResponse(content=response_data)
         
         finally:
             # Clean up temporary file
             if os.path.exists(tmp_file_path):
                 os.unlink(tmp_file_path)
+                logger.info(f"🗑️ Cleaned up temporary file: {tmp_file_path}")
     
     except Exception as e:
-        logger.error(f"Error extracting sheet names: {e}")
+        logger.error(f"❌ Error extracting sheet names: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to extract sheet names: {str(e)}")
+
+
+@app.post('/api/create-session')
+async def create_session(request: Request):
+    """Create a new user session for file isolation"""
+    try:
+        session_manager = get_session_manager()
+        session_id = session_manager.create_session()
+        
+        # Get client info for tracking
+        client_ip = request.client.host if request.client else "unknown"
+        user_agent = request.headers.get("user-agent", "unknown")
+        
+        # Update session with client info
+        session_manager.update_session_metadata(session_id, client_ip, user_agent)
+        
+        logger.info(f"Created new session {session_id} for client {client_ip}")
+        
+        return JSONResponse(content={
+            "status": "success",
+            "session_id": session_id,
+            "message": "Session created successfully"
+        })
+    
+    except Exception as e:
+        logger.error(f"Error creating session: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")
+
 
 
 @app.post('/api/runeval')
 async def run_evaluation_ui(
     excel_file: UploadFile = File(...),
-    config: str = Form(...)
+    config: str = Form(...),
+    session_id: str = Form(None)
 ):
     """Run evaluation from UI with file upload"""
     try:
+        logger.info(f"🔍 Received runeval request:")
+        logger.info(f"   📄 File: {excel_file.filename if excel_file else 'None'}")
+        logger.info(f"   🔐 Session ID: {session_id if session_id else 'None'}")
+        logger.info(f"   ⚙️ Config length: {len(config) if config else 0}")
+        
+        # Handle session - create one if not provided (for backward compatibility)
+        session_manager = get_session_manager()
+        if not session_id:
+            logger.info("⚠️ No session ID provided, creating new session")
+            session_id = session_manager.create_session()
+        elif not validate_session(session_id):
+            logger.error(f"❌ Invalid session ID: {session_id}, creating new session")
+            session_id = session_manager.create_session()
+        
+        logger.info(f"✅ Starting evaluation for session: {session_id}")
+        
         # Parse config JSON
         try:
             config_data = json.loads(config)
@@ -152,11 +214,14 @@ async def run_evaluation_ui(
         if not excel_file.filename.endswith(('.xlsx', '.xls')):
             raise HTTPException(status_code=400, detail="Invalid file type. Please upload an Excel file.")
         
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+        # Save uploaded file to session-specific directory
+        session_dir = session_manager.get_session_directory(session_id)
+        input_filename = f"input_{session_id}_{excel_file.filename}"
+        excel_file_path = os.path.join(session_dir, input_filename)
+        
+        with open(excel_file_path, 'wb') as f:
             content = await excel_file.read()
-            tmp_file.write(content)
-            excel_file_path = tmp_file.name
+            f.write(content)
         
         # Create temporary config file
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as tmp_config:
@@ -177,6 +242,7 @@ async def run_evaluation_ui(
             if config_data.get('api_config') and config_data.get('use_search_api'):
                 api_config = config_data['api_config']
                 api_type = api_config.get('type', '')
+                logger.info(f"🔧 Adding {api_type} API configuration to dynamic config")
                 
                 if api_type == 'SA':
                     dynamic_config["SA"] = {
@@ -185,6 +251,7 @@ async def run_evaluation_ui(
                         "client_secret": api_config.get('client_secret', ''),
                         "domain": api_config.get('domain', '')
                     }
+                    logger.info(f"✅ SA config added with app_id: {'***' if dynamic_config['SA']['app_id'] else 'Empty'}")
                 elif api_type == 'UXO':
                     dynamic_config["UXO"] = {
                         "app_id": api_config.get('app_id', ''),
@@ -192,6 +259,9 @@ async def run_evaluation_ui(
                         "client_secret": api_config.get('client_secret', ''),
                         "domain": api_config.get('domain', '')
                     }
+                    logger.info(f"✅ UXO config added with app_id: {'***' if dynamic_config['UXO']['app_id'] else 'Empty'}")
+            elif config_data.get('use_search_api'):
+                logger.warning("⚠️ Use Search API enabled but no API config provided!")
             
             # Add OpenAI configuration if provided
             if config_data.get('openai_config'):
@@ -265,12 +335,12 @@ async def run_evaluation_ui(
             config_file_path = tmp_config.name
         
         try:
-            # Call the evaluation service
-            result = await runeval(excel_file_path, config_file_path, config_data)
+            # Call the evaluation service with session-aware output handling
+            result = await runeval(excel_file_path, config_file_path, config_data, session_id)
             logger.info(f"🔄 Evaluation service result: {type(result)}")
             
-            # Try to get actual result statistics from the output file
-            outputs_dir = os.path.join(os.path.dirname(__file__), "../outputs")
+            # Try to get actual result statistics from the session's output directory
+            session_outputs_dir = session_manager.get_session_directory(session_id)
             actual_metrics = {}
             processing_stats = {}
             detailed_results = []
@@ -306,17 +376,20 @@ async def run_evaluation_ui(
             logger.info(f"🔍 Token usage from result: {token_usage_from_result}")
             
             try:
-                logger.info(f"🔍 Looking for Excel files in: {outputs_dir}")
+                logger.info(f"🔍 Looking for Excel files in session directory: {session_outputs_dir}")
                 
-                # Find the most recent results file
-                if os.path.exists(outputs_dir):
-                    result_files = [f for f in os.listdir(outputs_dir) if f.endswith('.xlsx')]
-                    logger.info(f"📁 Found Excel files: {result_files}")
+                # Find the session's output files (evaluation results contain "evaluation_output" in filename)
+                if os.path.exists(session_outputs_dir):
+                    result_files = [f for f in os.listdir(session_outputs_dir) if f.endswith('.xlsx') and 'evaluation_output' in f]
+                    logger.info(f"📁 Found evaluation output files for session {session_id}: {result_files}")
                     
                     if result_files:
                         # Sort by modification time to get the most recent
-                        latest_file = max(result_files, key=lambda f: os.path.getmtime(os.path.join(outputs_dir, f)))
-                        file_path = os.path.join(outputs_dir, latest_file)
+                        latest_file = max(result_files, key=lambda f: os.path.getmtime(os.path.join(session_outputs_dir, f)))
+                        file_path = os.path.join(session_outputs_dir, latest_file)
+                        
+                        # Register the output file with the session
+                        add_session_file(session_id, file_path)
                         
                         logger.info(f"📊 Reading latest file: {latest_file}")
                         
@@ -326,14 +399,19 @@ async def run_evaluation_ui(
                             sheet_names = excel_file.sheet_names
                             logger.info(f"📋 Available sheets: {sheet_names}")
                             
-                            df = None
+                            all_sheets_data = []
                             metrics_found = False
                             
-                            # Try each sheet to find RAGAS metrics
+                            # Extract data from ALL sheets for multi-sheet view
                             for sheet_idx, sheet_name in enumerate(sheet_names):
                                 try:
                                     current_df = pd.read_excel(file_path, sheet_name=sheet_name)
                                     logger.info(f"📄 Sheet '{sheet_name}' columns: {list(current_df.columns)}")
+                                    
+                                    # Skip error/empty sheets
+                                    if '_error' in sheet_name or '_empty' in sheet_name:
+                                        logger.info(f"⏭️ Skipping error/empty sheet: {sheet_name}")
+                                        continue
                                     
                                     # Check if this sheet has evaluation metrics (RAGAS, CRAG, or LLM)
                                     ragas_columns = [
@@ -354,17 +432,35 @@ async def run_evaluation_ui(
                                     
                                     all_metrics = ragas_metrics + crag_metrics + llm_metrics
                                     
-                                    if all_metrics:
-                                        logger.info(f"✅ Found evaluation metrics in sheet '{sheet_name}': {all_metrics}")
-                                        df = current_df
-                                        metrics_found = True
-                                        break
-                                    else:
-                                        logger.info(f"ℹ️ No evaluation metrics found in sheet '{sheet_name}'")
+                                    if all_metrics or not current_df.empty:
+                                        sheet_info = {
+                                            'sheet_name': sheet_name,
+                                            'data': current_df,
+                                            'metrics': all_metrics,
+                                            'has_metrics': bool(all_metrics)
+                                        }
+                                        all_sheets_data.append(sheet_info)
+                                        
+                                        if all_metrics:
+                                            logger.info(f"✅ Found evaluation metrics in sheet '{sheet_name}': {all_metrics}")
+                                            metrics_found = True
+                                        else:
+                                            logger.info(f"ℹ️ Sheet '{sheet_name}' has data but no evaluation metrics")
                                         
                                 except Exception as sheet_error:
                                     logger.warning(f"⚠️ Error reading sheet '{sheet_name}': {sheet_error}")
                                     continue
+                            
+                            # Use first sheet with metrics as primary df for backward compatibility
+                            df = None
+                            for sheet_info in all_sheets_data:
+                                if sheet_info['has_metrics']:
+                                    df = sheet_info['data']
+                                    break
+                            
+                            # If no metrics found, use the first sheet
+                            if df is None and all_sheets_data:
+                                df = all_sheets_data[0]['data']
                             
                             # If no metrics found in any sheet, use the first sheet for basic stats
                             if not metrics_found and sheet_names:
@@ -497,51 +593,150 @@ async def run_evaluation_ui(
                                     processing_stats.update(final_token_usage)
                                     logger.info(f"✅ Final token usage: {final_token_usage}")
                                 
-                                # Calculate estimated cost if not already available
-                                if 'estimated_cost_usd' not in final_token_usage and 'total_tokens' in final_token_usage:
-                                    total_tokens = final_token_usage['total_tokens']
-                                    if total_tokens > 0:
-                                        estimated_cost = (total_tokens / 1000) * 0.03
-                                        processing_stats['estimated_cost_usd'] = round(estimated_cost, 4)
-                                        logger.info(f"💰 Calculated estimated cost: ${estimated_cost:.4f}")
+                                # Calculate estimated cost if not already available using real model pricing
+                                if 'estimated_cost_usd' not in final_token_usage and 'prompt_tokens' in final_token_usage and 'completion_tokens' in final_token_usage:
+                                    prompt_tokens = final_token_usage['prompt_tokens']
+                                    completion_tokens = final_token_usage['completion_tokens']
+                                    
+                                    if prompt_tokens > 0 and completion_tokens > 0:
+                                        # Get model from config or use default
+                                        model_name = config_data.get('llm_model', 'gpt-3.5-turbo').lower()
+                                        
+                                        # Define real pricing for different models (per 1K tokens)
+                                        model_pricing = {
+                                            'gpt-4': {'input': 0.03, 'output': 0.06},
+                                            'gpt-4-turbo': {'input': 0.01, 'output': 0.03},
+                                            'gpt-4o': {'input': 0.005, 'output': 0.015},
+                                            'gpt-4o-mini': {'input': 0.00015, 'output': 0.0006},
+                                            'gpt-3.5-turbo': {'input': 0.0005, 'output': 0.0015},
+                                            'claude-3-opus': {'input': 0.015, 'output': 0.075},
+                                            'claude-3-sonnet': {'input': 0.003, 'output': 0.015},
+                                            'claude-3-haiku': {'input': 0.00025, 'output': 0.00125},
+                                            'claude-3.5-sonnet': {'input': 0.003, 'output': 0.015}
+                                        }
+                                        
+                                        # Find matching model pricing (handle partial matches)
+                                        pricing = None
+                                        for model_key, model_prices in model_pricing.items():
+                                            if model_key in model_name or model_name in model_key:
+                                                pricing = model_prices
+                                                break
+                                        
+                                        # Default to GPT-3.5-turbo pricing if model not found
+                                        if not pricing:
+                                            logger.warning(f"⚠️ Unknown model '{model_name}', using GPT-3.5-turbo pricing")
+                                            pricing = model_pricing['gpt-3.5-turbo']
+                                        
+                                        # Calculate cost based on actual input/output token usage
+                                        input_cost = (prompt_tokens / 1000) * pricing['input']
+                                        output_cost = (completion_tokens / 1000) * pricing['output']
+                                        estimated_cost = input_cost + output_cost
+                                        
+                                        processing_stats['estimated_cost_usd'] = round(estimated_cost, 6)
+                                        logger.info(f"💰 Calculated cost for {model_name}: Input=${input_cost:.6f}, Output=${output_cost:.6f}, Total=${estimated_cost:.6f}")
                                 elif 'estimated_cost_usd' in final_token_usage:
                                     logger.info(f"💰 Using extracted cost: ${final_token_usage['estimated_cost_usd']:.4f}")
                                 
-                                # Extract detailed results for View Details table
+                                # Extract detailed results from ALL sheets for View Details table
                                 detailed_results = []
-                                if df is not None and not df.empty:
-                                    logger.info("📋 Extracting detailed results for table display...")
-                                    
-                                    # Select relevant columns for the detailed view
-                                    display_columns = ['query', 'answer', 'ground_truth'] if all(col in df.columns for col in ['query', 'answer', 'ground_truth']) else []
-                                    display_columns.extend([col for col in df.columns if col not in display_columns])
-                                    
-                                    # Limit to first 100 rows for performance and take only relevant columns
-                                    sample_df = df[display_columns].head(100) if display_columns else df.head(100)
-                                    
-                                    for idx, row in sample_df.iterrows():
-                                        row_data = {}
-                                        for col in sample_df.columns:
-                                            value = row[col]
-                                            # Convert to string and handle various data types
-                                            if pd.isna(value):
-                                                row_data[col] = "N/A"
-                                            elif isinstance(value, (int, float)):
-                                                if col.lower() in ['response relevancy', 'faithfulness', 'context recall', 
-                                                                   'context precision', 'answer correctness', 'answer similarity',
-                                                                   'answer_relevancy', 'faithfulness', 'context_recall', 
-                                                                   'context_precision', 'answer_correctness', 'answer_similarity']:
-                                                    row_data[col] = f"{float(value):.4f}" if not pd.isna(value) else "N/A"
-                                                else:
-                                                    row_data[col] = str(value)
-                                            elif isinstance(value, list):
-                                                row_data[col] = str(value)[:100] + "..." if len(str(value)) > 100 else str(value)
-                                            else:
-                                                # Truncate long strings for display
-                                                str_value = str(value)
-                                                row_data[col] = str_value[:200] + "..." if len(str_value) > 200 else str_value
+                                
+                                # Function to process a single sheet's data
+                                def process_sheet_data(sheet_df, sheet_name, limit=100):
+                                    sheet_results = []
+                                    if sheet_df is not None and not sheet_df.empty:
+                                        # Filter columns based on evaluation configuration
+                                        base_columns = ['query', 'answer', 'ground_truth']
                                         
-                                        detailed_results.append(row_data)
+                                        # Define metric columns for each evaluation type
+                                        ragas_columns = [col for col in sheet_df.columns if col.lower() in [
+                                            'response relevancy', 'faithfulness', 'context recall', 'context precision', 
+                                            'answer correctness', 'answer similarity', 'answer_relevancy', 'faithfulness', 
+                                            'context_recall', 'context_precision', 'answer_correctness', 'answer_similarity'
+                                        ]]
+                                        
+                                        llm_columns = [col for col in sheet_df.columns if col.lower().startswith('llm') and 
+                                                      any(metric in col.lower() for metric in ['relevancy', 'correctness', 'relevance'])]
+                                        
+                                        crag_columns = [col for col in sheet_df.columns if col.lower().startswith('crag') or 
+                                                       'accuracy' in col.lower()]
+                                        
+                                        # Select columns based on evaluation configuration
+                                        display_columns = [col for col in base_columns if col in sheet_df.columns]
+                                        
+                                        if config_data.get('evaluate_ragas', False):
+                                            display_columns.extend(ragas_columns)
+                                            logger.info(f"📊 Including RAGAS columns: {ragas_columns}")
+                                        
+                                        if config_data.get('evaluate_llm', False):
+                                            display_columns.extend(llm_columns)
+                                            logger.info(f"🤖 Including LLM columns: {llm_columns}")
+                                        
+                                        if config_data.get('evaluate_crag', False):
+                                            display_columns.extend(crag_columns)
+                                            logger.info(f"🎯 Including CRAG columns: {crag_columns}")
+                                        
+                                        # If no evaluation methods specified, include all available metric columns
+                                        if not any([config_data.get('evaluate_ragas'), config_data.get('evaluate_llm'), config_data.get('evaluate_crag')]):
+                                            logger.info("⚠️ No evaluation methods specified, including all available columns")
+                                            display_columns.extend([col for col in sheet_df.columns if col not in display_columns])
+                                        else:
+                                            # Add any remaining important columns that aren't metrics
+                                            other_important_cols = [col for col in sheet_df.columns if 
+                                                                  col not in display_columns and 
+                                                                  col.lower() not in ['response relevancy', 'faithfulness', 'context recall', 'context precision', 'answer correctness', 'answer similarity'] and
+                                                                  not col.lower().startswith('llm') and 
+                                                                  not col.lower().startswith('crag') and
+                                                                  'accuracy' not in col.lower()]
+                                            display_columns.extend(other_important_cols)
+                                        
+                                        logger.info(f"📋 Final display columns for {sheet_name}: {display_columns}")
+                                        
+                                        # Limit rows for performance and take only relevant columns
+                                        sample_df = sheet_df[display_columns].head(limit) if display_columns else sheet_df.head(limit)
+                                        
+                                        for idx, row in sample_df.iterrows():
+                                            row_data = {'_sheet_name': sheet_name}  # Add sheet identifier
+                                            for col in sample_df.columns:
+                                                value = row[col]
+                                                # Convert to string and handle various data types
+                                                if pd.isna(value):
+                                                    row_data[col] = "N/A"
+                                                elif isinstance(value, (int, float)):
+                                                    # Check if this is an evaluation metric column (more comprehensive detection)
+                                                    col_lower = col.lower()
+                                                    is_metric_column = any(metric in col_lower for metric in [
+                                                        'relevancy', 'faithfulness', 'recall', 'precision', 'correctness', 
+                                                        'similarity', 'accuracy', 'llm', 'ragas', 'crag'
+                                                    ])
+                                                    
+                                                    if is_metric_column:
+                                                        # Preserve original numeric value without formatting to avoid precision loss
+                                                        if not pd.isna(value) and value is not None:
+                                                            row_data[col] = float(value)
+                                                        else:
+                                                            row_data[col] = None
+                                                    else:
+                                                        row_data[col] = str(value)
+                                                elif isinstance(value, list):
+                                                    row_data[col] = str(value)[:100] + "..." if len(str(value)) > 100 else str(value)
+                                                else:
+                                                    # Truncate long strings for display
+                                                    str_value = str(value)
+                                                    row_data[col] = str_value[:200] + "..." if len(str_value) > 200 else str_value
+                                            
+                                            sheet_results.append(row_data)
+                                    return sheet_results
+                                
+                                # Process all sheets or fallback to single sheet
+                                if 'all_sheets_data' in locals() and all_sheets_data:
+                                    logger.info(f"📋 Extracting detailed results from {len(all_sheets_data)} sheets...")
+                                    for sheet_info in all_sheets_data:
+                                        sheet_results = process_sheet_data(sheet_info['data'], sheet_info['sheet_name'], 50)  # Limit per sheet
+                                        detailed_results.extend(sheet_results)
+                                        logger.info(f"📄 Added {len(sheet_results)} results from sheet '{sheet_info['sheet_name']}'")
+                                elif df is not None and not df.empty:
+                                    logger.info("📋 Extracting detailed results from single sheet...")
+                                    detailed_results = process_sheet_data(df, "Sheet1", 100)
                                     
                                     logger.info(f"✅ Extracted {len(detailed_results)} detailed result rows")
                                 
@@ -568,7 +763,7 @@ async def run_evaluation_ui(
                     else:
                         logger.warning("⚠️ No Excel files found in outputs directory")
                 else:
-                    logger.warning(f"⚠️ Outputs directory does not exist: {outputs_dir}")
+                    logger.warning(f"⚠️ Session outputs directory does not exist: {session_outputs_dir}")
                 
             except Exception as e:
                 logger.error(f"❌ Error in metric extraction: {str(e)}")
@@ -576,30 +771,20 @@ async def run_evaluation_ui(
                 logger.error(f"❌ Full traceback: {traceback.format_exc()}")
                 # Continue with empty metrics
             
-            # If no actual metrics found, use mock data
+            # If no actual metrics found, log warning but don't use mock data
             if not actual_metrics:
-                logger.warning("⚠️ No actual metrics extracted, using fallback metrics")
-                actual_metrics = {
-                    "Response Relevancy": 0.85,
-                    "Faithfulness": 0.78,
-                    "Context Recall": 0.82,
-                    "Context Precision": 0.75,
-                    "Answer Correctness": 0.80,
-                    "Answer Similarity": 0.88,
-                    "LLM Answer Relevancy": 0.83,
-                    "LLM Context Relevancy": 0.79,
-                    "LLM Answer Correctness": 0.81
-                }
+                logger.warning("⚠️ No actual metrics extracted from evaluation results")
+                actual_metrics = {}  # Return empty dict instead of fake data
             
-            # Ensure processing_stats has basic structure
+            # Ensure processing_stats has basic structure with real data only
             if not processing_stats:
-                logger.warning("⚠️ No processing stats extracted, using fallback data")
-                estimated_queries = config_data.get('estimated_queries', 100)
+                logger.warning("⚠️ No processing stats extracted from evaluation results")
+                # Initialize with minimal structure - frontend will handle missing data gracefully
                 processing_stats = {
-                    'total_processed': estimated_queries,
-                    'successful_queries': int(estimated_queries * 0.9),
-                    'success_rate': 90.0,
-                    'failed_queries': int(estimated_queries * 0.1)
+                    'total_processed': 0,
+                    'successful_queries': 0,
+                    'success_rate': 0.0,
+                    'failed_queries': 0
                 }
             
             # Add token usage from result if we have it but processing_stats doesn't
@@ -607,15 +792,9 @@ async def run_evaluation_ui(
                 logger.info("🔄 Adding token usage from result to processing stats")
                 processing_stats.update(token_usage_from_result)
             
-            # Fallback token data if nothing was extracted
+            # Don't add fake token data - let frontend handle missing data appropriately
             if 'total_tokens' not in processing_stats:
-                logger.warning("⚠️ No token usage data found, using fallback values")
-                processing_stats.update({
-                    'total_tokens': 50000,
-                    'prompt_tokens': 30000,
-                    'completion_tokens': 20000,
-                    'estimated_cost_usd': 1.50
-                })
+                logger.info("ℹ️ No token usage data available - frontend will handle gracefully")
             
             logger.info(f"🎯 Final processing stats being sent to frontend: {processing_stats}")
             
@@ -640,15 +819,14 @@ async def run_evaluation_ui(
                     "peak_memory_usage": "512MB",
                     "processing_efficiency": "94%"
                 },
-                "download_url": "/api/download-results/latest"
+                "download_url": f"/api/download-results/{session_id}",
+                "session_id": session_id
             }
             
             return JSONResponse(content=ui_result)
         
         finally:
-            # Clean up temporary files
-            if os.path.exists(excel_file_path):
-                os.unlink(excel_file_path)
+            # Clean up temporary config file (keep excel file in session directory)
             if os.path.exists(config_file_path):
                 os.unlink(config_file_path)
     
@@ -659,37 +837,81 @@ async def run_evaluation_ui(
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
 
 
-@app.get('/api/download-results/{result_id}')
-async def download_results(result_id: str):
-    """Download evaluation results"""
+@app.get('/api/download-results/{session_id}')
+async def download_results(session_id: str):
+    """Download evaluation results for a specific session"""
     try:
-        # In a real implementation, this would fetch the actual results file
-        # For now, return a placeholder response
-        outputs_dir = os.path.join(os.path.dirname(__file__), "../outputs")
+        # Validate session
+        session_manager = get_session_manager()
+        if not validate_session(session_id):
+            raise HTTPException(status_code=404, detail="Invalid or expired session")
         
-        if not os.path.exists(outputs_dir):
-            raise HTTPException(status_code=404, detail="Results not found")
-        
-        # Find the most recent results file
-        result_files = [f for f in os.listdir(outputs_dir) if f.endswith('.xlsx')]
-        if not result_files:
+        # Get the latest file for this session
+        file_path = get_session_latest_file(session_id)
+        if not file_path or not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="No results available for download")
         
-        # Return the most recent file by modification time, not alphabetical order
-        latest_file = max(result_files, key=lambda f: os.path.getmtime(os.path.join(outputs_dir, f)))
-        file_path = os.path.join(outputs_dir, latest_file)
+        # Extract filename for download
+        filename = os.path.basename(file_path)
+        
+        logger.info(f"Downloading results for session {session_id}: {filename}")
         
         return FileResponse(
             path=file_path,
-            filename=latest_file,
+            filename=filename,
             media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
     
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error downloading results: {e}")
+        logger.error(f"Error downloading results for session {session_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
+
+
+@app.get('/api/session-status/{session_id}')
+async def get_session_status(session_id: str):
+    """Get status information for a session"""
+    try:
+        session_manager = get_session_manager()
+        if not validate_session(session_id):
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        session_files = session_manager.get_session_files(session_id)
+        session_dir = session_manager.get_session_directory(session_id)
+        
+        return JSONResponse(content={
+            "status": "success",
+            "session_id": session_id,
+            "is_valid": True,
+            "output_files": len(session_files),
+            "session_directory": session_dir,
+            "files": session_files
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting session status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get session status: {str(e)}")
+
+
+@app.post('/api/cleanup-old-sessions')
+async def cleanup_old_sessions(max_age_hours: int = 24):
+    """Clean up old sessions (admin endpoint)"""
+    try:
+        session_manager = get_session_manager()
+        cleaned_count = session_manager.cleanup_old_sessions(max_age_hours)
+        
+        return JSONResponse(content={
+            "status": "success",
+            "cleaned_sessions": cleaned_count,
+            "message": f"Cleaned up {cleaned_count} sessions older than {max_age_hours} hours"
+        })
+    
+    except Exception as e:
+        logger.error(f"Error cleaning up sessions: {e}")
+        raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
 
 
 # Legacy API Routes (keep for backward compatibility)

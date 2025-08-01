@@ -330,7 +330,7 @@ class LLMEvaluator(BaseEvaluator):
         ]
     
     async def call_openai_api(self, session: aiohttp.ClientSession, messages: List[Dict[str, str]]) -> Optional[Dict[str, Any]]:
-        """Make an API call to OpenAI/Azure OpenAI"""
+        """Make an API call to OpenAI/Azure OpenAI and capture token usage"""
         try:
             payload = {
                 "messages": messages,
@@ -350,13 +350,27 @@ class LLMEvaluator(BaseEvaluator):
                     result = await response.json()
                     content = result.get('choices', [{}])[0].get('message', {}).get('content', '{}')
                     
+                    # Extract token usage information
+                    usage = result.get('usage', {})
+                    token_usage = {
+                        'prompt_tokens': usage.get('prompt_tokens', 0),
+                        'completion_tokens': usage.get('completion_tokens', 0),
+                        'total_tokens': usage.get('total_tokens', 0)
+                    }
+                    
                     # Parse the JSON response
                     try:
                         evaluation = json.loads(content)
+                        # Include token usage in the response
+                        evaluation['token_usage'] = token_usage
                         return evaluation
                     except json.JSONDecodeError:
                         logger.error(f"Failed to parse JSON response: {content}")
-                        return {"score": 3, "justification": "Failed to parse LLM response"}
+                        return {
+                            "score": 3, 
+                            "justification": "Failed to parse LLM response",
+                            "token_usage": token_usage
+                        }
                 else:
                     error_text = await response.text()
                     logger.error(f"API request failed with status {response.status}: {error_text}")
@@ -427,9 +441,16 @@ class LLMEvaluator(BaseEvaluator):
             return {'score': 0.5, 'justification': f'Error during evaluation: {str(e)}'}
     
     async def evaluate_batch(self, session: aiohttp.ClientSession, data_batch: List[Dict[str, Any]], 
-                           batch_size: int = 5) -> List[Dict[str, Any]]:
+                           batch_size: int = 5) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Evaluate a batch of data using LLM metrics with concurrent processing"""
         logger.info(f"🤖 Starting LLM evaluation for batch of {len(data_batch)} items")
+        
+        # Initialize token usage tracking
+        total_token_usage = {
+            'prompt_tokens': 0,
+            'completion_tokens': 0,
+            'total_tokens': 0
+        }
         
         # Process items in smaller concurrent batches for better performance
         semaphore = asyncio.Semaphore(batch_size)
@@ -445,8 +466,13 @@ class LLMEvaluator(BaseEvaluator):
                     # Convert context to string if it's a list
                     context_str = ' '.join(context) if isinstance(context, list) else str(context)
                     
-                    # Initialize result
-                    result = {}
+                    # Initialize result with core input data to ensure it's always present in output
+                    result = {
+                        'query': query,
+                        'answer': answer,
+                        'ground_truth': ground_truth,
+                        'context': context_str
+                    }
                     
                     # Evaluate each metric concurrently
                     tasks = []
@@ -469,12 +495,32 @@ class LLMEvaluator(BaseEvaluator):
                     # Execute all evaluations concurrently for this item
                     evaluation_results = await asyncio.gather(*tasks, return_exceptions=True)
                     
-                    # Handle results and extract scores and justifications
-                    default_result = {'score': 0.5, 'justification': 'Error during evaluation'}
+                    # Handle results and extract scores, justifications, and token usage
+                    default_result = {'score': 0.5, 'justification': 'Error during evaluation', 'token_usage': {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}}
                     
                     answer_relevancy_result = evaluation_results[0] if not isinstance(evaluation_results[0], Exception) else default_result
                     context_relevancy_result = evaluation_results[1] if not isinstance(evaluation_results[1], Exception) else default_result
                     answer_correctness_result = evaluation_results[2] if not isinstance(evaluation_results[2], Exception) else default_result
+                    
+                    # Aggregate token usage from all evaluations for this item
+                    item_token_usage = {
+                        'prompt_tokens': 0,
+                        'completion_tokens': 0,
+                        'total_tokens': 0
+                    }
+                    
+                    for eval_result in [answer_relevancy_result, context_relevancy_result, answer_correctness_result]:
+                        if 'token_usage' in eval_result:
+                            token_data = eval_result['token_usage']
+                            item_token_usage['prompt_tokens'] += token_data.get('prompt_tokens', 0)
+                            item_token_usage['completion_tokens'] += token_data.get('completion_tokens', 0)
+                            item_token_usage['total_tokens'] += token_data.get('total_tokens', 0)
+                    
+                    # Add to global token usage tracking (thread-safe update needed)
+                    nonlocal total_token_usage
+                    total_token_usage['prompt_tokens'] += item_token_usage['prompt_tokens']
+                    total_token_usage['completion_tokens'] += item_token_usage['completion_tokens']
+                    total_token_usage['total_tokens'] += item_token_usage['total_tokens']
                     
                     # Add LLM metrics to result with both scores and justifications
                     result.update({
@@ -530,12 +576,18 @@ class LLMEvaluator(BaseEvaluator):
         
         eval_time = time.time() - start_time
         logger.info(f"✅ Completed LLM evaluation for {len(final_results)} items in {eval_time:.2f}s")
-        return final_results
+        logger.info(f"💰 LLM Token usage: {total_token_usage}")
+        
+        return final_results, total_token_usage
 
     async def _return_default_result(self, score: float, justification: str) -> Dict[str, Any]:
         """Helper function to return a default result with score and justification asynchronously"""
         await asyncio.sleep(0)
-        return {'score': score, 'justification': justification}
+        return {
+            'score': score, 
+            'justification': justification,
+            'token_usage': {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
+        }
     
     def get_average_scores(self, results: List[Dict[str, Any]]) -> Dict[str, float]:
         """Calculate average scores for LLM metrics"""
@@ -576,14 +628,63 @@ class LLMEvaluator(BaseEvaluator):
             
             # Run evaluation with async session
             async with aiohttp.ClientSession() as session:
-                results_list = await self.evaluate_batch(session, eval_data)
+                results_list, total_token_usage = await self.evaluate_batch(session, eval_data)
             
-            # Convert to DataFrame
+            # Convert to DataFrame and include token usage in metadata
             if results_list:
                 results_df = pd.DataFrame(results_list)
                 averages = self.get_average_scores(results_list)
+                
+                # Calculate estimated cost using real model pricing
+                if total_token_usage and total_token_usage.get('total_tokens', 0) > 0:
+                    model_name = self.model_name.lower()
+                    
+                    # Model pricing per 1K tokens (input, output)
+                    model_pricing = {
+                        'gpt-4': {'input': 0.03, 'output': 0.06},
+                        'gpt-4-turbo': {'input': 0.01, 'output': 0.03},
+                        'gpt-4o': {'input': 0.005, 'output': 0.015},
+                        'gpt-4o-mini': {'input': 0.00015, 'output': 0.0006},
+                        'gpt-3.5-turbo': {'input': 0.0005, 'output': 0.0015},
+                        'claude-3-opus': {'input': 0.015, 'output': 0.075},
+                        'claude-3-sonnet': {'input': 0.003, 'output': 0.015},
+                        'claude-3-haiku': {'input': 0.00025, 'output': 0.00125},
+                        'claude-3.5-sonnet': {'input': 0.003, 'output': 0.015}
+                    }
+                    
+                    # Find matching pricing
+                    pricing = None
+                    for model_key, model_prices in model_pricing.items():
+                        if model_key in model_name or model_name in model_key:
+                            pricing = model_prices
+                            break
+                    
+                    # Default to GPT-4o pricing if model not found
+                    if not pricing:
+                        logger.warning(f"⚠️ Unknown model '{model_name}', using GPT-4o pricing")
+                        pricing = model_pricing['gpt-4o']
+                    
+                    # Calculate cost
+                    input_cost = (total_token_usage.get('prompt_tokens', 0) / 1000) * pricing['input']
+                    output_cost = (total_token_usage.get('completion_tokens', 0) / 1000) * pricing['output']
+                    estimated_cost = input_cost + output_cost
+                    
+                    total_token_usage['estimated_cost_usd'] = estimated_cost
+                    logger.info(f"💰 LLM cost calculation: Input=${input_cost:.6f}, Output=${output_cost:.6f}, Total=${estimated_cost:.6f}")
+                
+                # Create enhanced metadata with token usage
+                enhanced_metadata = {
+                    **averages,
+                    'token_usage': total_token_usage,
+                    'evaluation_summary': {
+                        'total_queries': len(results_list),
+                        'model_used': self.model_name,
+                        'evaluator_type': 'LLM'
+                    }
+                }
+                
                 logger.info(f"✅ LLM evaluation completed: {len(results_df)} rows")
-                return results_df, averages
+                return results_df, enhanced_metadata
             else:
                 logger.warning("⚠️ No LLM results generated")
                 return pd.DataFrame(), {}

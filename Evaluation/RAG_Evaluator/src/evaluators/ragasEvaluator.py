@@ -130,17 +130,44 @@ class RagasEvaluator(BaseEvaluator):
             
             result = evaluate(dataset, metrics=metrics, token_usage_parser=get_token_usage_for_openai)
             
+            # Extract token usage and cost information
             inputcost = self.config["cost_of_model"]["input"]
             outputcost = self.config["cost_of_model"]["output"]
-            print(f"💰 Total Tokens for Evaluation: Input={result.total_tokens().input_tokens} Output={result.total_tokens().output_tokens}")
-            print(f"💰 Total Cost in $: {result.total_cost(cost_per_input_token=inputcost, cost_per_output_token=outputcost)}")
+            
+            # Get token information
+            total_tokens_obj = result.total_tokens()
+            input_tokens = total_tokens_obj.input_tokens
+            output_tokens = total_tokens_obj.output_tokens
+            total_tokens = input_tokens + output_tokens
+            
+            # Calculate cost
+            total_cost = result.total_cost(cost_per_input_token=inputcost, cost_per_output_token=outputcost)
+            
+            print(f"💰 Total Tokens for Evaluation: Input={input_tokens} Output={output_tokens}")
+            print(f"💰 Total Cost in $: {total_cost}")
             
             result_df = result.to_pandas()
             print(f"📈 RAGAS result DataFrame shape: {result_df.shape}")
             print(f"📈 RAGAS result columns: {list(result_df.columns)}")
             print(f"📈 RAGAS sample row: {result_df.iloc[0].to_dict() if len(result_df) > 0 else 'No data'}")
             
-            return result_df, result
+            # Create enhanced result with token usage information
+            enhanced_result = {
+                'ragas_result': result,
+                'token_usage': {
+                    'prompt_tokens': input_tokens,
+                    'completion_tokens': output_tokens,
+                    'total_tokens': total_tokens,
+                    'estimated_cost_usd': total_cost
+                },
+                'evaluation_summary': {
+                    'total_queries': len(dataset),
+                    'metrics_evaluated': [metric.__class__.__name__ for metric in metrics],
+                    'model_used': self.config.get('llm_model', 'default')
+                }
+            }
+            
+            return result_df, enhanced_result
             
         finally:
             # Clean up the event loop

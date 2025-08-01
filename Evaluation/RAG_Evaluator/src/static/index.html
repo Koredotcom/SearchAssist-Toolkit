@@ -15,18 +15,33 @@
             <div class="header-content">
                 <div class="logo">
                     <i class="fas fa-brain"></i>
-                    <h1>RAG Evaluator</h1>
+                    <div class="logo-text">
+                        <h1>RAG Evaluator</h1>
+                        <p class="subtitle">Advanced RAG System Performance Evaluation</p>
+                    </div>
                 </div>
-                <div class="version-badge">
-                    <span>v2.0</span>
-                    <span class="feature-tag">🚀 Async Batch Processing</span>
+                <div class="header-right">
+                    <div class="version-badge">
+                        <span>v2.0</span>
+                    </div>
+                    <div class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span>Active</span>
+                    </div>
                 </div>
             </div>
-            <p class="subtitle">Advanced RAG System Performance Evaluation with RAGAS & CRAG Metrics</p>
         </header>
 
         <!-- Main Content -->
         <main class="main-content">
+            <!-- User Separation Notice -->
+            <div class="isolation-notice">
+                <i class="fas fa-shield-alt"></i>
+                <div class="notice-text">
+                    <strong>Multi-User Isolation:</strong> Each user session is isolated with unique file storage. Your evaluation results are secure and will only be accessible to your session.
+                </div>
+            </div>
+
             <!-- Step 1: File Upload -->
             <section class="card" id="upload-section">
                 <div class="card-header">
@@ -87,15 +102,18 @@
                             
                             <div class="checkbox-group">
                                 <div class="checkbox-item">
-                                    <input type="checkbox" id="evaluate-ragas" checked>
+                                    <input type="checkbox" id="evaluate-ragas">
                                     <label for="evaluate-ragas">
                                         <div>
                                             <strong><i class="fas fa-chart-line"></i> RAGAS Evaluation</strong>
                                             <small>Response relevancy, faithfulness, context recall, precision, correctness & similarity</small>
+                                            <small style="color: #f59e0b; font-weight: 500; margin-top: 2px; display: block;">
+                                                <i class="fas fa-exclamation-triangle"></i> Note: Higher LLM cost and processing time expected
+                                            </small>
                                         </div>
                                     </label>
                                 </div>
-                                <div class="checkbox-item">
+                                <div class="checkbox-item" style="display: none;">
                                     <input type="checkbox" id="evaluate-crag">
                                     <label for="evaluate-crag">
                                         <div>
@@ -110,7 +128,7 @@
                                         <div>
                                             <strong><i class="fas fa-robot"></i> LLM Evaluation</strong>
                                             <small>Answer Correctness, Answer Relevancy, and Context Relevancy using OpenAI</small>
-                                            <small style="color: #6366f1; font-style: italic;"><i class="fas fa-magic"></i> Auto-enabled with RAGAS/CRAG</small>
+                                            <small style="color: #6366f1; font-style: italic;"><i class="fas fa-magic"></i> Auto-enabled with RAGAS</small>
                                         </div>
                                     </label>
                                 </div>
@@ -120,10 +138,13 @@
                                         <div>
                                             <strong><i class="fas fa-search"></i> Use Search API</strong>
                                             <small>Fetch responses from SearchAssist/XO API instead of using provided answers</small>
+                                            <small style="color: #6366f1; font-style: italic; margin-top: 2px; display: block;">
+                                                <i class="fas fa-info-circle"></i> Select this if you want to use Search API to get the context. If you provide the context then not required
+                                            </small>
                                         </div>
                                     </label>
                                 </div>
-                                <div class="checkbox-item">
+                                <div class="checkbox-item" style="display: none;">
                                     <input type="checkbox" id="save-db">
                                     <label for="save-db">
                                         <div>
@@ -167,7 +188,7 @@
                                     <option value="azure-4o">Azure OpenAI GPT-4o</option>
                                     <option value="azure-4o-mini">Azure OpenAI GPT-4o Mini</option>
                                 </select>
-                                <small><i class="fas fa-robot"></i> Choose your evaluation model for RAGAS and CRAG assessments</small>
+                                <small><i class="fas fa-robot"></i> Choose your LLM model for assessments by considering the cost and time</small>
                             </div>
 
                             <!-- Quick Presets -->
@@ -434,25 +455,40 @@
                 <div class="card-content">
                     <div class="results-summary">
                         <div class="summary-grid">
-                            <div class="summary-item">
+                            <div class="summary-item success">
                                 <i class="fas fa-list-ol"></i>
                                 <h3 id="total-processed">0</h3>
                                 <p>Total Processed</p>
                             </div>
-                            <div class="summary-item">
-                                <i class="fas fa-check"></i>
+                            <div class="summary-item success">
+                                <i class="fas fa-check-circle"></i>
                                 <h3 id="successful-queries">0</h3>
                                 <p>Successful</p>
                             </div>
-                            <div class="summary-item">
+                            <div class="summary-item warning">
+                                <i class="fas fa-times-circle"></i>
+                                <h3 id="failed-queries">0</h3>
+                                <p>Failed</p>
+                            </div>
+                            <div class="summary-item info">
                                 <i class="fas fa-clock"></i>
                                 <h3 id="total-time">0s</h3>
                                 <p>Total Time</p>
                             </div>
-                            <div class="summary-item">
+                            <div class="summary-item info">
                                 <i class="fas fa-tachometer-alt"></i>
                                 <h3 id="avg-time">0s</h3>
                                 <p>Avg per Query</p>
+                            </div>
+                            <div class="summary-item token-info" id="token-summary-item" style="display: none;">
+                                <i class="fas fa-coins"></i>
+                                <h3 id="total-tokens">0</h3>
+                                <p>Total Tokens</p>
+                            </div>
+                            <div class="summary-item cost-info" id="cost-summary-item" style="display: none;">
+                                <i class="fas fa-dollar-sign"></i>
+                                <h3 id="estimated-cost">$0.00</h3>
+                                <p>Estimated Cost</p>
                             </div>
                         </div>
                     </div>
@@ -482,7 +518,7 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p>&copy; 2024 RAG Evaluator - Advanced Performance Testing Suite</p>
+            <p>&copy; RAG Evaluator - Advanced Performance Testing Suite</p>
             <div class="footer-links">
                 <a href="#"><i class="fas fa-book"></i> Documentation</a>
                 <a href="#"><i class="fas fa-question-circle"></i> Help</a>
