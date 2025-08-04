@@ -27,7 +27,7 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
                                config: Dict, batch_size: int = 10, max_concurrent: int = 5) -> List[Dict]:
     """Process search API calls asynchronously in batches."""
     # Use the provided session-specific config instead of creating a new one
-    print(f"🔧 Using provided config for API calls with keys: {list(config.keys())}")
+
     
     # Initialize the appropriate async API with fallback handling
     api = None
@@ -47,57 +47,25 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
     sa_valid = is_valid_api_config(sa_config)
     uxo_valid = is_valid_api_config(uxo_config)
     
-    print(f"🔍 API Config Validation:")
-    print(f"   SA valid: {sa_valid} (app_id: {'***' if sa_valid else sa_config.get('app_id', 'Missing')})")
-    print(f"   UXO valid: {uxo_valid} (app_id: {'***' if uxo_valid else uxo_config.get('app_id', 'Missing')})")
+
     
     if sa_valid:
-        print("🔄 Using SearchAssist (SA) API configuration...")
         try:
             from api.SASearch import AsyncSearchAssistAPI, get_bot_response_async
             api = AsyncSearchAssistAPI(config)
-            print("✅ SearchAssist API initialized successfully")
-        except ValueError as e:
-            print(f"❌ SearchAssist configuration error: {e}")
-            print("⚠️  Continuing with empty responses for all queries")
-            api = None
-        except Exception as e:
-            print(f"❌ SearchAssist initialization failed: {e}")
-            print("⚠️  Continuing with empty responses for all queries")
+        except (ValueError, Exception):
             api = None
     elif uxo_valid:
-        print("🔄 Using UXO API configuration...")
-        print(f"🔍 UXO Config Debug:")
-        for key, value in uxo_config.items():
-            if key in ['client_secret']:
-                print(f"   {key}: {'***' if value else 'EMPTY'}")
-            else:
-                print(f"   {key}: {value if value else 'EMPTY'}")
         try:
             from api.XOSearch import AsyncXOSearchAPI, get_bot_response_async
             api = AsyncXOSearchAPI(config)
-            print("✅ UXO API initialized successfully")
-        except ValueError as e:
-            print(f"❌ UXO configuration error: {e}")
-            print("💡 Required fields: client_id, client_secret, app_id, domain")
-            print("⚠️  Continuing with empty responses for all queries")
-            api = None
-        except Exception as e:
-            print(f"❌ UXO initialization failed: {e}")
-            print("⚠️  Continuing with empty responses for all queries")
+        except (ValueError, Exception):
             api = None
     else:
-        print("❌ No valid API configuration found (SA or UXO)")
-        print("💡 To use Search API, please configure API credentials in the UI:")
-        print("   - Select 'Use Search API' checkbox")
-        print("   - Choose API type (SearchAssist or XO Platform)")
-        print("   - Fill in App ID, Client ID, Client Secret, and Domain")
-        print("⚠️  Continuing with empty responses for all queries")
         api = None
     
     # If API initialization failed, return empty responses for all queries
     if api is None:
-        print("🔄 Generating empty responses for all queries due to API initialization failure...")
         empty_responses = []
         for i, (query, ground_truth) in enumerate(zip(queries, ground_truths)):
             empty_responses.append({
@@ -111,7 +79,7 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
     
     semaphore = Semaphore(max_concurrent)
     
-    async def process_single_query(session, query, ground_truth):
+                async def process_single_query(session, query, ground_truth):
         async with semaphore:
             try:
                 result = await get_bot_response_async(api, session, query, ground_truth)
@@ -119,7 +87,6 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
                     return {"error": "API call returned None - check credentials and configuration", "query": query}
                 return result
             except Exception as e:
-                print(f"Error processing query: {str(e)}")
                 return {"error": str(e), "query": query}
     
     # Process queries in batches
@@ -134,7 +101,7 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
             batch_queries = queries[start_idx:end_idx]
             batch_ground_truths = ground_truths[start_idx:end_idx]
             
-            print(f"Processing batch {batch_num + 1}/{total_batches} ({len(batch_queries)} queries)")
+
             
             batch_start_time = time.time()
             tasks = [process_single_query(session, q, gt) 
@@ -173,21 +140,10 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
             all_responses.extend(processed_responses)
             
             batch_time = time.time() - batch_start_time
-            print(f"Batch {batch_num + 1} completed in {batch_time:.2f} seconds")
-            print(f"  ✅ Successful: {successful_count}, ❌ Failed: {failed_count}")
     
-    # Print overall summary
+    # Calculate overall summary for logging if needed
     total_successful = sum(1 for r in all_responses if 'error' not in r)
     total_failed = len(all_responses) - total_successful
-    success_rate = (total_successful / len(all_responses)) * 100 if all_responses else 0
-    
-    print(f"\n📊 API Processing Summary:")
-    print(f"  Total queries: {len(all_responses)}")
-    print(f"  ✅ Successful: {total_successful} ({success_rate:.1f}%)")
-    print(f"  ❌ Failed: {total_failed} ({100-success_rate:.1f}%)")
-    
-    if total_failed > 0:
-        print(f"⚠️  {total_failed} queries failed but evaluation will continue with available data")
     
     return all_responses
 
@@ -206,7 +162,6 @@ def load_data(excel_file: str, sheet_name: str) -> Tuple[List[str], List[str], L
                 df['ground_truth'].tolist(), df['context'].tolist())
     
     except Exception as e:
-        print(f"Error loading data from {excel_file}, sheet '{sheet_name}': {e}")
         raise
 
 async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
@@ -223,21 +178,14 @@ async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
         queries = df['query'].tolist()
         ground_truths = df['ground_truth'].tolist()
         
-        print(f"Starting API processing for {len(queries)} queries")
         start_time = time.time()
         
         # Call search API with error handling
         try:
             responses = await call_search_api_batch(queries, ground_truths, config, batch_size, max_concurrent)
-            
             processing_time = time.time() - start_time
-            print(f"API processing completed in {processing_time:.2f} seconds")
-            if len(queries) > 0:
-                print(f"Average time per query: {processing_time/len(queries):.2f} seconds")
             
         except Exception as api_error:
-            print(f"❌ Search API processing failed completely: {api_error}")
-            print("⚠️  Generating empty responses for all queries to continue evaluation")
             # Create empty responses for all queries
             responses = []
             for query, ground_truth in zip(queries, ground_truths):
@@ -262,14 +210,12 @@ async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
                 answers.append(response.get('answer', ''))
                 contexts.append(response.get('context', ''))
         
-        if error_count > 0:
-            print(f"⚠️  {error_count} queries had errors but evaluation will continue with available data")
+
         
         return queries, answers, ground_truths, contexts
         
     except Exception as e:
-        print(f"❌ Critical error in data loading: {e}")
-        print("⚠️  Returning minimal data to allow evaluation to continue")
+
         
         # Return minimal data to prevent complete failure
         try:
@@ -308,17 +254,11 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
         # Define async evaluation functions for parallel execution
         async def run_ragas_evaluation():
             if not run_ragas:
-                print("⏭️ RAGAS evaluation skipped (not enabled)")
                 return pd.DataFrame(), {}
-            
-            print("🚀 Starting RAGAS evaluation...")
-            print(f"📊 Data summary: {len(queries)} queries, {len(answers)} answers, {len(ground_truths)} ground truths, {len(contexts)} contexts")
             
             # Check data quality
             non_empty_answers = sum(1 for a in answers if a and str(a).strip())
             non_empty_contexts = sum(1 for c in contexts if c and str(c).strip())
-            print(f"📊 Non-empty answers: {non_empty_answers}/{len(answers)}")
-            print(f"📊 Non-empty contexts: {non_empty_contexts}/{len(contexts)}")
             
             try:
                 ragas_evaluator = RagasEvaluator()
@@ -331,22 +271,15 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
                     # Extract token usage information if available
                     if isinstance(enhanced_result, dict) and 'token_usage' in enhanced_result:
                         token_info = enhanced_result['token_usage']
-                        print(f"💰 Token usage captured: {token_info}")
                     else:
                         # Fallback to extract from result object if needed
                         enhanced_result = enhanced_result.__dict__ if hasattr(enhanced_result, '__dict__') else {}
                     
-                    print(f"✅ RAGAS evaluation completed: {len(results_df)} rows")
-                    print(f"✅ RAGAS columns returned: {list(results_df.columns)}")
                     return results_df, enhanced_result
                 else:
-                    print(f"⚠️ Unexpected RAGAS result format: {type(ragas_eval_result)}")
                     return pd.DataFrame(), {}
                     
-            except Exception as e:
-                print(f"❌ RAGAS evaluation failed: {e}")
-                import traceback
-                print(f"❌ Traceback: {traceback.format_exc()}")
+            except Exception:
                 return pd.DataFrame(), {}
 
         async def run_crag_evaluation():

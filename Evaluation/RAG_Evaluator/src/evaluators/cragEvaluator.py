@@ -63,8 +63,6 @@ class CragEvaluator(BaseEvaluator):
             else:
                 response = self.attempt_api_call(messages)
                 if response:
-                    # uncomment whenever needed
-                    # log_response(messages, response)
                     eval_res = self.parse_crag_response(response)
                     if eval_res == 1:
                         n_correct += 1

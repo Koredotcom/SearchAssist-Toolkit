@@ -77,29 +77,22 @@ async def serve_ui():
 @app.post('/api/get-sheet-names')
 async def get_sheet_names(file: UploadFile = File(...)):
     """Extract sheet names from uploaded Excel file"""
-    logger.info(f"📄 Received request to extract sheet names from file: {file.filename}")
-    
     try:
         # Validate file type
         if not file.filename.endswith(('.xlsx', '.xls')):
-            logger.warning(f"❌ Invalid file type: {file.filename}")
             raise HTTPException(status_code=400, detail="Invalid file type. Please upload an Excel file.")
-        
-        logger.info(f"✅ File type validation passed for: {file.filename}")
         
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
             content = await file.read()
             tmp_file.write(content)
             tmp_file_path = tmp_file.name
-            logger.info(f"💾 Saved temporary file: {tmp_file_path} (size: {len(content)} bytes)")
+
         
         try:
             # Read Excel file and get sheet names with row counts
-            logger.info(f"📖 Reading Excel file with pandas...")
             excel_file = pd.ExcelFile(tmp_file_path, engine='openpyxl')
             sheet_names = excel_file.sheet_names
-            logger.info(f"📋 Found sheets: {sheet_names}")
             
             # Get row counts for each sheet
             row_counts = {}
@@ -107,7 +100,6 @@ async def get_sheet_names(file: UploadFile = File(...)):
             
             for sheet_name in sheet_names:
                 try:
-                    logger.info(f"📊 Analyzing sheet: '{sheet_name}'")
                     # Read Excel sheet to get row count
                     df = pd.read_excel(tmp_file_path, sheet_name=sheet_name, nrows=None)
                     # Filter out empty rows
@@ -115,14 +107,10 @@ async def get_sheet_names(file: UploadFile = File(...)):
                     row_count = len(df_clean)
                     row_counts[sheet_name] = row_count
                     total_rows += row_count
-                    logger.info(f"📊 Sheet '{sheet_name}': {row_count} rows (after removing empty rows)")
-                except Exception as sheet_error:
-                    logger.warning(f"⚠️ Could not read sheet '{sheet_name}': {sheet_error}")
+                except Exception:
                     row_counts[sheet_name] = 0
             
             excel_file.close()
-            
-            logger.info(f"📈 Total rows across all sheets: {total_rows}")
             
             response_data = {
                 "status": "success",
@@ -132,17 +120,15 @@ async def get_sheet_names(file: UploadFile = File(...)):
                 "total_rows": total_rows
             }
             
-            logger.info(f"✅ Returning response: {response_data}")
             return JSONResponse(content=response_data)
         
         finally:
             # Clean up temporary file
             if os.path.exists(tmp_file_path):
                 os.unlink(tmp_file_path)
-                logger.info(f"🗑️ Cleaned up temporary file: {tmp_file_path}")
     
     except Exception as e:
-        logger.error(f"❌ Error extracting sheet names: {e}")
+        logger.error(f"Error extracting sheet names: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to extract sheet names: {str(e)}")
 
 

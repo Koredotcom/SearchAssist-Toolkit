@@ -5,9 +5,8 @@ from utils.jti import JTI
 
 
 def generate_JWT_token(client_id, client_secret):
-      
+    """Generate JWT token for authentication"""
     jwt_token = JTI.get_hs_key(client_id, client_secret, "JWT", "HS256")
-    
     return jwt_token
 
 class SearchAssistAPI:
@@ -30,8 +29,7 @@ class SearchAssistAPI:
             response = requests.post(f"{self.base_url}/{endpoint}", json=data, headers=headers)
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.RequestException as e:
-            print(f"Request failed: {e}")
+        except requests.exceptions.RequestException:
             return None
 
     def advanced_search(self, query: str) -> Optional[Dict]:
@@ -39,7 +37,7 @@ class SearchAssistAPI:
             "query": query,
             "includeChunksInResponse": True
         }
-        print("Making SA search call for query:", query)
+
         return self._make_request('advancedSearch', data)
 
 
@@ -85,16 +83,7 @@ def get_bot_response(api: SearchAssistAPI, query: str, truth: str) -> Optional[D
     }
 
 
-# Example usage
-if __name__ == "__main__":
-    api = SearchAssistAPI()
-    query = "what is eva?"
-    truth = "Example ground truth"
-    result = get_bot_response(api, query, truth)
-    if result:
-        print(result)
-    else:
-        print("Failed to get response")
+
 
 # Async version for batch processing
 import aiohttp
@@ -135,7 +124,7 @@ class AsyncSearchAssistAPI:
             raise ValueError(f"Failed to generate JWT token: {e}")
             
         self.base_url = f'https://{self.domain}/searchassistapi/external/stream/{self.app_id}'
-        print(f"Initialized AsyncSearchAssistAPI with URL: {self.base_url}")
+
 
     async def _make_async_request(self, session: aiohttp.ClientSession, endpoint: str, data: Dict) -> Optional[Dict]:
         headers = {
@@ -144,24 +133,14 @@ class AsyncSearchAssistAPI:
         }
         
         full_url = f"{self.base_url}/{endpoint}"
-        print(f"Making request to: {full_url}")
         
         try:
             async with session.post(full_url, json=data, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
-                    print(f"API request failed with status {response.status}: {await response.text()}")
                     return None
-        except aiohttp.ClientConnectorError as e:
-            print(f"Connection error - check domain configuration: {e}")
-            print(f"Attempted URL: {full_url}")
-            return None
-        except aiohttp.ClientError as e:
-            print(f"Async request failed: {e}")
-            return None
-        except Exception as e:
-            print(f"Unexpected error in async request: {e}")
+        except (aiohttp.ClientConnectorError, aiohttp.ClientError, Exception):
             return None
 
     async def advanced_search_async(self, session: aiohttp.ClientSession, query: str) -> Optional[Dict]:
@@ -169,7 +148,7 @@ class AsyncSearchAssistAPI:
             "query": query,
             "includeChunksInResponse": True
         }
-        print(f"Making async SA search call for query: {query[:50]}...")
+
         return await self._make_async_request(session, 'advancedSearch', data)
 
 

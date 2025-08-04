@@ -25,12 +25,12 @@ class ConfigManager:
         """
         if config_path and os.path.exists(config_path):
             # Use session-specific config if provided
-            print(f"🔧 Loading session-specific config from: {config_path}")
+
             with open(config_path, 'r') as f:
                 return json.load(f)
         else:
             # Create minimal default config (no static file needed!)
-            print(f"🔧 Creating minimal default config (no static config.json required)")
+
             return {
                 "cost_of_model": {
                     "input": 0.00000015,

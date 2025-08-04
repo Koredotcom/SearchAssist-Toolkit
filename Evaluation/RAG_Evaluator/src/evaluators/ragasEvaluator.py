@@ -39,9 +39,9 @@ class RagasEvaluator(BaseEvaluator):
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            print(f"✅ Set up new event loop in worker thread: {type(loop)}")
-        except Exception as e:
-            print(f"⚠️  Warning: Could not set up event loop in thread: {e}")
+            pass
+        except Exception:
+            pass
         
         try:
             llm_model = model if model else "openai"
@@ -101,8 +101,7 @@ class RagasEvaluator(BaseEvaluator):
                         else:
                             # Single context item, wrap in list
                             processed_contexts.append([context])
-                    except (ValueError, SyntaxError) as e:
-                        print(f"Warning: Could not parse context '{context}', using as single item: {e}")
+                    except (ValueError, SyntaxError):
                         processed_contexts.append([context] if context else [])
                 elif isinstance(context, list):
                     processed_contexts.append(context)
@@ -110,8 +109,7 @@ class RagasEvaluator(BaseEvaluator):
                     # Convert other types to string and wrap in list
                     processed_contexts.append([str(context)] if context else [])
             
-            print(f"Processed {len(processed_contexts)} contexts for RAGAS evaluation")
-            print(f"Sample context format: {type(processed_contexts[0]) if processed_contexts else 'No contexts'}")
+
             
             # Update the required columns names in the dataset
             data = {
@@ -123,10 +121,6 @@ class RagasEvaluator(BaseEvaluator):
             dataset = Dataset.from_dict(data)
             
             # Run RAGAS evaluation in this thread (now with proper event loop)
-            print("🔄 Running RAGAS evaluation with thread event loop...")
-            print(f"📊 Dataset shape: {len(dataset)} rows")
-            print(f"📊 Dataset columns: {list(dataset.column_names)}")
-            print(f"📊 Metrics to evaluate: {[metric.__class__.__name__ for metric in metrics]}")
             
             result = evaluate(dataset, metrics=metrics, token_usage_parser=get_token_usage_for_openai)
             
@@ -143,13 +137,7 @@ class RagasEvaluator(BaseEvaluator):
             # Calculate cost
             total_cost = result.total_cost(cost_per_input_token=inputcost, cost_per_output_token=outputcost)
             
-            print(f"💰 Total Tokens for Evaluation: Input={input_tokens} Output={output_tokens}")
-            print(f"💰 Total Cost in $: {total_cost}")
-            
             result_df = result.to_pandas()
-            print(f"📈 RAGAS result DataFrame shape: {result_df.shape}")
-            print(f"📈 RAGAS result columns: {list(result_df.columns)}")
-            print(f"📈 RAGAS sample row: {result_df.iloc[0].to_dict() if len(result_df) > 0 else 'No data'}")
             
             # Create enhanced result with token usage information
             enhanced_result = {
@@ -175,15 +163,14 @@ class RagasEvaluator(BaseEvaluator):
                 loop = asyncio.get_event_loop()
                 if loop and not loop.is_closed():
                     loop.close()
-                    print("✅ Cleaned up thread event loop")
-            except Exception as e:
-                print(f"⚠️  Warning: Could not clean up event loop: {e}")
+            except Exception:
+                pass
 
     async def evaluate(self, queries, answers, ground_truths, contexts, model=""):
         """
         Async wrapper that runs RAGAS evaluation in a thread pool to avoid uvloop conflicts.
         """
-        print("🔄 Running RAGAS evaluation in thread pool to avoid uvloop conflicts...")
+
         
         loop = asyncio.get_event_loop()
         
@@ -196,11 +183,9 @@ class RagasEvaluator(BaseEvaluator):
                     queries, answers, ground_truths, contexts, model
                 )
             
-            print("✅ RAGAS evaluation completed successfully in thread pool")
             return result
             
         except Exception as e:
-            print(f"❌ RAGAS evaluation failed in thread pool: {e}")
             raise e
 
     def process_results(self, results):

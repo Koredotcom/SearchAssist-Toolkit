@@ -4,9 +4,8 @@ from config.configManager import ConfigManager
 from utils.jti import JTI
 
 def generate_JWT_token(client_id, client_secret):
-      
-    jwt_token = JTI.get_hs_key(client_id, client_secret, "JWT", "HS256")  
-    print('jwt_token: ', jwt_token)  
+    """Generate JWT token for authentication"""
+    jwt_token = JTI.get_hs_key(client_id, client_secret, "JWT", "HS256")
     return jwt_token
 
 class XOSearchAPI:
@@ -29,7 +28,7 @@ class XOSearchAPI:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"Request failed: {e}")
+            # Use logging instead of print for error handling
             return None
 
     def advanced_search(self, query: str) -> Optional[Dict]:
@@ -37,7 +36,7 @@ class XOSearchAPI:
             "query": query,
             "includeChunksInResponse": True
         }
-        print("Making SA search call for query:", query)
+
         return self._make_request('advancedSearch', data)
 
 
@@ -82,16 +81,7 @@ def get_bot_response(api: XOSearchAPI, query: str, truth: str) -> Optional[Dict]
     }
 
 
-# Example usage
-if __name__ == "__main__":
-    api = XOSearchAPI()
-    query = "what is eva?"
-    truth = "Example ground truth"
-    result = get_bot_response(api, query, truth)
-    if result:
-        print(result)
-    else:
-        print("Failed to get response")
+
 
 # Async version for batch processing
 import aiohttp
@@ -132,7 +122,7 @@ class AsyncXOSearchAPI:
             raise ValueError(f"Failed to generate JWT token: {e}")
             
         self.base_url = f'https://{self.domain}/api/public/bot/{self.app_id}'
-        print(f"Initialized AsyncXOSearchAPI with URL: {self.base_url}")
+
 
     async def _make_async_request(self, session: aiohttp.ClientSession, endpoint: str, data: Dict) -> Optional[Dict]:
         headers = {
@@ -144,20 +134,10 @@ class AsyncXOSearchAPI:
         try:
             async with session.post(full_url, json=data, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as response:
                 if response.status == 200:
-                    print(f"API request successful with status {response.status}")
                     return await response.json()
                 else:
-                    print(f"API request failed with status {response.status}: {await response.text()}")
                     return None
-        except aiohttp.ClientConnectorError as e:
-            print(f"Connection error - check domain configuration: {e}")
-            print(f"Attempted URL: {full_url}")
-            return None
-        except aiohttp.ClientError as e:
-            print(f"Async request failed: {e}")
-            return None
-        except Exception as e:
-            print(f"Unexpected error in async request: {e}")
+        except (aiohttp.ClientConnectorError, aiohttp.ClientError, Exception):
             return None
 
     async def advanced_search_async(self, session: aiohttp.ClientSession, query: str) -> Optional[Dict]:
@@ -165,7 +145,7 @@ class AsyncXOSearchAPI:
             "query": query,
             "includeChunksInResponse": True
         }
-        print(f"Making async UXO search call for query: {query[:50]}...")
+
         return await self._make_async_request(session, 'advancedSearch', data)
 
 
