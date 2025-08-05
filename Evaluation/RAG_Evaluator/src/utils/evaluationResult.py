@@ -2,25 +2,40 @@ import pandas as pd
 
 
 class ResultsConverter:
-    def __init__(self, ragas_results: pd.DataFrame, crag_results: pd.DataFrame):
+    def __init__(self, ragas_results: pd.DataFrame, crag_results: pd.DataFrame, llm_results: pd.DataFrame = None):
         self.ragas_results = ragas_results
         self.crag_results = crag_results
+        self.llm_results = llm_results if llm_results is not None else pd.DataFrame()
 
     def convert_ragas_results(self):
-        """Converts column name 'question' to 'query' in the Ragas Results DataFrame."""
-        if 'question' in self.ragas_results.columns:
-            self.ragas_results.rename(columns={'question': 'query'}, inplace=True)
-            print("Converted 'question' to 'query' in Ragas results.")
-        else:
-            print("'question' column not found in Ragas results.")
+        """Converts column names in the Ragas Results DataFrame for consistency."""
+        # Handle common RAGAS column name mappings
+        column_mappings = {
+            'question': 'query',
+            'user_input': 'query',
+            'response': 'answer',
+            'retrieved_contexts': 'context',
+            'reference': 'ground_truth'
+        }
+        
+        # Apply mappings if columns exist
+        columns_to_rename = {}
+        for old_name, new_name in column_mappings.items():
+            if old_name in self.ragas_results.columns:
+                columns_to_rename[old_name] = new_name
+                
+        if columns_to_rename:
+            self.ragas_results.rename(columns=columns_to_rename, inplace=True)
 
     def convert_crag_results(self):
         """Converts column name 'prediction' to 'answer' in the CRAG Results DataFrame."""
         if 'prediction' in self.crag_results.columns:
             self.crag_results.rename(columns={'prediction': 'answer'}, inplace=True)
-            print("Converted 'prediction' to 'answer' in CRAG results.")
-        else:
-            print("'prediction' column not found in CRAG results.")
+
+    def convert_llm_results(self):
+        """Converts column names in the LLM Results DataFrame for consistency."""
+        # LLM results should already have standardized column names
+        pass
 
     def get_crag_results(self):
         return self.crag_results
@@ -28,14 +43,28 @@ class ResultsConverter:
     def get_ragas_results(self):
         return self.ragas_results
 
+    def get_llm_results(self):
+        return self.llm_results
+
     def get_combined_results(self):
-        """Combines the converted Ragas results and CRAG results DataFrames."""
-        # Assuming both DataFrames have the same number of rows
-        if len(self.ragas_results) != len(self.crag_results):
-            print("Warning: Ragas and CRAG results have different row counts. Combining may lead to misalignment.")
+        """Combines the converted Ragas, CRAG, and LLM results DataFrames."""
+        dfs_to_combine = []
+        
+        # Add non-empty DataFrames to combination list
+        if not self.ragas_results.empty:
+            dfs_to_combine.append(self.ragas_results.reset_index(drop=True))
+            
+        if not self.crag_results.empty:
+            dfs_to_combine.append(self.crag_results.reset_index(drop=True))
+            
+        if not self.llm_results.empty:
+            dfs_to_combine.append(self.llm_results.reset_index(drop=True))
+        
+        if not dfs_to_combine:
+            return pd.DataFrame()
 
         # Combine the DataFrames
-        combined_results = pd.concat([self.ragas_results.reset_index(drop=True), self.crag_results.reset_index(drop=True)], axis=1)
+        combined_results = pd.concat(dfs_to_combine, axis=1)
 
         # Remove duplicate columns while keeping the first occurrence
         combined_results = combined_results.loc[:, ~combined_results.columns.duplicated()]
@@ -43,20 +72,3 @@ class ResultsConverter:
         return combined_results
 
 
-# Example usage:
-if __name__ == "__main__":
-    # Sample DataFrames (replace these with actual DataFrames in practice)
-    ragas_results = pd.DataFrame({'question': ['What is AI?', 'Define ML.'], 'other_col': [1, 2]})
-    crag_results = pd.DataFrame({'prediction': ['AI is a field.', 'ML is a subset of AI.'], 'another_col': [3, 4]})
-
-    converter = ResultsConverter(ragas_results, crag_results)
-
-    # Convert columns
-    converter.convert_ragas_results()
-    converter.convert_crag_results()
-
-    # Get combined results
-    combined_results = converter.get_combined_results()
-
-    print("\nCombined Results:")
-    print(combined_results)

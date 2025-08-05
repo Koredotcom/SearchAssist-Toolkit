@@ -1,0 +1,534 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Evaluator - Advanced Performance Testing</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="static/styles.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-brain"></i>
+                    <div class="logo-text">
+                        <h1>RAG Evaluator</h1>
+                        <p class="subtitle">Advanced RAG System Performance Evaluation</p>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="version-badge">
+                        <span>v2.0</span>
+                    </div>
+                    <div class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span>Active</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- User Separation Notice -->
+            <div class="isolation-notice">
+                <i class="fas fa-shield-alt"></i>
+                <div class="notice-text">
+                    <strong>Multi-User Isolation:</strong> Each user session is isolated with unique file storage. Your evaluation results are secure and will only be accessible to your session.
+                </div>
+            </div>
+
+            <!-- Step 1: File Upload -->
+            <section class="card" id="upload-section">
+                <div class="card-header">
+                    <i class="fas fa-upload"></i>
+                    <h2>Step 1: Upload Your Excel File</h2>
+                    <span class="step-badge">1</span>
+                </div>
+                <div class="card-content">
+                    <div class="upload-area" id="upload-area">
+                        <div class="upload-content">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <h3>Drag & Drop Your Excel File</h3>
+                            <p>Or click to browse files</p>
+                            <div class="supported-formats">
+                                <span class="format-tag">.xlsx</span>
+                                <span class="format-tag">.xls</span>
+                            </div>
+                        </div>
+                        <input type="file" id="excel-file" accept=".xlsx,.xls" hidden>
+                    </div>
+                    <div class="file-info" id="file-info" style="display: none;">
+                        <div class="file-details">
+                            <i class="fas fa-file-excel"></i>
+                            <div>
+                                <h4 id="file-name"></h4>
+                                <p id="file-size"></p>
+                            </div>
+                            <button class="btn-remove" id="remove-file">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 2: Configuration -->
+            <section class="card" id="config-section">
+                <div class="card-header">
+                    <i class="fas fa-cogs"></i>
+                    <h2>Step 2: Configuration Settings</h2>
+                    <span class="step-badge">2</span>
+                </div>
+                <div class="card-content">
+                    <div class="config-grid">
+                        <!-- Basic Settings -->
+                        <div class="config-group">
+                            <h3><i class="fas fa-play-circle"></i> Evaluation Settings</h3>
+                            
+                            <div class="form-group">
+                                <label for="sheet-name">
+                                    <i class="fas fa-table"></i> Sheet Name (optional)
+                                </label>
+                                <select id="sheet-name" class="form-control">
+                                    <option value="">All sheets</option>
+                                </select>
+                                <small><i class="fas fa-info-circle"></i> Leave empty to process all sheets in the Excel file</small>
+                            </div>
+                            
+                            <div class="checkbox-group">
+                                <div class="checkbox-item">
+                                    <input type="checkbox" id="evaluate-ragas">
+                                    <label for="evaluate-ragas">
+                                        <div>
+                                            <strong><i class="fas fa-chart-line"></i> RAGAS Evaluation</strong>
+                                            <small>Response relevancy, faithfulness, context recall, precision, correctness & similarity</small>
+                                            <small style="color: #f59e0b; font-weight: 500; margin-top: 2px; display: block;">
+                                                <i class="fas fa-exclamation-triangle"></i> Note: Higher LLM cost and processing time expected
+                                            </small>
+                                        </div>
+                                    </label>
+                                </div>
+                                <div class="checkbox-item" style="display: none;">
+                                    <input type="checkbox" id="evaluate-crag">
+                                    <label for="evaluate-crag">
+                                        <div>
+                                            <strong><i class="fas fa-bullseye"></i> CRAG Evaluation</strong>
+                                            <small>Accuracy assessment using LLM judgment with detailed scoring</small>
+                                        </div>
+                                    </label>
+                                </div>
+                                <div class="checkbox-item">
+                                    <input type="checkbox" id="evaluate-llm" checked>
+                                    <label for="evaluate-llm">
+                                        <div>
+                                            <strong><i class="fas fa-robot"></i> LLM Evaluation</strong>
+                                            <small>Answer Correctness, Answer Relevancy, and Context Relevancy using OpenAI</small>
+                                            <small style="color: #6366f1; font-style: italic;"><i class="fas fa-magic"></i> Auto-enabled with RAGAS</small>
+                                        </div>
+                                    </label>
+                                </div>
+                                <div class="checkbox-item">
+                                    <input type="checkbox" id="use-search-api">
+                                    <label for="use-search-api">
+                                        <div>
+                                            <strong><i class="fas fa-search"></i> Use Search API</strong>
+                                            <small>Fetch responses from SearchAssist/XO API instead of using provided answers</small>
+                                            <small style="color: #6366f1; font-style: italic; margin-top: 2px; display: block;">
+                                                <i class="fas fa-info-circle"></i> Select this if you want to use Search API to get the context. If you provide the context then not required
+                                            </small>
+                                        </div>
+                                    </label>
+                                </div>
+                                <div class="checkbox-item" style="display: none;">
+                                    <input type="checkbox" id="save-db">
+                                    <label for="save-db">
+                                        <div>
+                                            <strong><i class="fas fa-database"></i> Save to Database</strong>
+                                            <small>Store evaluation results in MongoDB for future analysis and reporting</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Performance Settings -->
+                        <div class="config-group">
+                            <h3><i class="fas fa-tachometer-alt"></i> Performance Settings</h3>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="batch-size">
+                                        <i class="fas fa-layer-group"></i> Batch Size
+                                    </label>
+                                    <input type="number" id="batch-size" class="form-control" value="10" min="1" max="50" placeholder="10">
+                                    <small><i class="fas fa-info-circle"></i> Number of queries processed per batch (1-50)</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="max-concurrent">
+                                        <i class="fas fa-bolt"></i> Max Concurrent
+                                    </label>
+                                    <input type="number" id="max-concurrent" class="form-control" value="5" min="1" max="20" placeholder="5">
+                                    <small><i class="fas fa-info-circle"></i> Maximum concurrent requests (1-20)</small>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="llm-model">
+                                    <i class="fas fa-brain"></i> LLM Model
+                                </label>
+                                <select id="llm-model" class="form-control">
+                                    <option value="">Select LLM Model (Optional)</option>
+                                    <option value="openai-4o">OpenAI GPT-4o</option>
+                                    <option value="openai-4o-mini">OpenAI GPT-4o Mini</option>
+                                    <option value="azure-4o">Azure OpenAI GPT-4o</option>
+                                    <option value="azure-4o-mini">Azure OpenAI GPT-4o Mini</option>
+                                </select>
+                                <small><i class="fas fa-robot"></i> Choose your LLM model for assessments by considering the cost and time</small>
+                            </div>
+
+                            <!-- Quick Presets -->
+                            <div class="preset-section">
+                                <h4><i class="fas fa-magic"></i> Quick Presets</h4>
+                                <p class="preset-description">Choose a performance profile for batch processing</p>
+                                
+                                <div class="preset-list">
+                                    <div class="preset-item">
+                                        <input type="radio" id="preset-conservative" name="preset-selection" value="conservative" class="preset-radio">
+                                        <label for="preset-conservative" class="preset-label">
+                                            <div class="preset-info">
+                                                <span class="preset-name">Conservative</span>
+                                                <button type="button" class="info-btn" data-preset="conservative" title="View details">
+                                                    <i class="fas fa-info-circle"></i>
+                                                </button>
+                                            </div>
+                                        </label>
+                                    </div>
+
+                                    <div class="preset-item">
+                                        <input type="radio" id="preset-balanced" name="preset-selection" value="balanced" class="preset-radio" checked>
+                                        <label for="preset-balanced" class="preset-label">
+                                            <div class="preset-info">
+                                                <span class="preset-name">Balanced</span>
+                                                <button type="button" class="info-btn" data-preset="balanced" title="View details">
+                                                    <i class="fas fa-info-circle"></i>
+                                                </button>
+                                            </div>
+                                        </label>
+                                    </div>
+
+                                    <div class="preset-item">
+                                        <input type="radio" id="preset-performance" name="preset-selection" value="performance" class="preset-radio">
+                                        <label for="preset-performance" class="preset-label">
+                                            <div class="preset-info">
+                                                <span class="preset-name">High Performance</span>
+                                                <button type="button" class="info-btn" data-preset="performance" title="View details">
+                                                    <i class="fas fa-info-circle"></i>
+                                                </button>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Search API Configuration (Hidden by default) -->
+                        <div class="config-group" id="search-api-config" style="display: none;">
+                            <h3><i class="fas fa-server"></i> Search API Configuration</h3>
+                            
+                            <div class="api-type-selector">
+                                <h4><i class="fas fa-network-wired"></i> API Platform</h4>
+                                <div class="radio-group">
+                                    <div class="radio-item">
+                                        <input type="radio" id="api-sa" name="api-type" value="SA">
+                                        <label for="api-sa">
+                                            <div>
+                                                <span><i class="fas fa-search"></i> SearchAssist API</span>
+                                                <small>Kore.ai SearchAssist platform for intelligent search responses</small>
+                                            </div>
+                                        </label>
+                                    </div>
+                                    <div class="radio-item">
+                                        <input type="radio" id="api-xo" name="api-type" value="UXO" checked>
+                                        <label for="api-xo">
+                                            <div>
+                                                <span><i class="fas fa-comments"></i> XO Platform API</span>
+                                                <small>Kore.ai XO platform for conversational AI responses</small>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="api-app-id">
+                                        <i class="fas fa-id-card"></i> App ID
+                                    </label>
+                                    <input type="text" id="api-app-id" class="form-control" placeholder="st-cd367c">
+                                    <small><i class="fas fa-info-circle"></i> Your application or stream identifier from the platform</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="api-domain">
+                                        <i class="fas fa-globe"></i> Domain
+                                    </label>
+                                    <input type="text" id="api-domain" class="form-control" placeholder="https://platform.kore.ai">
+                                    <small><i class="fas fa-link"></i> Your platform domain URL (without trailing slash)</small>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="api-client-id">
+                                        <i class="fas fa-user-shield"></i> Client ID
+                                    </label>
+                                    <input type="text" id="api-client-id" class="form-control" placeholder="cs-aee4af">
+                                    <small><i class="fas fa-key"></i> OAuth client identifier for API authentication</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="api-client-secret">
+                                        <i class="fas fa-lock"></i> Client Secret
+                                    </label>
+                                    <input type="password" id="api-client-secret" class="form-control" placeholder="••••••••••••">
+                                    <small><i class="fas fa-shield-alt"></i> Client secret is processed securely and not stored</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- LLM Model Configuration (Hidden by default) -->
+                        <div class="config-group" id="llm-config" style="display: none;">
+                            <h3><i class="fas fa-brain"></i> LLM Model Configuration</h3>
+                            
+                            <!-- OpenAI Configuration -->
+                            <div id="openai-config" style="display: none;">
+                                <div class="config-header">
+                                    <i class="fas fa-robot"></i>
+                                    <span>OpenAI Configuration</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="openai-api-key">
+                                        <i class="fas fa-key"></i> OpenAI API Key
+                                    </label>
+                                    <input type="password" id="openai-api-key" class="form-control" placeholder="sk-...">
+                                    <small><i class="fas fa-shield-alt"></i> Your API key is processed securely and not stored</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="openai-org-id">
+                                        <i class="fas fa-building"></i> Organization ID (Optional)
+                                    </label>
+                                    <input type="text" id="openai-org-id" class="form-control" placeholder="org-...">
+                                    <small>Optional: Your OpenAI organization ID</small>
+                                </div>
+                            </div>
+
+                            <!-- Azure OpenAI Configuration -->
+                            <div id="azure-config" style="display: none;">
+                                <div class="config-header">
+                                    <i class="fab fa-microsoft"></i>
+                                    <span>Azure OpenAI Configuration</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="azure-endpoint">
+                                            <i class="fas fa-link"></i> Azure Endpoint
+                                        </label>
+                                        <input type="text" id="azure-endpoint" class="form-control" placeholder="https://your-resource.openai.azure.com/">
+                                        <small>Your Azure OpenAI resource endpoint</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="azure-api-key">
+                                            <i class="fas fa-key"></i> API Key
+                                        </label>
+                                        <input type="password" id="azure-api-key" class="form-control" placeholder="Your Azure API key">
+                                        <small><i class="fas fa-shield-alt"></i> Azure API key is processed securely and not stored</small>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="azure-deployment">
+                                            <i class="fas fa-cogs"></i> Model Deployment
+                                        </label>
+                                        <input type="text" id="azure-deployment" class="form-control" placeholder="gpt-4o-deployment">
+                                        <small>Your model deployment name</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="azure-api-version">
+                                            <i class="fas fa-tag"></i> API Version
+                                        </label>
+                                        <input type="text" id="azure-api-version" class="form-control" value="2024-02-15-preview">
+                                        <small>Azure OpenAI API version</small>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="azure-embedding-deployment">
+                                        <i class="fas fa-project-diagram"></i> Embedding Deployment (Optional)
+                                    </label>
+                                    <input type="text" id="azure-embedding-deployment" class="form-control" placeholder="text-embedding-ada-002">
+                                    <small>Embedding model deployment name</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 3: Run Evaluation -->
+            <section class="card" id="run-section">
+                <div class="card-header">
+                    <i class="fas fa-play"></i>
+                    <h2>Step 3: Run Evaluation</h2>
+                    <span class="step-badge">3</span>
+                </div>
+                <div class="card-content">
+                    <div class="run-controls">
+                        <button class="btn-primary" id="start-evaluation" disabled>
+                            <i class="fas fa-play"></i>
+                            Start Evaluation
+                        </button>
+                        <div class="run-info">
+                            <div>
+                                <div class="info-item">
+                                    <i class="fas fa-clock"></i>
+                                    <span>Estimated Time: <span id="estimated-time">--</span></span>
+                                </div>
+                                <div class="info-item">
+                                    <i class="fas fa-list"></i>
+                                    <span>Total Queries: <span id="total-queries">--</span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Progress Section -->
+            <section class="card" id="progress-section" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-tasks"></i>
+                    <h2>Processing Progress</h2>
+                    <span class="status-badge" id="status-badge">Running</span>
+                </div>
+                <div class="card-content">
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <div class="progress-text">
+                            <span id="progress-percentage">0%</span>
+                            <span id="progress-details">Initializing...</span>
+                        </div>
+                    </div>
+                    
+                    <div class="progress-stats">
+                        <div class="stat-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Completed: <span id="completed-count">0</span></span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-clock"></i>
+                            <span>Elapsed: <span id="elapsed-time">00:00</span></span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-hourglass-half"></i>
+                            <span>Remaining: <span id="remaining-time">--:--</span></span>
+                        </div>
+                    </div>
+
+                    <div class="log-container">
+                        <h4><i class="fas fa-terminal"></i> Processing Log</h4>
+                        <div class="log-output" id="log-output"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="card" id="results-section" style="display: none;">
+                <div class="card-header">
+                    <i class="fas fa-chart-bar"></i>
+                    <h2>Evaluation Results</h2>
+                    <span class="status-badge success" id="results-status">Completed</span>
+                </div>
+                <div class="card-content">
+                    <div class="results-summary">
+                        <div class="summary-grid">
+                            <div class="summary-item success">
+                                <i class="fas fa-list-ol"></i>
+                                <h3 id="total-processed">0</h3>
+                                <p>Total Processed</p>
+                            </div>
+                            <div class="summary-item success">
+                                <i class="fas fa-check-circle"></i>
+                                <h3 id="successful-queries">0</h3>
+                                <p>Successful</p>
+                            </div>
+                            <div class="summary-item warning">
+                                <i class="fas fa-times-circle"></i>
+                                <h3 id="failed-queries">0</h3>
+                                <p>Failed</p>
+                            </div>
+                            <div class="summary-item info">
+                                <i class="fas fa-clock"></i>
+                                <h3 id="total-time">0s</h3>
+                                <p>Total Time</p>
+                            </div>
+                            <div class="summary-item info">
+                                <i class="fas fa-tachometer-alt"></i>
+                                <h3 id="avg-time">0s</h3>
+                                <p>Avg per Query</p>
+                            </div>
+                            <div class="summary-item token-info" id="token-summary-item" style="display: none;">
+                                <i class="fas fa-coins"></i>
+                                <h3 id="total-tokens">0</h3>
+                                <p>Total Tokens</p>
+                            </div>
+                            <div class="summary-item cost-info" id="cost-summary-item" style="display: none;">
+                                <i class="fas fa-dollar-sign"></i>
+                                <h3 id="estimated-cost">$0.00</h3>
+                                <p>Estimated Cost</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="results-actions">
+                        <button class="btn-download" id="download-results">
+                            <i class="fas fa-download"></i>
+                            Download Results
+                        </button>
+                        <button class="btn-secondary" id="view-details">
+                            <i class="fas fa-eye"></i>
+                            View Details
+                        </button>
+                        <button class="btn-secondary" id="new-evaluation">
+                            <i class="fas fa-plus"></i>
+                            New Evaluation
+                        </button>
+                    </div>
+
+                    <div class="metrics-container" id="metrics-container">
+                        <h4><i class="fas fa-chart-line"></i> Evaluation Metrics</h4>
+                        <canvas id="metrics-chart"></canvas>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>&copy; RAG Evaluator - Advanced Performance Testing Suite</p>
+            <div class="footer-links">
+                <a href="#"><i class="fas fa-book"></i> Documentation</a>
+                <a href="#"><i class="fas fa-question-circle"></i> Help</a>
+                <a href="#"><i class="fab fa-github"></i> GitHub</a>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chart.js/3.9.1/chart.min.js"></script>
+    <script src="static/script.js"></script>
+</body>
+</html> 

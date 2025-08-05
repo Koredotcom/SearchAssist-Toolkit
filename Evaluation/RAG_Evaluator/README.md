@@ -1,303 +1,161 @@
 # RAG Evaluator
 
-## Overview
+Advanced RAG System Performance Evaluation
 
-This repo is designed to evaluate queries and ground truths using the Ragas and Crag evaluators. The evaluation can be performed using data from an Excel file and optionally fetching responses via the SearchAI API. The script supports both Ragas and Crag evaluations, and the results are saved to an output Excel file or can be stored in mongoDB.
+## 🔐 Multi-User Session Management
+
+The RAG Evaluator now includes **user-level file separation** to support multiple concurrent users safely:
+
+### Key Features
+
+- **Unique Session IDs**: Each user gets a unique session ID when they start using the application
+- **Isolated File Storage**: Files are stored in session-specific directories (`outputs/session_<session_id>/`)
+- **Secure Downloads**: Users can only download their own evaluation results
+- **Automatic Cleanup**: Old session files are automatically cleaned up after 24 hours
+- **Session Persistence**: Sessions are maintained across page refreshes using localStorage
+
+### Session Management
+
+#### For End Users
+1. **Automatic Session Creation**: A unique session is automatically created when you load the application
+2. **Session Indicator**: Your session ID is displayed in the header (first 8 characters)
+3. **File Isolation**: Your uploaded files and results are completely isolated from other users
+4. **Secure Downloads**: Only you can access and download your evaluation results
+
+#### For Administrators
+- **Session Monitoring**: View active sessions via `/api/session-status/{session_id}`
+- **Manual Cleanup**: Trigger cleanup of old sessions via `/api/cleanup-old-sessions`
+- **Session Statistics**: Monitor session usage and storage consumption
+
+### API Endpoints
+
+#### Session Management
+- `POST /api/create-session` - Create a new user session
+- `GET /api/session-status/{session_id}` - Get session information
+- `POST /api/cleanup-old-sessions` - Clean up old sessions (admin)
+
+#### File Operations
+- `POST /api/runeval` - Run evaluation (requires session_id)
+- `GET /api/download-results/{session_id}` - Download session-specific results
+
+### Directory Structure
+
+```
+outputs/
+├── session_<uuid1>/
+│   ├── input_<session_id>_<filename>.xlsx
+│   └── <filename>_evaluation_output_<session_short>_<timestamp>.xlsx
+├── session_<uuid2>/
+│   ├── input_<session_id>_<filename>.xlsx
+│   └── <filename>_evaluation_output_<session_short>_<timestamp>.xlsx
+└── sessions.json (session metadata)
+```
+
+### Security Features
+
+- **Session Validation**: All operations validate session ownership
+- **File Access Control**: Users cannot access files from other sessions
+- **IP and User Agent Tracking**: Sessions are associated with client metadata
+- **Automatic Expiration**: Sessions older than 24 hours are automatically cleaned up
 
 ## Installation
 
-### Prerequisites
+1. Install dependencies:
+```bash
+pip install -r src/requirements.txt
+```
 
-- Install new virtual environment(Recommended)
-- Python 3.9.x
-- Pip package manager
+2. Configure your API credentials in `src/config/config.json`
 
-### Installing Packages
+3. Start the application:
+```bash
+python src/routes/app.py
+```
 
-1. Ensure you have Python and pip installed. You can check this by running:
- ```sh
- python --version
- pip --version
- ```
+The application will be available at `http://localhost:8001`
 
-2. Install the necessary packages by running:
- ```sh
- pip install -r requirements.txt
- ```
+## Configuration
+
+### Session Management Settings
+
+You can configure session behavior by modifying the SessionManager initialization in `utils/sessionManager.py`:
+
+- `max_age_hours`: How long sessions are kept (default: 24 hours)
+- `cleanup_interval_hours`: How often cleanup runs (default: 24 hours)
+
+### Cleanup Scheduler
+
+The cleanup scheduler automatically removes old sessions. You can also manually trigger cleanup:
+
+```python
+from utils.cleanup_scheduler import manual_cleanup
+cleaned_sessions = manual_cleanup()
+```
 
 ## Usage
 
-### Command-Line Arguments
+### Web Interface
 
-- `--input_file`: Path to the input Excel file (required).
-- `--sheet_name`: Specific sheet name to evaluate (optional, defaults to all sheets).
-- `--evaluate_ragas`: Run only Ragas evaluation (optional).
-- `--evaluate_crag`: Run only Crag evaluation (optional).
-- `--use_search_api`: Use SearchAssist API to fetch responses (optional).
-- `--save_db`: Save the evaluation results to MongoDB (optional).
-- `--llm_model`: Specify the LLM model to use for evaluation (optional) (To use azure openai model, set it to "azure").
+1. **Access the Application**: Navigate to `http://localhost:8001`
+2. **Automatic Session**: A unique session is created automatically
+3. **Upload Files**: Upload your Excel files - they're stored securely in your session
+4. **Run Evaluation**: Configure and run your evaluation
+5. **Download Results**: Download your results - only you have access to them
 
-### Running Your First Experiment
+### API Usage
 
-### Example 1: Using Both Ragas and Crag Evaluators with SearchAssist API
+```python
+import requests
 
-To run an evaluation on a specific sheet using both Ragas and Crag evaluators and the SearchAssist API, follow these steps:
+# Create a session
+response = requests.post('http://localhost:8001/api/create-session')
+session_id = response.json()['session_id']
 
-1. Prepare your Excel file with the following columns:
-    - `query`: The query string.
-    - `ground_truth`: The expected ground truth for the query.
-
-2. Execute the script with the following command:
-
-```sh
-python main.py --input_file path/to/your/excel_file.xlsx --sheet_name "Sheet1" --use_search_api
-```
-### Example 2: Using only Ragas Evaluator and without Search AI API
-
-To run an evaluation using the Ragas evaluator, follow these steps:
-
-1. Prepare your Excel file with the following columns:
-    - `query`: The query string.
-    - `ground_truth`: The expected ground truth for the query.
-    - `contexts`: A list of contexts (optional).
-    - `answer`: The answer string (optional).
-
-2. Execute the script with the following command:
-
-```sh
-python main.py --input_file path/to/your/excel_file.xlsx --evaluate_ragas
-```
-
-### Example 3: Using only Ragas Evaluator with Search AI API and saving results to MongoDB
-
-To run an evaluation using the Ragas evaluator with Azure openai model, Search AI API and save the results to MongoDB, follow these steps:
-
-1. Prepare your Excel file with the following columns:
-    - `query`: The query string.
-    - `ground_truth`: The expected ground truth for the query.
-
-2. Execute the script with the following command:
-    
-    ```sh
-    python main.py --input_file path/to/your/excel_file.xlsx  --evaluate_ragas --use_search_api --save_db -- llm_model azure
-    ```
-## Additional Details
-
-### Output
-
-The results are saved in the `./outputs` directory with a timestamped filename. The output file will contain the evaluation results for each sheet processed.
-
-### API Key for OpenAI
-
-Ensure that the `OPENAI_API_KEY` environment variable is set with your OpenAI API key before running the script:
-
-Linux
-```sh
-export OPENAI_API_KEY="your_openai_api_key"
-```
-```sh
-export AZURE_OPENAI_API_KEY="your_openai_api_key"
-```
-Windows
-```sh
-$env:OPENAI_API_KEY="your_openai_api_key"
-```
-```sh
-$env:AZURE_OPENAI_API_KEY="your_openai_api_key"
-```
-
-###Configuration
-Ensure the configuration file `config.json` is correctly set up and accessible.
-
-####Setting Up config.json
-Create a config.json file in the config directory with the necessary configuration settings. Below is an example of how your config.json file might look:
-
-```json5
-{
-    "<UXO or SA>": {
-        "app_id": "<UXO or SA stream ID>",
-        "client_id": "<UXO or SA client ID>",
-        "client_secret": "<UXO or SA client secret>",
-        "domain": "<SA or UXO domain url>"
-    },
-    "openai": {
-        "model_name": "<EVALUATION_MODEL_NAME>",
-        "embedding_name": "<EVALUATION_EMBEDDING_NAME>"
-    },
-    // use this if you are using azure openai model
-    "azure": {
-        {
-            "openai_api_version": "<your_openai_api_version>",
-            "base_url": "<your_base_url>",
-            "model_deployment": "<your_model_deployment>",
-            "model_name": "<your_model_name>",
-            "embedding_deployment": "<your_embedding_deployment>",
-            "embedding_name": "<your_embedding_name>"
-        }
-    },
-    "MongoDB": {
-        "url": "<MONGO URL>",
-        "dbName": "<DB NAME>",
-        "collectionName": "<COLLECTION NAME>"
-    }
-    
+# Run evaluation with session
+files = {'excel_file': open('data.xlsx', 'rb')}
+data = {
+    'config': json.dumps(config),
+    'session_id': session_id
 }
-```
-Replace the placeholders with your actual values. 
-- If saving to MongoDB, set `url`, `dbName`, and `collectionName` in the `MongoDB` section of the config.json file.
+response = requests.post('http://localhost:8001/api/runeval', files=files, data=data)
 
-- for Azure openai model, set `EVALUATION_MODEL_NAME`, `openai_api_version`, `base_url`, `model_deployment`, `model_name`, `embedding_deployment`, `embedding_name`, `model_version` in config.json file.
-
-```json5
-{
-    "openai_api_version": "v1",
-    "base_url": "https://api.openai.com",
-    "model_deployment": "azure",
-    "model_name": "gpt-3.5-turbo",
-    "model_version": "latest"
-}
+# Download results
+download_url = f'http://localhost:8001/api/download-results/{session_id}'
+response = requests.get(download_url)
 ```
 
----
+## Monitoring
 
-# API Documentation
+### Session Statistics
 
-## Overview
+Get statistics about session usage:
 
-This FastAPI application provides two main endpoints: `/runeval` and `/mailService`. These endpoints allow users to run evaluations and send emails with the results, respectively.
+```bash
+curl http://localhost:8001/api/session-status/{session_id}
+```
 
-## Endpoints
+### Cleanup Operations
 
-### 1. `/runeval`
+Manually clean up old sessions:
 
-#### Method: POST
+```bash
+curl -X POST http://localhost:8001/api/cleanup-old-sessions
+```
 
-**Summary**: Run Eval
+## Troubleshooting
 
-**Description**: This endpoint allows users to run an evaluation based on the provided Excel file, config file, and parameters.
+### Session Issues
 
-**Request Body**:
-- **Content Type**: `application/json`
-- **Schema**: `Body`
-  - **Properties**:
-    - `excel_file` (string): The path to the Excel file.
-    - `config_file` (string): The path to the config file.
-    - `params` (object): Evaluation parameters.
-      - **Schema**: `Params`
-        - **Properties**:
-          - `sheet_name` (string): The name of the sheet in the Excel file.
-          - `evaluate_ragas` (boolean): Whether to evaluate ragas. Default is `false`.
-          - `evaluate_crag` (boolean): Whether to evaluate crag. Default is `false`.
-          - `use_search_api` (boolean): Whether to use the search API. Default is `false`.
-          - `llm_model` (string): The LLM model to use.
-          - `save_db` (boolean): Whether to save the results to the database. Default is `false`.
+- **Session Expired**: If you see session expiration errors, refresh the page to create a new session
+- **File Access Denied**: Ensure you're using the correct session ID
+- **Download Failures**: Check that your session is still valid and has completed evaluations
 
-**Responses**:
-- **200**: Successful Response
-  - **Content Type**: `application/json`
-  - **Schema**: Empty object
-- **422**: Validation Error
-  - **Content Type**: `application/json`
-  - **Schema**: `HTTPValidationError`
-    - **Properties**:
-      - `detail` (array): List of validation errors.
-        - **Items**: `ValidationError`
-          - **Properties**:
-            - `loc` (array): Location of the error.
-              - **Items**: `string` or `integer`
-            - `msg` (string): Error message.
-            - `type` (string): Error type.
+### Performance Considerations
 
-### 2. `/mailService`
+- Sessions are stored in memory and persisted to disk
+- File cleanup happens automatically but can be triggered manually
+- Large numbers of concurrent sessions may require additional monitoring
 
-#### Method: POST
+## License
 
-**Summary**: Mail Service
-
-**Description**: This endpoint allows users to send an email with the evaluation results.
-
-**Query Parameters**:
-- `send_mail` (boolean): Whether to send the email. Default is `false`.
-
-**Responses**:
-- **200**: Successful Response
-  - **Content Type**: `application/json`
-  - **Schema**: Empty object
-- **422**: Validation Error
-  - **Content Type**: `application/json`
-  - **Schema**: `HTTPValidationError`
-    - **Properties**:
-      - `detail` (array): List of validation errors.
-        - **Items**: `ValidationError`
-          - **Properties**:
-            - `loc` (array): Location of the error.
-              - **Items**: `string` or `integer`
-            - `msg` (string): Error message.
-            - `type` (string): Error type.
-
-## Components
-
-### Schemas
-
-#### `Body`
-- **Properties**:
-  - `excel_file` (string): The path to the Excel file.
-  - `config_file` (string): The path to the config file.
-  - `params` (object): Evaluation parameters.
-    - **Schema**: `Params`
-      - **Properties**:
-        - `sheet_name` (string): The name of the sheet in the Excel file.
-        - `evaluate_ragas` (boolean): Whether to evaluate ragas. Default is `false`.
-        - `evaluate_crag` (boolean): Whether to evaluate crag. Default is `false`.
-        - `use_search_api` (boolean): Whether to use the search API. Default is `false`.
-        - `llm_model` (string): The LLM model to use.
-        - `save_db` (boolean): Whether to save the results to the database. Default is `false`.
-
-#### `HTTPValidationError`
-- **Properties**:
-  - `detail` (array): List of validation errors.
-    - **Items**: `ValidationError`
-      - **Properties**:
-        - `loc` (array): Location of the error.
-          - **Items**: `string` or `integer`
-        - `msg` (string): Error message.
-        - `type` (string): Error type.
-
-#### `Params`
-- **Properties**:
-  - `sheet_name` (string): The name of the sheet in the Excel file.
-  - `evaluate_ragas` (boolean): Whether to evaluate ragas. Default is `false`.
-  - `evaluate_crag` (boolean): Whether to evaluate crag. Default is `false`.
-  - `use_search_api` (boolean): Whether to use the search API. Default is `false`.
-  - `llm_model` (string): The LLM model to use.
-  - `save_db` (boolean): Whether to save the results to the database. Default is `false`.
-
-#### `ValidationError`
-- **Properties**:
-  - `loc` (array): Location of the error.
-    - **Items**: `string` or `integer`
-  - `msg` (string): Error message.
-  - `type` (string): Error type.
-
----
-
-
-## Future Improvements
-
-- Add support for additional evaluators.
-- Generate User friendly reports.
-- Support for synthetic test data set generator.
-- Support for custom LLMs(Claude etc).
-- More to come....!
-
-## Contributing
-
-We welcome contributions to this project! To contribute:
-
-1. Fork the repository.
-2. Create a new branch for your feature or bugfix.
-3. Make your changes and commit them with clear and descriptive messages.
-4. Push your changes to your fork.
-5. Open a pull request with a detailed description of your changes.
-
-For major changes, please open an issue first to discuss what you would like to change. This helps ensure that your contribution is aligned with the project's goals and avoids duplication of effort.
+[Your License Here]
