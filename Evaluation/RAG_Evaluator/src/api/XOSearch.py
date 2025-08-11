@@ -77,7 +77,7 @@ def get_bot_response(api: XOSearchAPI, query: str, truth: str) -> Optional[Dict]
         'query': query,
         'ground_truth': truth,
         'context': context_data,
-        'context_url': context_url,
+        'context_url': "",
         'answer': bot_answer
     }
 
