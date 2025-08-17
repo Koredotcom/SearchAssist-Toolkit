@@ -1,0 +1,4 @@
+# Ignore IDE files for Pycharm or other JetBrain IDES
+.idea
+# Ignore checkin of Python cache directories of compiled code
+__pycache__/
