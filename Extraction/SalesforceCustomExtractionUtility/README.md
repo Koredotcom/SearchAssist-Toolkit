@@ -74,16 +74,17 @@ Follow the steps below to set up and run the Salesforce Custom Extraction Utilit
     #Proxy URLs for network access
     proxies= {"http": "PROXY URL","https": "PROXY URL"}
 
-    #Specifies whether data fetching uses URL names or Item IDs
-    #inputFormat="urlnames" or inputFormat="itemids"
-    inputFormat =""
+
+    #input type = "articleId" [If we need to fetch data from selected article ids] or "urlNames" [If we need to fetch data using csv file containing UrlNames] or ''[empty incase of fetching the whole data]
+    inputType="articleId"
+
+    #itemIds format incase of selected article ids ['kA0J1000000oLlhKAE','kA0J1000000oLlOKAU','kA0J1000000oM5LKAU'] or '' incase the article ids are mentioned in csv file
+    itemIds=''
 
     #SSL Verification
     #Set to "False" if SSL Verification is not needed, otherwise set to "True"
     ssl=""
 
-    #If you need the details of specific documents you can enter their article ids or leave it as empty
-    itemIds=""
 
     ```
 
