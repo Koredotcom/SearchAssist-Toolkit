@@ -5,6 +5,7 @@ const url = require('url');
 const path = require('path');
 const processData = require('./processData');
 const logger = require('./utils/logger');
+const { ingestBatchData } = require('./ingestData');
 
 // Load crawler configuration
 const crawlerConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'config', 'crawler.json'), 'utf-8'));
@@ -52,8 +53,6 @@ async function batchIngestData(documents) {
     logger.info(`Processing batch of ${totalDocuments} documents in a single API call`);
     
     try {
-        const { ingestBatchData } = require('./ingestData');
-        
         // Send all documents in a single API call
         await ingestBatchData(documents);
         
@@ -303,9 +302,6 @@ const startCrawling = async () => {
         externalUrls.clear();
         allDocuments = []; // Clear documents for each site
         
-        // Reset batch counter for each site
-        const { resetBatchCounter } = require('./ingestData');
-        resetBatchCounter();
 
         try {
             // Manual login step (if required)

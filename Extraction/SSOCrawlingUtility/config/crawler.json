@@ -21,7 +21,7 @@
         "authToken": "your-auth-token",
         "timeout": 10000,
         "name": "SSO Crawler Utility",
-        "batchSize": 50,
+        "batchSize": 500,
         "apiUrls": {
             "uxo": "/api/public/bot/{streamId}/ingest-data",
             "searchAssist": "/searchassistapi/external/stream/{streamId}/ingest?contentSource=manual&extractionType=data&index=true"
@@ -40,6 +40,7 @@
             "--start-maximized",
             "--disable-web-security",
             "--allow-running-insecure-content",
+            "--incognito",
             "--disable-gpu",
             "--disable-software-rasterizer"
         ]
