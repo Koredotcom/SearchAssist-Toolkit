@@ -2,8 +2,8 @@
     "sites": [
         {
             "url": "your-target-url",
-            "maxDepth": 2,
-            "maxPages": 2,
+            "maxDepth": 5,
+            "maxPages": 12,
             "enabled": true,
             "urlPatterns": []
         }
@@ -21,9 +21,10 @@
         "authToken": "your-auth-token",
         "timeout": 10000,
         "name": "SSO Crawler Utility",
+        "batchSize": 50,
         "apiUrls": {
             "uxo": "/api/public/bot/{streamId}/ingest-data",
-            "searchAssist": "/api/public/bot/{streamId}/ingest-data"
+            "searchAssist": "/searchassistapi/external/stream/{streamId}/ingest?contentSource=manual&extractionType=data&index=true"
         }
     },
     
@@ -39,7 +40,6 @@
             "--start-maximized",
             "--disable-web-security",
             "--allow-running-insecure-content",
-            "--incognito",
             "--disable-gpu",
             "--disable-software-rasterizer"
         ]

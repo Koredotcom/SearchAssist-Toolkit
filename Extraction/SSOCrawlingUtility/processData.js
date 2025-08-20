@@ -1,5 +1,4 @@
 const cheerio = require('cheerio');
-const ingestData = require('./ingestData');
 const logger = require('./utils/logger');
 
 async function extractPageData(htmlContent) {
@@ -46,7 +45,8 @@ async function processData({url, html}) {
         logger.warn('No title found for page', { url });
     }
 
-    await ingestData(documentObject);
+    // Return the document object instead of ingesting immediately
+    return documentObject;
 }
 
 module.exports = processData;

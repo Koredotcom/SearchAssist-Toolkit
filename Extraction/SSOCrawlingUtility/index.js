@@ -23,8 +23,44 @@ Object.values(crawlerConfig.outputDirectories).forEach(dir => {
 const visitedUrls = new Set();
 const externalUrls = new Set();
 
+// Global array to collect all documents for batch processing
+let allDocuments = [];
+// Get batch size from configuration
+const BATCH_SIZE = crawlerConfig.ingest.batchSize || 50; // Default to 50 if not specified
+
 function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Function to check if we should ingest a batch
+async function checkAndIngestBatch() {
+    if (allDocuments.length >= BATCH_SIZE) {  // When we reach 50 documents
+        logger.info(`Reached batch size of ${BATCH_SIZE}, processing batch...`);
+        const batchToProcess = allDocuments.splice(0, BATCH_SIZE); // Remove first 50
+        await batchIngestData(batchToProcess);
+    }
+}
+
+// Batch ingestion function
+async function batchIngestData(documents) {
+    if (!documents || documents.length === 0) {
+        logger.info('No documents to ingest for batch processing');
+        return;
+    }
+
+    const totalDocuments = documents.length;
+    logger.info(`Processing batch of ${totalDocuments} documents in a single API call`);
+    
+    try {
+        const { ingestBatchData } = require('./ingestData');
+        
+        // Send all documents in a single API call
+        await ingestBatchData(documents);
+        
+        logger.info(`Batch ingestion completed successfully for ${totalDocuments} documents`);
+    } catch (error) {
+        logger.error('Error in batch ingestion:', { error: error.message });
+    }
 }
 
 const shouldCrawlUrl = (currentUrl, patterns = []) => {
@@ -110,7 +146,11 @@ const crawlPageDFS = async (page, currentUrl, baseUrl, maxDepth, maxUrls, urlPat
         urlCount++;
 
         const htmlContent = await page.content();
-        await processData({ url: currentUrl, html: htmlContent });
+        const document = await processData({ url: currentUrl, html: htmlContent });
+        allDocuments.push(document);
+
+        // Check if we should ingest a batch after each page
+        await checkAndIngestBatch();
 
         const fileName = currentUrl.replace(/[^a-zA-Z0-9]/g, '_') + '.html';
         const filePath = path.join(htmlsDirectory, fileName);
@@ -176,7 +216,11 @@ const startCrawlingDFS = async (page, currentUrl, baseUrl, maxDepth, maxUrls, ur
         urlCount++;
 
         const htmlContent = await page.content();
-        await processData({ url: currentUrl, html: htmlContent });
+        const document = await processData({ url: currentUrl, html: htmlContent });
+        allDocuments.push(document);
+
+        // Check if we should ingest a batch after each page
+        await checkAndIngestBatch();
 
         const fileName = currentUrl.replace(/[^a-zA-Z0-9]/g, '_') + '.html';
         const filePath = path.join(htmlsDirectory, fileName);
@@ -257,6 +301,11 @@ const startCrawling = async () => {
         urlCount = 0;
         visitedUrls.clear();
         externalUrls.clear();
+        allDocuments = []; // Clear documents for each site
+        
+        // Reset batch counter for each site
+        const { resetBatchCounter } = require('./ingestData');
+        resetBatchCounter();
 
         try {
             // Manual login step (if required)
@@ -275,6 +324,13 @@ const startCrawling = async () => {
                 site.maxPages,
                 site.urlPatterns
             );
+
+            // After all pages are crawled, process remaining documents
+            if (allDocuments.length > 0) {
+                logger.info(`Processing final batch of ${allDocuments.length} remaining documents`);
+                await batchIngestData(allDocuments);
+            }
+
         } catch (error) {
             logger.error(`Error crawling site: ${site.url}`, { error: error.message });
         }
