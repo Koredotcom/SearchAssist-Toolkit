@@ -9,6 +9,11 @@ from utils.jti import JTI
 
 def generate_JWT_token(client_id, client_secret):
     jwt_token = JTI.get_hs_key(client_id, client_secret, "JWT", "HS256")    
+    # Ensure the token is a string, not bytes
+    if isinstance(jwt_token, bytes):
+        jwt_token = jwt_token.decode('utf-8')
+    elif jwt_token is None:
+        raise ValueError("Failed to generate JWT token")
     return jwt_token
 
 def save_batch_to_persistent_file(batch_results: List[Dict], batch_number: int, api_type: str, 
@@ -94,9 +99,23 @@ class AsyncXOSearchAPI:
         self.client_id = config.get('UXO').get('client_id')
         self.client_secret = config.get('UXO').get('client_secret')
         self.auth_token = generate_JWT_token(self.client_id, self.client_secret)
+        # Ensure auth_token is a string
+        if not isinstance(self.auth_token, str):
+            raise ValueError(f"Auth token must be string, got {type(self.auth_token)}")
         self.app_id = config.get('UXO').get('app_id')
         self.domain = config.get('UXO').get('domain')
         self.base_url = f'https://{self.domain}/api/public/bot/{self.app_id}'
+        
+        # Get search API configuration from config
+        search_api_config = config.get('search_api', {})
+        self.search_api_version = search_api_config.get('version', 'v2')
+        self.search_api_endpoint = search_api_config.get('endpoint', 'search/v2/advanced-search')
+        self.search_api_payload = search_api_config.get('payload', {
+            "includeChunksInResponse": True,
+            "searchResults": True,
+            "maxNumOfChunks": 15
+        })
+        self.answer_search = search_api_config.get('answerSearch', True)
 
     async def _make_request(self, session: aiohttp.ClientSession, endpoint: str, data: Dict) -> Optional[Dict]:
         headers = {
@@ -113,12 +132,17 @@ class AsyncXOSearchAPI:
             return None
 
     async def advanced_search(self, session: aiohttp.ClientSession, query: str) -> Optional[Dict]:
-        data = {
-            "query": query,
-            "includeChunksInResponse": True
-        }
-        print("Making async SA search call for query:", query)
-        return await self._make_request(session, 'advancedSearch', data)
+        # Build payload from config and add query
+        data = self.search_api_payload.copy()
+        data["query"] = query
+        
+        # Add answerSearch flag from config
+        data["answerSearch"] = self.answer_search
+        
+        print("Making async advanced search call for query:", query)
+        print(f"Using search API version: {self.search_api_version}")
+        print(f"Answer search enabled: {self.answer_search}")
+        return await self._make_request(session, self.search_api_endpoint, data)
 
 
 class AsyncSearchAssistAPI:
@@ -155,49 +179,75 @@ class AsyncSearchAssistAPI:
 
 class AsyncAnswerProcessor:
     @staticmethod
-    def get_context(answer: Dict) -> Tuple[List[str], str]:
+    def get_context(answer: Dict, api_version: str = "v2") -> Tuple[List[str], str]:
         contexts = []
         context_urls = set()
         
-        # Handle XO Search format
-        if 'chunk_result' in answer:
-            for chunk in answer.get('chunk_result', {}).get('generative', []):
-                source = chunk.get('_source', {})
-                if source.get('sentToLLM'):
-                    contexts.append(source.get('chunkText', ''))
-                    context_urls.add(source.get('recordUrl', ''))
-        
-        # Handle SearchAssist format
-        elif 'template' in answer:
-            for chunk in answer.get('template', {}).get('chunk_result', {}).get('generative', []):
-                source = chunk.get('_source', {})
-                if source.get('sentToLLM'):
-                    contexts.append(source.get('chunkText', ''))
-                    context_urls.add(source.get('recordUrl', ''))
+        if api_version == "v2":
+            # Handle v2 format (template.chunk_result)
+            if 'template' in answer and 'chunk_result' in answer['template']:
+                for chunk in answer['template']['chunk_result']:
+                    source = chunk.get('_source', {})
+                    if source.get('sentToLLM'):
+                        contexts.append(source.get('chunkText', ''))
+                        context_urls.add(source.get('recordUrl', ''))
+        else:
+            # Handle v1 format (chunk_result directly)
+            if 'chunk_result' in answer:
+                for chunk in answer.get('chunk_result', {}).get('generative', []):
+                    source = chunk.get('_source', {})
+                    if source.get('sentToLLM'):
+                        contexts.append(source.get('chunkText', ''))
+                        context_urls.add(source.get('recordUrl', ''))
         
         return contexts, ",".join(context_urls)
 
     @staticmethod
-    def extract_answer(answer: Dict) -> str:
-        # Handle XO Search format
-        if 'response' in answer:
-            center_panel = (answer.get('response', {})
-                            .get('answer_payload', {})
-                            .get('center_panel', {}))
-        # Handle SearchAssist format
-        elif 'template' in answer:
-            center_panel = (answer.get('template', {})
-                            .get('graph_answer', {})
-                            .get('payload', {})
-                            .get('center_panel', {}))
+    def extract_answer(answer: Dict, api_version: str = "v2") -> str:
+        if api_version == "v2":
+            # Handle v2 format (template.answer_details.response.answer)
+            if 'template' in answer and 'answer_details' in answer['template']:
+                answer_details = answer['template']['answer_details']
+                if 'response' in answer_details and 'answer' in answer_details['response']:
+                    return answer_details['response']['answer']
         else:
-            return "No Answer Found"
+            # Handle v1 format (response.answer_payload.center_panel)
+            if 'response' in answer:
+                center_panel = (answer.get('response', {})
+                                .get('answer_payload', {})
+                                .get('center_panel', {}))
+                if not center_panel:
+                    return "No Answer Found"
+                snippet_content = center_panel.get('data', [{}])[0].get('snippet_content', [{}])
+                answer_string = " ".join(content.get('answer_fragment', "No Answer Found") for content in snippet_content) if snippet_content else "No Answer Found"
+                return answer_string
+        
+        return "No Answer Found"
+    
+    @staticmethod
+    def extract_error_message(answer: Dict, api_version: str = "v2") -> str:
+        """
+        Extract error message from response based on API version.
+        
+        Args:
+            answer: Full search API response
+            api_version: API version (v1 or v2)
             
-        if not center_panel:
-            return "No Answer Found"
-        snippet_content = center_panel.get('data', [{}])[0].get('snippet_content', [{}])
-        answer_string = " ".join(content.get('answer_fragment', "No Answer Found") for content in snippet_content) if snippet_content else "No Answer Found"
-        return answer_string
+        Returns:
+            Error message string or empty string if no error
+        """
+        if api_version == "v2":
+            # Handle v2 format (template.answer_details.errMsg)
+            if 'template' in answer and 'answer_details' in answer['template']:
+                answer_details = answer['template']['answer_details']
+                if 'errMsg' in answer_details:
+                    return answer_details['errMsg']
+        else:
+            # Handle v1 format (response.errMsg)
+            if 'response' in answer and 'errMsg' in answer['response']:
+                return answer['response']['errMsg']
+        
+        return ""
 
 
 async def get_async_bot_response(api_type: str, session: aiohttp.ClientSession, query: str, truth: str) -> Optional[Dict]:
@@ -225,8 +275,12 @@ async def get_async_bot_response(api_type: str, session: aiohttp.ClientSession, 
     if not answer:
         return None
 
-    context_data, context_url = AsyncAnswerProcessor.get_context(answer)
-    bot_answer = AsyncAnswerProcessor.extract_answer(answer)
+    # Get API version from config
+    search_api_config = config.get('search_api', {})
+    api_version = search_api_config.get('version', 'v2')
+    
+    context_data, context_url = AsyncAnswerProcessor.get_context(answer, api_version)
+    bot_answer = AsyncAnswerProcessor.extract_answer(answer, api_version)
 
     return {
         'query': query,
@@ -253,6 +307,10 @@ async def call_search_api_async(queries: List[str], ground_truths: List[str], ap
     """
     results = []
     batch_number = 1
+    
+    # Get sleep duration from config
+    config = ConfigManager().get_config()
+    sleep_seconds = config.get('search_api_sleep_seconds', 1)
     
     async with aiohttp.ClientSession() as session:
         # Process queries in batches to limit concurrency
@@ -305,9 +363,96 @@ async def call_search_api_async(queries: List[str], ground_truths: List[str], ap
                                            filename=persistent_filename)
             
             print(f"✅ Batch {batch_number} completed: {len(batch_results)} queries processed")
+            
+            # Sleep between batches if configured
+            if sleep_seconds > 0 and i + max_concurrent < len(queries):
+                print(f"😴 Sleeping for {sleep_seconds} seconds before next batch...")
+                await asyncio.sleep(sleep_seconds)
+            
             batch_number += 1
     
     return results
+
+
+async def call_search_api_async_simple(queries: List[str], api_type: str = 'UXO', 
+                                      max_concurrent: int = 3) -> List[Dict]:
+    """
+    Call search API asynchronously for multiple queries (simplified version for retrieval benchmark)
+    
+    Args:
+        queries: List of search queries
+        api_type: 'SA' for SearchAssist or 'UXO' for XO Search
+        max_concurrent: Maximum number of concurrent API calls (default: 3)
+    """
+    results = []
+    
+    # Get sleep duration from config
+    config = ConfigManager().get_config()
+    sleep_seconds = config.get('search_api_sleep_seconds', 1)
+    
+    async with aiohttp.ClientSession() as session:
+        # Process queries in batches to limit concurrency
+        for i in range(0, len(queries), max_concurrent):
+            batch_queries = queries[i:i + max_concurrent]
+            
+            print(f"🔄 Processing batch: {len(batch_queries)} queries (max {max_concurrent} concurrent)")
+            
+            # Create tasks for current batch
+            tasks = []
+            for query in batch_queries:
+                task = get_async_bot_response_simple(api_type, session, query)
+                tasks.append(task)
+            
+            # Execute current batch concurrently
+            batch_responses = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process batch results
+            for j, response in enumerate(batch_responses):
+                query_index = i + j
+                if isinstance(response, Exception):
+                    print(f"❌ Error processing query {query_index}: {response}")
+                    results.append({})
+                elif response:
+                    results.append(response)
+                    print(f"✅ Successfully processed query {query_index}: {queries[query_index][:50]}...")
+                else:
+                    results.append({})
+            
+            print(f"✅ Batch completed: {len(batch_queries)} queries processed")
+            
+            # Sleep between batches if configured
+            if sleep_seconds > 0 and i + max_concurrent < len(queries):
+                print(f"😴 Sleeping for {sleep_seconds} seconds before next batch...")
+                await asyncio.sleep(sleep_seconds)
+    
+    return results
+
+
+async def get_async_bot_response_simple(api_type: str, session: aiohttp.ClientSession, query: str) -> Optional[Dict]:
+    """
+    Get bot response asynchronously (simplified version without ground truth)
+    
+    Args:
+        api_type: 'SA' for SearchAssist or 'UXO' for XO Search
+        session: aiohttp session
+        query: search query
+    """
+    config_manager = ConfigManager()
+    config = config_manager.get_config()
+    
+    if api_type == 'SA' and config.get('SA'):
+        api = AsyncSearchAssistAPI()
+    elif api_type == 'UXO' and config.get('UXO'):
+        api = AsyncXOSearchAPI()
+    else:
+        print(f"API type {api_type} not configured")
+        return None
+    
+    answer = await api.advanced_search(session, query)
+    if not answer:
+        return None
+
+    return answer
 
 
 # Example usage

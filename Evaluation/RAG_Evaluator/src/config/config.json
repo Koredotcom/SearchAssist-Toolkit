@@ -27,6 +27,41 @@
         "collectionName": "<COLLECTION NAME>"
     },
     "model_type": "openai",
-    "max_concurrent_requests_for_search_api": 2,
-    "max_concurrent_requests_for_evaluation": 2
+    "max_concurrent_requests_for_search_api": 3,
+    "max_concurrent_requests_for_evaluation": 3,
+    "search_api_sleep_seconds": 0,
+    "search_api": {
+        "version": "v2",
+        "endpoint": "search/v2/advanced-search",
+        "answerSearch": true,
+        "payload": {
+            "includeChunksInResponse": true,
+            "searchResults": false,
+            "maxNumOfChunks": 15
+        }
+    },
+    "question_generation": {
+        "num_questions": 100,
+        "chunks_per_question": 50,
+        "questions_per_batch": 5,
+        "min_chunks_per_question": 1,
+        "max_pagination_attempts": 10,
+        "target_specific_data": false,
+        "max_chunks_per_question": 10,
+        "elaborate_queries": false,
+        "max_api_retries": 3,
+        "max_generation_attempts": 20,
+        "llm_temperature": 0.7,
+        "llm_max_tokens": 100,
+        "default_total_chunks": 10000,
+        "language_filter": {
+            "enabled": true,
+            "target_language": "en",
+            "allowed_languages": ["en"],
+            "exclude_code_content": true
+        },
+        "chunk_list_api": {
+            "url_template": "https://{domain}/api/public/bot/{streamId}/chunk/list"
+        }
+    }
 }
