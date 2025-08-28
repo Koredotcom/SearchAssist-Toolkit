@@ -23,11 +23,58 @@ from asyncio import Semaphore
 from typing import List, Dict, Tuple, Optional
 import time
 
-async def call_search_api_batch(queries: List[str], ground_truths: List[str], 
-                               config: Dict, batch_size: int = 10, max_concurrent: int = 5) -> List[Dict]:
-    """Process search API calls asynchronously in batches."""
-    # Use the provided session-specific config instead of creating a new one
+# Constants for configuration defaults
+DEFAULT_BATCH_SIZE = 10
+DEFAULT_MAX_CONCURRENT = 5
+DEFAULT_REQUIRED_COLUMNS = ['query', 'ground_truth', 'context', 'answer']
+MINIMAL_REQUIRED_COLUMNS = ['query', 'ground_truth']
 
+
+class TokenUsageTracker:
+    """Tracks and aggregates token usage across different evaluation methods."""
+    
+    def __init__(self):
+        self.total_usage = {
+            'prompt_tokens': 0,
+            'completion_tokens': 0,
+            'total_tokens': 0,
+            'estimated_cost_usd': 0.0
+        }
+    
+    def add_usage(self, usage_data: Dict) -> None:
+        """Add token usage data to the total."""
+        if not isinstance(usage_data, dict):
+            return
+            
+        for key in self.total_usage:
+            if key in usage_data:
+                self.total_usage[key] += usage_data[key]
+    
+    def get_usage(self) -> Dict:
+        """Get the current total usage."""
+        return self.total_usage.copy()
+    
+    def has_usage(self) -> bool:
+        """Check if any token usage has been recorded."""
+        return self.total_usage.get('total_tokens', 0) > 0
+
+async def call_search_api_batch(queries: List[str], ground_truths: List[str], 
+                               config: Dict, batch_size: int = DEFAULT_BATCH_SIZE, 
+                               max_concurrent: int = DEFAULT_MAX_CONCURRENT) -> List[Dict]:
+    """
+    Process search API calls asynchronously in batches.
+    
+    Args:
+        queries: List of search queries to process
+        ground_truths: Corresponding ground truth answers
+        config: Configuration dictionary with API settings
+        batch_size: Number of queries to process per batch
+        max_concurrent: Maximum concurrent requests allowed
+        
+    Returns:
+        List[Dict]: Results from API calls with error handling
+    """
+    # Use the provided session-specific config instead of creating a new one
     
     # Initialize the appropriate async API with fallback handling
     api = None
@@ -37,8 +84,8 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
     sa_config = config.get('SA', {})
     uxo_config = config.get('UXO', {})
     
-    # A config is valid if it has real values (not placeholders starting with '<')
     def is_valid_api_config(api_conf):
+        """Check if API configuration is valid (not a placeholder)."""
         if not isinstance(api_conf, dict):
             return False
         app_id = api_conf.get('app_id', '')
@@ -79,15 +126,28 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
     
     semaphore = Semaphore(max_concurrent)
     
-                async def process_single_query(session, query, ground_truth):
+    async def process_single_query(session, query, ground_truth):
+        """Process a single query with the search API."""
         async with semaphore:
             try:
                 result = await get_bot_response_async(api, session, query, ground_truth)
                 if result is None:
-                    return {"error": "API call returned None - check credentials and configuration", "query": query}
+                    return {
+                        "error": "API call returned None - check credentials and configuration", 
+                        "query": query,
+                        "ground_truth": ground_truth,
+                        "answer": "",
+                        "context": ""
+                    }
                 return result
             except Exception as e:
-                return {"error": str(e), "query": query}
+                return {
+                    "error": str(e), 
+                    "query": query,
+                    "ground_truth": ground_truth,
+                    "answer": "",
+                    "context": ""
+                }
     
     # Process queries in batches
     all_responses = []
@@ -148,13 +208,26 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
     return all_responses
 
 def load_data(excel_file: str, sheet_name: str) -> Tuple[List[str], List[str], List[str], List[str]]:
-    """Load data from Excel file."""
+    """
+    Load data from Excel file with required columns validation.
+    
+    Args:
+        excel_file: Path to the Excel file
+        sheet_name: Name of the sheet to load
+        
+    Returns:
+        Tuple containing (queries, answers, ground_truths, contexts)
+        
+    Raises:
+        ValueError: If required columns are missing
+        FileNotFoundError: If Excel file doesn't exist
+        Exception: Other pandas/openpyxl related errors
+    """
     try:
         df = pd.read_excel(excel_file, sheet_name=sheet_name, engine='openpyxl')
         
         # Validate required columns
-        required_columns = ['query', 'ground_truth', 'context', 'answer']
-        missing_columns = [col for col in required_columns if col not in df.columns]
+        missing_columns = [col for col in DEFAULT_REQUIRED_COLUMNS if col not in df.columns]
         if missing_columns:
             raise ValueError(f"Missing required columns: {missing_columns}")
         
@@ -165,13 +238,25 @@ def load_data(excel_file: str, sheet_name: str) -> Tuple[List[str], List[str], L
         raise
 
 async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
-                                batch_size: int = 10, max_concurrent: int = 5) -> Tuple[List[str], List[str], List[str], List[str]]:
-    """Load data and call search API for responses."""
+                                batch_size: int = DEFAULT_BATCH_SIZE, 
+                                max_concurrent: int = DEFAULT_MAX_CONCURRENT) -> Tuple[List[str], List[str], List[str], List[str]]:
+    """
+    Load data from Excel and call search API for responses.
+    
+    Args:
+        excel_file: Path to the Excel file
+        sheet_name: Name of the sheet to load
+        config: Configuration dictionary for API calls
+        batch_size: Number of queries to process per batch
+        max_concurrent: Maximum concurrent requests allowed
+        
+    Returns:
+        Tuple containing (queries, answers, ground_truths, contexts)
+    """
     try:
         df = pd.read_excel(excel_file, sheet_name=sheet_name, engine='openpyxl')
         
-        required_columns = ['query', 'ground_truth']
-        missing_columns = [col for col in required_columns if col not in df.columns]
+        missing_columns = [col for col in MINIMAL_REQUIRED_COLUMNS if col not in df.columns]
         if missing_columns:
             raise ValueError(f"Missing required columns: {missing_columns}")
         
@@ -232,11 +317,164 @@ async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
             # Last resort - return dummy data
             return ["sample query"], [""], ["sample ground truth"], [""]
 
+
+async def run_ragas_evaluation(queries: List[str], answers: List[str], 
+                              ground_truths: List[str], contexts: List[str], 
+                              run_ragas: bool, llm_model: str) -> Tuple[pd.DataFrame, Dict]:
+    """Run RAGAS evaluation with error handling."""
+    if not run_ragas:
+        return pd.DataFrame(), {}
+    
+    # Check data quality
+    non_empty_answers = sum(1 for a in answers if a and str(a).strip())
+    non_empty_contexts = sum(1 for c in contexts if c and str(c).strip())
+    
+    try:
+        ragas_evaluator = RagasEvaluator()
+        ragas_eval_result = await ragas_evaluator.evaluate(queries, answers, ground_truths, contexts, model=llm_model)
+        
+        if isinstance(ragas_eval_result, tuple) and len(ragas_eval_result) == 2:
+            results_df = ragas_eval_result[0]
+            enhanced_result = ragas_eval_result[1]
+            
+            # Extract token usage information if available
+            if isinstance(enhanced_result, dict) and 'token_usage' in enhanced_result:
+                token_info = enhanced_result['token_usage']
+            else:
+                # Fallback to extract from result object if needed
+                enhanced_result = enhanced_result.__dict__ if hasattr(enhanced_result, '__dict__') else {}
+            
+            return results_df, enhanced_result
+        else:
+            return pd.DataFrame(), {}
+            
+    except Exception:
+        return pd.DataFrame(), {}
+
+
+async def run_crag_evaluation(queries: List[str], answers: List[str], 
+                             ground_truths: List[str], contexts: List[str], 
+                             run_crag: bool, config: Dict) -> pd.DataFrame:
+    """Run CRAG evaluation with error handling."""
+    if not run_crag:
+        return pd.DataFrame()
+    
+    print("🚀 Starting CRAG evaluation...")
+    try:
+        openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        crag_evaluator = CragEvaluator(config.get('openai', {}).get('model_name', 'gpt-4'), openai_client)
+        results_df = crag_evaluator.evaluate(queries, answers, ground_truths, contexts)
+        print(f"✅ CRAG evaluation completed: {len(results_df)} rows")
+        return results_df
+    except Exception as e:
+        print(f"❌ CRAG evaluation failed: {e}")
+        return pd.DataFrame()
+
+
+async def run_llm_evaluation(queries: List[str], answers: List[str], 
+                           ground_truths: List[str], contexts: List[str], 
+                           run_llm: bool, config: Dict) -> Tuple[pd.DataFrame, Dict]:
+    """Run LLM evaluation with error handling."""
+    if not run_llm:
+        return pd.DataFrame(), {}
+    
+    print("🚀 Starting LLM evaluation...")
+    try:
+        # Get LLM configuration
+        openai_config = config.get('openai', {})
+        azure_config = config.get('azure', {})
+        
+        # Initialize LLM evaluator
+        llm_evaluator = LLMEvaluator(openai_config=openai_config, azure_config=azure_config)
+        
+        # Debug configuration choice
+        debug_info = llm_evaluator.debug_configuration()
+        print(f"🔍 LLM Evaluator configuration: {debug_info}")
+        
+        # Use the standard evaluate method from BaseEvaluator
+        results_df, llm_averages = await llm_evaluator.evaluate(queries, answers, ground_truths, contexts)
+        
+        if not results_df.empty:
+            print(f"✅ LLM evaluation completed: {len(results_df)} rows")
+            return results_df, llm_averages
+        else:
+            print("⚠️ No LLM results generated")
+            return pd.DataFrame(), {}
+            
+    except Exception as e:
+        print(f"❌ LLM evaluation failed: {e}")
+        return pd.DataFrame(), {}
+
+
+def create_basic_results_dataframe(queries: List[str], answers: List[str], 
+                                 ground_truths: List[str], contexts: List[str], 
+                                 error_message: str = "No evaluation performed") -> pd.DataFrame:
+    """Create a basic results DataFrame when no evaluation methods succeed."""
+    basic_data = {
+        'query': queries[:len(answers)] if queries else ['No data'],
+        'answer': answers if answers else [''],
+        'ground_truth': ground_truths[:len(answers)] if ground_truths else [''],
+        'context': contexts[:len(answers)] if contexts else [''],
+        'evaluation_status': [error_message] * len(answers) if answers else ['No data']
+    }
+    return pd.DataFrame(basic_data)
+
+
+def determine_final_results(result_converter: ResultsConverter, 
+                          has_ragas: bool, has_crag: bool, has_llm: bool) -> pd.DataFrame:
+    """Determine which results to return based on available evaluations."""
+    print(f"🎯 Final Results Decision:")
+    print(f"   has_ragas: {has_ragas}")
+    print(f"   has_crag: {has_crag}")
+    print(f"   has_llm: {has_llm}")
+    
+    if has_ragas and has_crag and has_llm:
+        print("📊 Using combined results (RAGAS + CRAG + LLM)")
+        return result_converter.get_combined_results()
+    elif has_ragas and has_crag:
+        print("📊 Using combined results (RAGAS + CRAG)")
+        return result_converter.get_combined_results()
+    elif has_ragas and has_llm:
+        print("📊 Using combined results (RAGAS + LLM)")
+        return result_converter.get_combined_results()
+    elif has_crag and has_llm:
+        print("📊 Using combined results (CRAG + LLM)")
+        return result_converter.get_combined_results()
+    elif has_ragas:
+        print("📊 Using RAGAS results only")
+        return result_converter.get_ragas_results()
+    elif has_crag:
+        print("📊 Using CRAG results only")
+        return result_converter.get_crag_results()
+    elif has_llm:
+        print("📊 Using LLM results only")
+        return result_converter.get_llm_results()
+    else:
+        return None
+
 async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config: Dict,
                                      run_ragas: bool = True, run_crag: bool = True, run_llm: bool = False,
                                      use_search_api: bool = False, llm_model: str = "",
-                                     batch_size: int = 10, max_concurrent: int = 5) -> Tuple[pd.DataFrame, Dict]:
-    """Main evaluation function using RAGAS and CRAG."""
+                                     batch_size: int = DEFAULT_BATCH_SIZE, 
+                                     max_concurrent: int = DEFAULT_MAX_CONCURRENT) -> Tuple[pd.DataFrame, Dict]:
+    """
+    Main evaluation function using RAGAS and CRAG.
+    
+    Args:
+        excel_file: Path to the Excel file containing evaluation data
+        sheet_name: Name of the sheet to process
+        config: Configuration dictionary for evaluators
+        run_ragas: Whether to run RAGAS evaluation
+        run_crag: Whether to run CRAG evaluation  
+        run_llm: Whether to run LLM evaluation
+        use_search_api: Whether to use search API for getting responses
+        llm_model: LLM model to use for evaluations
+        batch_size: Batch size for API calls
+        max_concurrent: Maximum concurrent requests
+        
+    Returns:
+        Tuple of (results_dataframe, summary_metrics)
+    """
     try:
         # Load data
         if use_search_api:
@@ -245,97 +483,18 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
         else:
             queries, answers, ground_truths, contexts = load_data(excel_file, sheet_name)
 
-        # Initialize results
-        ragas_results = pd.DataFrame()
-        crag_results = pd.DataFrame()
-        llm_results = pd.DataFrame()
+        # Initialize token usage tracker
+        token_tracker = TokenUsageTracker()
         total_set_result = {}
-
-        # Define async evaluation functions for parallel execution
-        async def run_ragas_evaluation():
-            if not run_ragas:
-                return pd.DataFrame(), {}
-            
-            # Check data quality
-            non_empty_answers = sum(1 for a in answers if a and str(a).strip())
-            non_empty_contexts = sum(1 for c in contexts if c and str(c).strip())
-            
-            try:
-                ragas_evaluator = RagasEvaluator()
-                ragas_eval_result = await ragas_evaluator.evaluate(queries, answers, ground_truths, contexts, model=llm_model)
-                
-                if isinstance(ragas_eval_result, tuple) and len(ragas_eval_result) == 2:
-                    results_df = ragas_eval_result[0]
-                    enhanced_result = ragas_eval_result[1]
-                    
-                    # Extract token usage information if available
-                    if isinstance(enhanced_result, dict) and 'token_usage' in enhanced_result:
-                        token_info = enhanced_result['token_usage']
-                    else:
-                        # Fallback to extract from result object if needed
-                        enhanced_result = enhanced_result.__dict__ if hasattr(enhanced_result, '__dict__') else {}
-                    
-                    return results_df, enhanced_result
-                else:
-                    return pd.DataFrame(), {}
-                    
-            except Exception:
-                return pd.DataFrame(), {}
-
-        async def run_crag_evaluation():
-            if not run_crag:
-                return pd.DataFrame()
-            
-            print("🚀 Starting CRAG evaluation...")
-            try:
-                openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-                crag_evaluator = CragEvaluator(config.get('openai', {}).get('model_name', 'gpt-4'), openai_client)
-                results_df = crag_evaluator.evaluate(queries, answers, ground_truths, contexts)
-                print(f"✅ CRAG evaluation completed: {len(results_df)} rows")
-                return results_df
-            except Exception as e:
-                print(f"❌ CRAG evaluation failed: {e}")
-                return pd.DataFrame()
-
-        async def run_llm_evaluation():
-            if not run_llm:
-                return pd.DataFrame(), {}
-            
-            print("🚀 Starting LLM evaluation...")
-            try:
-                # Get LLM configuration
-                openai_config = config.get('openai', {})
-                azure_config = config.get('azure', {})
-                
-                # Initialize LLM evaluator
-                llm_evaluator = LLMEvaluator(openai_config=openai_config, azure_config=azure_config)
-                
-                # Debug configuration choice
-                debug_info = llm_evaluator.debug_configuration()
-                print(f"🔍 LLM Evaluator configuration: {debug_info}")
-                
-                # Use the standard evaluate method from BaseEvaluator
-                results_df, llm_averages = await llm_evaluator.evaluate(queries, answers, ground_truths, contexts)
-                
-                if not results_df.empty:
-                    print(f"✅ LLM evaluation completed: {len(results_df)} rows")
-                    return results_df, llm_averages
-                else:
-                    print("⚠️ No LLM results generated")
-                    return pd.DataFrame(), {}
-                    
-            except Exception as e:
-                print(f"❌ LLM evaluation failed: {e}")
-                return pd.DataFrame(), {}
 
         # Run all evaluations in parallel
         print("🔄 Running evaluations in parallel...")
         start_time = time.time()
         
         results = await asyncio.gather(
-            run_ragas_evaluation(),
-            run_crag_evaluation(), 
-            run_llm_evaluation(),
+            run_ragas_evaluation(queries, answers, ground_truths, contexts, run_ragas, llm_model),
+            run_crag_evaluation(queries, answers, ground_truths, contexts, run_crag, config), 
+            run_llm_evaluation(queries, answers, ground_truths, contexts, run_llm, config),
             return_exceptions=True
         )
         
@@ -347,35 +506,18 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
         crag_result = results[1] if not isinstance(results[1], Exception) else pd.DataFrame()
         llm_result = results[2] if not isinstance(results[2], Exception) else (pd.DataFrame(), {})
         
-        # Extract token usage information from RAGAS and LLM results
-        total_token_usage = {}
-        
-        # Extract RAGAS token usage
+        # Extract token usage information using TokenUsageTracker
         if isinstance(ragas_result, tuple) and len(ragas_result) == 2:
             ragas_df, ragas_metadata = ragas_result
             if isinstance(ragas_metadata, dict) and 'token_usage' in ragas_metadata:
-                total_token_usage = ragas_metadata['token_usage'].copy()
-                print(f"💰 RAGAS token usage extracted: {total_token_usage}")
+                token_tracker.add_usage(ragas_metadata['token_usage'])
+                print(f"💰 RAGAS token usage extracted")
         
-        # Extract and aggregate LLM token usage
         if isinstance(llm_result, tuple) and len(llm_result) == 2:
             llm_df, llm_metadata = llm_result
             if isinstance(llm_metadata, dict) and 'token_usage' in llm_metadata:
-                llm_token_usage = llm_metadata['token_usage']
-                print(f"💰 LLM token usage extracted: {llm_token_usage}")
-                
-                # Aggregate with RAGAS token usage
-                if total_token_usage:
-                    # Add LLM tokens to RAGAS tokens
-                    total_token_usage['prompt_tokens'] += llm_token_usage.get('prompt_tokens', 0)
-                    total_token_usage['completion_tokens'] += llm_token_usage.get('completion_tokens', 0)
-                    total_token_usage['total_tokens'] += llm_token_usage.get('total_tokens', 0)
-                    total_token_usage['estimated_cost_usd'] += llm_token_usage.get('estimated_cost_usd', 0)
-                    print(f"💰 Combined RAGAS + LLM token usage: {total_token_usage}")
-                else:
-                    # Only LLM tokens available
-                    total_token_usage = llm_token_usage.copy()
-                    print(f"💰 Using LLM token usage only: {total_token_usage}")
+                token_tracker.add_usage(llm_metadata['token_usage'])
+                print(f"💰 LLM token usage extracted")
         
         # Extract DataFrames and metrics
         if isinstance(ragas_result, tuple) and len(ragas_result) == 2:
@@ -391,6 +533,11 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
             total_set_result.update(llm_totals)
         else:
             llm_results = llm_result if isinstance(llm_result, pd.DataFrame) else pd.DataFrame()
+        
+        # Add token usage to total results
+        if token_tracker.has_usage():
+            total_set_result['token_usage'] = token_tracker.get_usage()
+            print(f"💰 Combined token usage: {token_tracker.get_usage()}")
             
         # Debug RAGAS results
         if not ragas_results.empty:
@@ -429,48 +576,19 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
         if run_llm and not llm_results.empty:
             result_converter.convert_llm_results()
 
-        # Return final results
+        # Determine final results based on available evaluations
         has_ragas = not ragas_results.empty
-        has_crag = not crag_results.empty
+        has_crag = not crag_results.empty  
         has_llm = not llm_results.empty
         
-        print(f"🎯 Final Results Decision:")
-        print(f"   has_ragas: {has_ragas} (shape: {ragas_results.shape if not ragas_results.empty else 'empty'})")
-        print(f"   has_crag: {has_crag} (shape: {crag_results.shape if not crag_results.empty else 'empty'})")
-        print(f"   has_llm: {has_llm} (shape: {llm_results.shape if not llm_results.empty else 'empty'})")
+        print(f"🎯 Results available - RAGAS: {has_ragas}, CRAG: {has_crag}, LLM: {has_llm}")
         
-        if has_ragas and has_crag and has_llm:
-            print("📊 Using combined results (RAGAS + CRAG + LLM)")
-            final_results = result_converter.get_combined_results()
-        elif has_ragas and has_crag:
-            print("📊 Using combined results (RAGAS + CRAG)")
-            final_results = result_converter.get_combined_results()
-        elif has_ragas and has_llm:
-            print("📊 Using combined results (RAGAS + LLM)")
-            final_results = result_converter.get_combined_results()
-        elif has_crag and has_llm:
-            print("📊 Using combined results (CRAG + LLM)")
-            final_results = result_converter.get_combined_results()
-        elif has_ragas:
-            print("📊 Using RAGAS results only")
-            final_results = result_converter.get_ragas_results()
-        elif has_crag:
-            print("📊 Using CRAG results only")
-            final_results = result_converter.get_crag_results()
-        elif has_llm:
-            print("📊 Using LLM results only")
-            final_results = result_converter.get_llm_results()
-        else:
+        final_results = determine_final_results(result_converter, has_ragas, has_crag, has_llm)
+        
+        if final_results is None:
             # Create a basic DataFrame with the original queries if no evaluation succeeded
             print("⚠️ No evaluation methods succeeded, creating basic results DataFrame")
-            basic_data = {
-                'query': queries[:len(answers)] if queries else ['No data'],
-                'answer': answers if answers else [''],
-                'ground_truth': ground_truths[:len(answers)] if ground_truths else [''],
-                'context': contexts[:len(answers)] if contexts else [''],
-                'evaluation_status': ['No evaluation performed'] * len(answers) if answers else ['No data']
-            }
-            final_results = pd.DataFrame(basic_data)
+            final_results = create_basic_results_dataframe(queries, answers, ground_truths, contexts)
 
         print(f"🎯 Final results summary:")
         print(f"   Shape: {final_results.shape}")
@@ -484,16 +602,17 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
         
         # Create minimal results DataFrame to prevent complete failure
         try:
-            basic_data = {
-                'query': queries[:min(len(queries), len(answers))] if queries else ['Error in evaluation'],
-                'answer': answers[:min(len(queries), len(answers))] if answers else [''],
-                'ground_truth': ground_truths[:min(len(queries), len(answers))] if ground_truths else [''],
-                'context': contexts[:min(len(queries), len(answers))] if contexts else [''],
-                'error': [f'Evaluation failed: {str(e)}'] * min(len(queries), len(answers)) if queries and answers else ['Critical evaluation error']
-            }
-            error_df = pd.DataFrame(basic_data)
-            return error_df, {'error': str(e)}
-        except:
+            # Try to use any loaded data, otherwise use defaults
+            safe_queries = queries if 'queries' in locals() else ['Error in evaluation']
+            safe_answers = answers if 'answers' in locals() else ['']
+            safe_ground_truths = ground_truths if 'ground_truths' in locals() else ['']
+            safe_contexts = contexts if 'contexts' in locals() else ['']
+            
+            return create_basic_results_dataframe(
+                safe_queries, safe_answers, safe_ground_truths, safe_contexts, 
+                f'Evaluation failed: {str(e)}'
+            ), {'error': str(e)}
+        except Exception as fallback_error:
             # Last resort
             error_df = pd.DataFrame({
                 'query': ['Critical evaluation error'],
@@ -508,8 +627,29 @@ async def process_single_sheet(input_file: str, sheet_name: str, config: Dict,
                              sheet_index: int, total_sheets: int,
                              evaluate_ragas: bool, evaluate_crag: bool, evaluate_llm: bool,
                              use_search_api: bool, llm_model: Optional[str], save_db: bool,
-                             batch_size: int, max_concurrent: int) -> Tuple[pd.DataFrame, Dict]:
-    """Process a single sheet asynchronously."""
+                             batch_size: int = DEFAULT_BATCH_SIZE, 
+                             max_concurrent: int = DEFAULT_MAX_CONCURRENT) -> Tuple[pd.DataFrame, Dict]:
+    """
+    Process a single sheet asynchronously.
+    
+    Args:
+        input_file: Path to the Excel file
+        sheet_name: Name of the sheet to process
+        config: Configuration dictionary
+        sheet_index: Current sheet index for progress tracking
+        total_sheets: Total number of sheets being processed
+        evaluate_ragas: Whether to run RAGAS evaluation
+        evaluate_crag: Whether to run CRAG evaluation
+        evaluate_llm: Whether to run LLM evaluation
+        use_search_api: Whether to use search API
+        llm_model: LLM model to use
+        save_db: Whether to save results to database
+        batch_size: Batch size for API calls
+        max_concurrent: Maximum concurrent requests
+        
+    Returns:
+        Tuple of (results_dataframe, summary_metrics)
+    """
     try:
         print(f"🔄 Processing sheet {sheet_index}/{total_sheets}: '{sheet_name}'")
         
@@ -551,9 +691,28 @@ async def process_single_sheet(input_file: str, sheet_name: str, config: Dict,
 async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = False,
              evaluate_crag: bool = False, evaluate_llm: bool = False, use_search_api: bool = False,
              llm_model: Optional[str] = None, save_db: bool = False,
-             batch_size: int = 10, max_concurrent: int = 5, session_id: Optional[str] = None,
-             session_config_path: Optional[str] = None) -> str:
-    """Main run function for API usage with session-specific configuration support."""
+             batch_size: int = DEFAULT_BATCH_SIZE, max_concurrent: int = DEFAULT_MAX_CONCURRENT, 
+             session_id: Optional[str] = None, session_config_path: Optional[str] = None) -> str:
+    """
+    Main run function for API usage with session-specific configuration support.
+    
+    Args:
+        input_file: Path to the Excel file containing evaluation data
+        sheet_name: Specific sheet name to process (empty = all sheets)
+        evaluate_ragas: Whether to run RAGAS evaluation
+        evaluate_crag: Whether to run CRAG evaluation
+        evaluate_llm: Whether to run LLM evaluation
+        use_search_api: Whether to use search API for responses
+        llm_model: LLM model to use for evaluations
+        save_db: Whether to save results to database
+        batch_size: Batch size for API calls
+        max_concurrent: Maximum concurrent requests
+        session_id: Session ID for multi-user support
+        session_config_path: Path to session-specific configuration
+        
+    Returns:
+        Success/error message string
+    """
     total_token_usage = {}  # Initialize token usage tracking
     try:
         # Use session-specific config if provided, otherwise use default
@@ -763,8 +922,8 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
         success_message += f"\n📁 Output file: {output_file_path}"
         success_message += f"\n📊 File size: {os.path.getsize(output_file_path):,} bytes"
         
-        # Include token usage information if available (captured from RAGAS evaluation)
-        if total_token_usage and 'total_tokens' in total_token_usage:
+        # Include token usage information if available
+        if 'token_usage' in locals() and total_token_usage and 'total_tokens' in total_token_usage:
             success_message += f"\n💰 Total Tokens for Evaluation: Input={total_token_usage.get('prompt_tokens', 0)} Output={total_token_usage.get('completion_tokens', 0)}"
             if 'estimated_cost_usd' in total_token_usage:
                 success_message += f"\n💰 Total Cost in $: {total_token_usage['estimated_cost_usd']}"
@@ -792,8 +951,8 @@ async def main():
     parser.add_argument('--use_search_api', action='store_true', help='Use search API for responses')
     parser.add_argument('--llm_model', type=str, help='LLM model for evaluation')
     parser.add_argument('--save_db', action='store_true', help='Save results to database')
-    parser.add_argument('--batch_size', type=int, default=10, help='Batch size for API calls')
-    parser.add_argument('--max_concurrent', type=int, default=5, help='Max concurrent requests')
+    parser.add_argument('--batch_size', type=int, default=DEFAULT_BATCH_SIZE, help='Batch size for API calls')
+    parser.add_argument('--max_concurrent', type=int, default=DEFAULT_MAX_CONCURRENT, help='Max concurrent requests')
     
     args = parser.parse_args()
     

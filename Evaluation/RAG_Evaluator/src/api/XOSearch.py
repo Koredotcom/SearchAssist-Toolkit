@@ -130,7 +130,9 @@ class AsyncXOSearchAPI:
             'Content-Type': 'application/json'
         }
         
-        full_url = f"{self.base_url}/{endpoint}"        
+        full_url = f"{self.base_url}/{endpoint}"    
+        print(f"⚡ Processing {data} concurrently...")
+    
         try:
             async with session.post(full_url, json=data, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as response:
                 if response.status == 200:

@@ -1,38 +1,305 @@
-// RAG Evaluator UI JavaScript - Rewritten for reliability
-console.log('🔥 RAG EVALUATOR SCRIPT LOADED - VERSION 2.0 WITH DEBUGGING');
+/**
+ * RAG Evaluator UI JavaScript
+ * A comprehensive evaluation system for RAG (Retrieval-Augmented Generation) models
+ * @version 3.0
+ * @author RAG Evaluator Team
+ */
 
+// Constants and Configuration
+const CONFIG = {
+    // UI Constants
+    MAX_FILE_SIZE: 100 * 1024 * 1024, // 100MB
+    SUPPORTED_FILE_TYPES: ['.xlsx', '.xls'],
+    
+    // Time estimation constants
+    BASE_PROCESSING_TIME: 0.5, // seconds per query
+    SEARCH_API_TIME: 2.5,
+    RAGAS_EVAL_TIME: 12,
+    CRAG_EVAL_TIME: 3,
+    LLM_EVAL_TIME: 4,
+    MIN_PROCESSING_TIME: 0.5,
+    BASE_OVERHEAD: 30, // seconds
+    OVERHEAD_PER_QUERY: 0.5, // seconds
+    
+    // Default values
+    DEFAULT_BATCH_SIZE: 10,
+    DEFAULT_MAX_CONCURRENT: 5,
+    
+    // Toast durations
+    TOAST_DURATION: {
+        SUCCESS: 5000,
+        ERROR: 8000,
+        WARNING: 6000,
+        INFO: 4000
+    },
+    
+    // Progress update intervals
+    PROGRESS_UPDATE_INTERVAL: 2000, // ms
+    
+    // Chart colors
+    CHART_COLORS: {
+        PRIMARY: '#3B82F6',
+        SUCCESS: '#10B981',
+        WARNING: '#F59E0B',
+        ERROR: '#EF4444',
+        SECONDARY: '#6B7280'
+    }
+};
+
+// API Endpoints
+const API_ENDPOINTS = {
+    CREATE_SESSION: '/api/create-session',
+    SESSION_STATUS: '/api/session-status',
+    UPLOAD_FILE: '/api/upload-file',
+    START_EVALUATION: '/api/start-evaluation',
+    EVALUATION_PROGRESS: '/api/evaluation-progress',
+    DOWNLOAD_RESULTS: '/api/download-results'
+};
+
+// DOM Element IDs
+const ELEMENTS = {
+    UPLOAD_AREA: 'upload-area',
+    FILE_INPUT: 'excel-file',
+    REMOVE_FILE: 'remove-file',
+    START_EVALUATION: 'start-evaluation',
+    DOWNLOAD_RESULTS: 'download-results',
+    VIEW_DETAILS: 'view-details',
+    NEW_EVALUATION: 'new-evaluation',
+    SHEET_SELECT: 'sheet-name',
+    BATCH_SIZE: 'batch-size',
+    MAX_CONCURRENT: 'max-concurrent',
+    USE_SEARCH_API: 'use-search-api',
+    EVALUATE_RAGAS: 'evaluate-ragas',
+    EVALUATE_CRAG: 'evaluate-crag',
+    EVALUATE_LLM: 'evaluate-llm',
+    LLM_MODEL: 'llm-model',
+    ESTIMATED_TIME: 'estimated-time',
+    TOTAL_QUERIES: 'total-queries'
+};
+
+console.log('🔥 RAG EVALUATOR SCRIPT LOADED - VERSION 3.0 (REFACTORED)');
+
+/**
+ * Utility class for common DOM and data operations
+ */
+class UIUtils {
+    /**
+     * Get element by ID with error handling
+     * @param {string} id - Element ID
+     * @returns {HTMLElement|null} DOM element or null
+     */
+    static getElement(id) {
+        const element = document.getElementById(id);
+        if (!element) {
+            console.warn(`⚠️ Element not found: ${id}`);
+        }
+        return element;
+    }
+
+    /**
+     * Update element text content safely
+     * @param {string} id - Element ID
+     * @param {string|number} value - Value to set
+     */
+    static updateElement(id, value) {
+        const element = this.getElement(id);
+        if (element) {
+            element.textContent = value;
+        }
+    }
+
+    /**
+     * Show/hide element
+     * @param {string} id - Element ID
+     * @param {boolean} show - Whether to show the element
+     */
+    static toggleElement(id, show) {
+        const element = this.getElement(id);
+        if (element) {
+            element.style.display = show ? 'block' : 'none';
+        }
+    }
+
+    /**
+     * Format time in seconds to human readable format
+     * @param {number} seconds - Time in seconds
+     * @returns {string} Formatted time string
+     */
+    static formatTime(seconds) {
+        if (seconds < 60) {
+            return `${Math.round(seconds)}s`;
+        } else if (seconds < 3600) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.round(seconds % 60);
+            return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+        } else {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+        }
+    }
+
+    /**
+     * Format currency value
+     * @param {number} value - Currency value
+     * @returns {string} Formatted currency string
+     */
+    static formatCurrency(value) {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 4
+        }).format(value);
+    }
+
+    /**
+     * Format token count
+     * @param {number} count - Token count
+     * @returns {string} Formatted token count
+     */
+    static formatTokenCount(count) {
+        return new Intl.NumberFormat('en-US').format(count);
+    }
+
+    /**
+     * Show toast notification
+     * @param {string} message - Message to display
+     * @param {string} type - Toast type (success, error, warning, info)
+     * @param {number} duration - Duration in milliseconds (optional)
+     */
+    static showToast(message, type = 'info', duration = null) {
+        const toastDuration = duration || CONFIG.TOAST_DURATION[type.toUpperCase()] || CONFIG.TOAST_DURATION.INFO;
+        
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        
+        // Add to container or body
+        const container = document.getElementById('toast-container') || document.body;
+        container.appendChild(toast);
+        
+        // Auto remove
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, toastDuration);
+        
+        console.log(`📢 Toast (${type}): ${message}`);
+    }
+}
+
+/**
+ * Error handling utility class
+ */
+class ErrorHandler {
+    /**
+     * Handle API errors consistently
+     * @param {Error} error - Error object
+     * @param {string} context - Context where error occurred
+     */
+    static handleError(error, context = 'Unknown') {
+        const message = `${context}: ${error.message || error}`;
+        console.error(`❌ ${message}`, error);
+        UIUtils.showToast(message, 'error');
+    }
+
+    /**
+     * Handle network errors
+     * @param {Response} response - Fetch response object
+     * @param {string} context - Context where error occurred
+     */
+    static async handleNetworkError(response, context = 'API call') {
+        let errorMessage = `${context} failed: ${response.status} ${response.statusText}`;
+        
+        try {
+            const errorData = await response.json();
+            if (errorData.message) {
+                errorMessage = `${context}: ${errorData.message}`;
+            }
+        } catch (e) {
+            // If we can't parse the error response, use the default message
+        }
+        
+        this.handleError(new Error(errorMessage), context);
+    }
+}
+
+/**
+ * Main RAG Evaluator UI class
+ * Handles the complete workflow of RAG evaluation including file upload,
+ * configuration, evaluation execution, and results display.
+ */
 class RAGEvaluatorUI {
+    /**
+     * Initialize the RAG Evaluator UI
+     */
     constructor() {
+        /** @type {File|null} Currently uploaded file */
         this.uploadedFile = null;
+        
+        /** @type {boolean} Whether evaluation is currently in progress */
         this.evaluationInProgress = false;
+        
+        /** @type {number|null} Progress update interval ID */
         this.progressInterval = null;
+        
+        /** @type {number|null} Evaluation start timestamp */
         this.startTime = null;
+        
+        /** @type {Object|null} Latest evaluation results */
         this.resultData = null;
+        
+        /** @type {Chart|null} Chart.js metrics chart instance */
         this.metricsChart = null;
+        
+        /** @type {string|null} Current user session ID */
         this.sessionId = null;
+        
+        /** @type {Object|null} File sheet row counts */
+        this.fileRowCounts = null;
+        
+        /** @type {Function|null} Sheet change handler reference */
+        this.handleSheetChange = null;
+        
+        // Initialize the application
         this.init().catch(error => {
-            console.error('❌ Failed to initialize RAG Evaluator:', error);
-            this.showToast('Failed to initialize application. Please refresh the page.', 'error');
+            ErrorHandler.handleError(error, 'Application initialization');
         });
     }
 
+    /**
+     * Initialize the application
+     * Sets up session management, event listeners, and UI components
+     */
     async init() {
         console.log('🚀 Initializing RAG Evaluator UI...');
         
-        // Try to restore existing session first, then create new one if needed
-        const sessionRestored = await this.validateExistingSession();
-        if (!sessionRestored) {
-            await this.createUserSession(); // Create session and wait for it
+        try {
+            // Try to restore existing session first, then create new one if needed
+            const sessionRestored = await this.validateExistingSession();
+            if (!sessionRestored) {
+                await this.createUserSession(); // Create session and wait for it
+            }
+            
+            this.setupEventListeners();
+            this.setupFormHandlers();
+            this.validateForm();
+            this.estimateProcessingTime(); // Initialize with no file
+            this.loadChartJS();
+            
+            console.log('✅ RAG Evaluator UI initialized successfully with session:', this.sessionId?.substring(0, 8) + '...');
+        } catch (error) {
+            ErrorHandler.handleError(error, 'Initialization');
+            throw error; // Re-throw to be caught by constructor
         }
-        
-        this.setupEventListeners();
-        this.setupFormHandlers();
-        this.validateForm();
-        this.estimateProcessingTime(); // Initialize with no file
-        this.loadChartJS();
-        console.log('✅ RAG Evaluator UI initialized successfully with session:', this.sessionId?.substring(0, 8) + '...');
     }
 
+    /**
+     * Load Chart.js library dynamically if not already loaded
+     */
     loadChartJS() {
         // Ensure Chart.js is loaded
         if (typeof Chart === 'undefined') {
@@ -44,6 +311,7 @@ class RAGEvaluatorUI {
             };
             script.onerror = () => {
                 console.error('❌ Failed to load Chart.js');
+                UIUtils.showToast('Failed to load charting library', 'warning');
             };
             document.head.appendChild(script);
         } else {
@@ -51,138 +319,90 @@ class RAGEvaluatorUI {
         }
     }
 
+    /**
+     * Set up all event listeners for the application
+     */
     setupEventListeners() {
         console.log('🔗 Setting up event listeners...');
         
-        // File upload handlers
-        this.setupFileUpload();
-        
-        // Evaluation button
-        const startBtn = document.getElementById('start-evaluation');
-        if (startBtn) {
-            startBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                console.log('▶️ Start evaluation clicked');
-                if (!this.evaluationInProgress) {
-                    this.startEvaluation();
-                }
-            });
-        }
+        try {
+            // File upload handlers
+            this.setupFileUpload();
+            
+            // Evaluation button
+            const startBtn = UIUtils.getElement(ELEMENTS.START_EVALUATION);
+            if (startBtn) {
+                startBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log('▶️ Start evaluation clicked');
+                    if (!this.evaluationInProgress) {
+                        this.startEvaluation();
+                    }
+                });
+            }
 
-        // Setup result buttons with simple approach
-        this.setupResultsButtons();
+            // Setup result buttons with simple approach
+            this.setupResultsButtons();
+            
+            // Development mode debugging (only in debug mode)
+            if (this.isDebugMode()) {
+                this.setupDebugHelpers();
+            }
+            
+            console.log('✅ Event listeners setup complete');
+        } catch (error) {
+            ErrorHandler.handleError(error, 'Event listener setup');
+        }
+    }
+
+    /**
+     * Check if debug mode is enabled
+     * @returns {boolean} True if debug mode is enabled
+     */
+    isDebugMode() {
+        return window.location.hostname === 'localhost' || 
+               window.location.search.includes('debug=true') ||
+               localStorage.getItem('ragDebugMode') === 'true';
+    }
+
+    /**
+     * Setup debug helpers for development
+     */
+    setupDebugHelpers() {
+        console.log('🔧 Setting up debug helpers...');
         
         // Global test functions for debugging
         window.ragEvaluator = this;
         window.testDownload = () => this.downloadResults();
         window.testViewDetails = () => this.viewDetails();
         window.debugButtons = () => this.debugButtons();
-        window.setTestMetrics = () => {
-            // Set test data with actual metrics for debugging
-            this.resultData = {
-                "status": "success",
-                "message": "Evaluation completed successfully",
-                "processing_stats": {
-                    "total_processed": 25,
-                    "successful_queries": 23,
-                    "success_rate": 92.0,
-                    "failed_queries": 2,
-                    "total_tokens": 45280,
-                    "prompt_tokens": 28350,
-                    "completion_tokens": 16930,
-                    "estimated_cost_usd": 1.3584,
-                    "output_file": "test_evaluation_results.xlsx"
-                },
-                "metrics": {
-                    "Response Relevancy": 0.87,
-                    "Faithfulness": 0.82,
-                    "Context Recall": 0.79,
-                    "Context Precision": 0.85,
-                    "Answer Correctness": 0.88,
-                    "Answer Similarity": 0.91,
-                    "LLM Answer Relevancy": 0.84,
-                    "LLM Context Relevancy": 0.89,
-                    "LLM Answer Correctness": 0.86
-                },
-                "detailed_results": [
-                    {
-                        "query": "What is artificial intelligence?",
-                        "answer": "Artificial intelligence (AI) is a branch of computer science that aims to create machines capable of intelligent behavior.",
-                        "ground_truth": "AI is the simulation of human intelligence in machines.",
-                        "Response Relevancy": 0.92,
-                        "Faithfulness": 0.88,
-                        "Context Recall": 0.85,
-                        "Context Precision": 0.90,
-                        "Answer Correctness": 0.87,
-                        "Answer Similarity": 0.93,
-                        "LLM Answer Relevancy": 0.90,
-                        "LLM Context Relevancy": 0.85,
-                        "LLM Answer Correctness": 0.89
-                    },
-                    {
-                        "query": "How does machine learning work?",
-                        "answer": "Machine learning works by training algorithms on data to identify patterns and make predictions without being explicitly programmed.",
-                        "ground_truth": "ML algorithms learn from data to make predictions or decisions.",
-                        "Response Relevancy": 0.89,
-                        "Faithfulness": 0.91,
-                        "Context Recall": 0.82,
-                        "Context Precision": 0.88,
-                        "Answer Correctness": 0.90,
-                        "Answer Similarity": 0.87,
-                        "LLM Answer Relevancy": 0.88,
-                        "LLM Context Relevancy": 0.84,
-                        "LLM Answer Correctness": 0.92
-                    },
-                    {
-                        "query": "What are neural networks?",
-                        "answer": "Neural networks are computing systems inspired by biological neural networks that consist of interconnected nodes or neurons.",
-                        "ground_truth": "Neural networks are computational models inspired by the human brain.",
-                        "Response Relevancy": 0.85,
-                        "Faithfulness": 0.79,
-                        "Context Recall": 0.77,
-                        "Context Precision": 0.83,
-                        "Answer Correctness": 0.86,
-                        "Answer Similarity": 0.92
-                    },
-                    {
-                        "query": "Explain deep learning",
-                        "answer": "Deep learning is a subset of machine learning that uses neural networks with multiple layers to model and understand complex patterns in data.",
-                        "ground_truth": "Deep learning uses multi-layered neural networks for complex pattern recognition.",
-                        "Response Relevancy": 0.94,
-                        "Faithfulness": 0.86,
-                        "Context Recall": 0.81,
-                        "Context Precision": 0.89,
-                        "Answer Correctness": 0.91,
-                        "Answer Similarity": 0.88
-                    },
-                    {
-                        "query": "What is natural language processing?",
-                        "answer": "Natural language processing (NLP) is a field of AI that focuses on the interaction between computers and human language.",
-                        "ground_truth": "NLP enables computers to understand and process human language.",
-                        "Response Relevancy": 0.83,
-                        "Faithfulness": 0.75,
-                        "Context Recall": 0.79,
-                        "Context Precision": 0.81,
-                        "Answer Correctness": 0.85,
-                        "Answer Similarity": 0.89
-                    }
-                ],
-                "config_used": {
-                    "evaluate_ragas": true,
-                    "evaluate_crag": false,
-                    "evaluate_llm": true,
-                    "use_search_api": true,
-                    "llm_model": "openai-4o",
-                    "batch_size": 10,
-                    "max_concurrent": 5
-                },
-                "download_url": "/api/download-results/latest"
-            };
-            console.log('✅ Test metrics data set');
-            this.showResults(this.resultData);
-        };
-        window.testChartWithRealData = () => {
-            const realMetrics = {
+        window.setTestMetrics = () => this.setTestMetricsData();
+        window.testChartWithRealData = () => this.testChartWithRealData();
+        window.debugMetricExtraction = (mockResult) => this.debugMetricExtraction(mockResult);
+        window.testFullLLMOutput = () => this.testFullLLMOutput();
+        
+        console.log('🧪 Debug helpers available:', Object.keys(window).filter(k => k.startsWith('test') || k === 'ragEvaluator' || k.startsWith('debug')));
+    }
+
+    /**
+     * Set test metrics data for debugging
+     */
+    setTestMetricsData() {
+        this.resultData = {
+            "status": "success",
+            "message": "Evaluation completed successfully",
+            "processing_stats": {
+                "total_processed": 25,
+                "successful_queries": 23,
+                "success_rate": 92.0,
+                "failed_queries": 2,
+                "total_tokens": 45280,
+                "prompt_tokens": 28350,
+                "completion_tokens": 16930,
+                "estimated_cost_usd": 1.3584,
+                "output_file": "test_evaluation_results.xlsx"
+            },
+            "metrics": {
                 "Response Relevancy": 0.87,
                 "Faithfulness": 0.82,
                 "Context Recall": 0.79,
@@ -192,50 +412,103 @@ class RAGEvaluatorUI {
                 "LLM Answer Relevancy": 0.84,
                 "LLM Context Relevancy": 0.89,
                 "LLM Answer Correctness": 0.86
-            };
-            console.log('🧪 Testing chart with RAGAS + LLM metrics:', realMetrics);
-            this.createMetricsChart(realMetrics);
-        };
-        window.debugMetricExtraction = (mockResult) => {
-            console.log('🔍 Testing metric extraction with mock result:');
-            const testResult = mockResult || {
-                metrics: {
-                    "Response Relevancy": 0.87,
-                    "Faithfulness": 0.82,
-                    "LLM Answer Relevancy": 0.84,
-                    "LLM Context Relevancy": 0.89,
-                    "LLM Answer Correctness": 0.86
-                },
-                ragas_results: {
-                    "answer_relevancy": 0.78,
-                    "faithfulness": 0.85
-                },
-                some_other_field: {
-                    "Context Recall": 0.79
+            },
+            "detailed_results": [
+                {
+                    "query": "What is artificial intelligence?",
+                    "answer": "Artificial intelligence (AI) is a branch of computer science that aims to create machines capable of intelligent behavior.",
+                    "ground_truth": "AI is the simulation of human intelligence in machines.",
+                    "Response Relevancy": 0.92,
+                    "Faithfulness": 0.88,
+                    "Context Recall": 0.85,
+                    "Context Precision": 0.90,
+                    "Answer Correctness": 0.87,
+                    "Answer Similarity": 0.93,
+                    "LLM Answer Relevancy": 0.90,
+                    "LLM Context Relevancy": 0.85,
+                    "LLM Answer Correctness": 0.89
                 }
-            };
-            console.log('📊 Input result:', testResult);
-            const extracted = this.extractMetricsFromResult(testResult);
-            console.log('✅ Extracted metrics:', extracted);
-            return extracted;
+            ],
+            "config_used": {
+                "evaluate_ragas": true,
+                "evaluate_crag": false,
+                "evaluate_llm": true,
+                "use_search_api": true,
+                "llm_model": "openai-4o",
+                "batch_size": 10,
+                "max_concurrent": 5
+            },
+            "download_url": "/api/download-results/latest"
         };
-        
-        window.testFullLLMOutput = () => {
-            console.log('🧪 Testing complete RAGAS + LLM output display...');
-            this.setTestMetrics();
-            console.log('📋 Result data with LLM metrics:', this.resultData);
-            console.log('📊 Extracted metrics:', this.extractMetricsFromResult(this.resultData));
-        };
-        
-        console.log('✅ Event listeners setup complete');
+        console.log('✅ Test metrics data set');
+        this.showResults(this.resultData);
     }
 
+    /**
+     * Test chart with real data
+     */
+    testChartWithRealData() {
+        const realMetrics = {
+            "Response Relevancy": 0.87,
+            "Faithfulness": 0.82,
+            "Context Recall": 0.79,
+            "Context Precision": 0.85,
+            "Answer Correctness": 0.88,
+            "Answer Similarity": 0.91,
+            "LLM Answer Relevancy": 0.84,
+            "LLM Context Relevancy": 0.89,
+            "LLM Answer Correctness": 0.86
+        };
+        console.log('🧪 Testing chart with RAGAS + LLM metrics:', realMetrics);
+        this.createMetricsChart(realMetrics);
+    }
+
+    /**
+     * Debug metric extraction
+     */
+    debugMetricExtraction(mockResult) {
+        console.log('🔍 Testing metric extraction with mock result:');
+        const testResult = mockResult || {
+            metrics: {
+                "Response Relevancy": 0.87,
+                "Faithfulness": 0.82,
+                "LLM Answer Relevancy": 0.84,
+                "LLM Context Relevancy": 0.89,
+                "LLM Answer Correctness": 0.86
+            },
+            ragas_results: {
+                "answer_relevancy": 0.78,
+                "faithfulness": 0.85
+            },
+            some_other_field: {
+                "Context Recall": 0.79
+            }
+        };
+        console.log('📊 Input result:', testResult);
+        const extracted = this.extractMetricsFromResult(testResult);
+        console.log('✅ Extracted metrics:', extracted);
+        return extracted;
+    }
+
+    /**
+     * Test full LLM output
+     */
+    testFullLLMOutput() {
+        console.log('🧪 Testing complete RAGAS + LLM output display...');
+        this.setTestMetricsData();
+        console.log('📋 Result data with LLM metrics:', this.resultData);
+        console.log('📊 Extracted metrics:', this.extractMetricsFromResult(this.resultData));
+    }
+
+    /**
+     * Create a new user session for file isolation and multi-user support
+     * @returns {Promise<string|null>} Session ID or null if failed
+     */
     async createUserSession() {
-        // Create a new user session for file isolation
         try {
             console.log('🔐 Creating user session...');
             
-            const response = await fetch('/api/create-session', {
+            const response = await fetch(API_ENDPOINTS.CREATE_SESSION, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -262,11 +535,11 @@ class RAGEvaluatorUI {
                 
                 return this.sessionId;
             } else {
-                throw new Error(`Failed to create session: ${response.statusText}`);
+                await ErrorHandler.handleNetworkError(response, 'Session creation');
+                return null;
             }
         } catch (error) {
-            console.error('❌ Error creating session:', error);
-            this.showToast('Failed to create user session. Please refresh the page.', 'error');
+            ErrorHandler.handleError(error, 'Session creation');
             return null;
         }
     }
@@ -279,7 +552,7 @@ class RAGEvaluatorUI {
         }
 
         try {
-            const response = await fetch(`/api/session-status/${storedSessionId}`);
+            const response = await fetch(`${API_ENDPOINTS.SESSION_STATUS}/${storedSessionId}`);
             if (response.ok) {
                 const data = await response.json();
                 if (data.is_valid) {
@@ -323,9 +596,9 @@ class RAGEvaluatorUI {
     }
 
     setupFileUpload() {
-        const uploadArea = document.getElementById('upload-area');
-        const fileInput = document.getElementById('excel-file');
-        const removeFileBtn = document.getElementById('remove-file');
+        const uploadArea = document.getElementById(ELEMENTS.UPLOAD_AREA);
+        const fileInput = document.getElementById(ELEMENTS.FILE_INPUT);
+        const removeFileBtn = document.getElementById(ELEMENTS.REMOVE_FILE);
 
         if (uploadArea && fileInput) {
             uploadArea.addEventListener('click', () => {
@@ -371,7 +644,7 @@ class RAGEvaluatorUI {
             const target = e.target;
             
             // Check if click is on a results button or its child elements
-            if (target.id === 'download-results' || target.closest('#download-results')) {
+            if (target.id === ELEMENTS.DOWNLOAD_RESULTS || target.closest(`#${ELEMENTS.DOWNLOAD_RESULTS}`)) {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('📥 Download Results button clicked');
@@ -379,7 +652,7 @@ class RAGEvaluatorUI {
                 return;
             }
             
-            if (target.id === 'view-details' || target.closest('#view-details')) {
+            if (target.id === ELEMENTS.VIEW_DETAILS || target.closest(`#${ELEMENTS.VIEW_DETAILS}`)) {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('👁️ View Details button clicked');
@@ -387,7 +660,7 @@ class RAGEvaluatorUI {
                 return;
             }
             
-            if (target.id === 'new-evaluation' || target.closest('#new-evaluation')) {
+            if (target.id === ELEMENTS.NEW_EVALUATION || target.closest(`#${ELEMENTS.NEW_EVALUATION}`)) {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('🔄 New Evaluation button clicked');
@@ -402,9 +675,9 @@ class RAGEvaluatorUI {
 
     setupDirectListeners() {
         const buttons = [
-            { id: 'download-results', handler: () => this.downloadResults(), label: 'Download' },
-            { id: 'view-details', handler: () => this.viewDetails(), label: 'View Details' },
-            { id: 'new-evaluation', handler: () => this.resetForNewEvaluation(), label: 'New Evaluation' }
+            { id: ELEMENTS.DOWNLOAD_RESULTS, handler: () => this.downloadResults(), label: 'Download' },
+            { id: ELEMENTS.VIEW_DETAILS, handler: () => this.viewDetails(), label: 'View Details' },
+            { id: ELEMENTS.NEW_EVALUATION, handler: () => this.resetForNewEvaluation(), label: 'New Evaluation' }
         ];
 
         buttons.forEach(({ id, handler, label }) => {
@@ -429,7 +702,7 @@ class RAGEvaluatorUI {
 
     setupFormHandlers() {
         // Monitor form changes for validation
-        const formInputs = document.querySelectorAll('#batch-size, #max-concurrent, #use-search-api, #evaluate-ragas, #evaluate-crag, #evaluate-llm');
+        const formInputs = document.querySelectorAll(`#${ELEMENTS.BATCH_SIZE}, #${ELEMENTS.MAX_CONCURRENT}, #${ELEMENTS.USE_SEARCH_API}, #${ELEMENTS.EVALUATE_RAGAS}, #${ELEMENTS.EVALUATE_CRAG}, #${ELEMENTS.EVALUATE_LLM}`);
         formInputs.forEach(input => {
             input.addEventListener('change', () => {
                 this.estimateProcessingTime();
@@ -438,7 +711,7 @@ class RAGEvaluatorUI {
         });
 
         // Handle Search API configuration visibility
-        const useSearchApiCheckbox = document.getElementById('use-search-api');
+        const useSearchApiCheckbox = document.getElementById(ELEMENTS.USE_SEARCH_API);
         const searchApiConfig = document.getElementById('search-api-config');
         
         if (useSearchApiCheckbox && searchApiConfig) {
@@ -449,9 +722,9 @@ class RAGEvaluatorUI {
         }
 
         // Handle evaluation method changes
-        const ragasCheckbox = document.getElementById('evaluate-ragas');
-        const cragCheckbox = document.getElementById('evaluate-crag');
-        const llmCheckbox = document.getElementById('evaluate-llm');
+        const ragasCheckbox = document.getElementById(ELEMENTS.EVALUATE_RAGAS);
+        const cragCheckbox = document.getElementById(ELEMENTS.EVALUATE_CRAG);
+        const llmCheckbox = document.getElementById(ELEMENTS.EVALUATE_LLM);
         
         if (ragasCheckbox) {
             ragasCheckbox.addEventListener('change', () => {
@@ -477,7 +750,7 @@ class RAGEvaluatorUI {
 
 
         // Handle LLM Model configuration visibility
-        const llmModelSelect = document.getElementById('llm-model');
+        const llmModelSelect = document.getElementById(ELEMENTS.LLM_MODEL);
         const llmConfig = document.getElementById('llm-config');
         const openaiConfig = document.getElementById('openai-config');
         const azureConfig = document.getElementById('azure-config');
@@ -1053,13 +1326,13 @@ class RAGEvaluatorUI {
         if (totalQueriesElement) totalQueriesElement.textContent = 'Analyzing...';
         
         // Get current settings
-        const batchSize = parseInt(document.getElementById('batch-size')?.value || 10);
-        const maxConcurrent = parseInt(document.getElementById('max-concurrent')?.value || 5);
-        const useSearchApi = document.getElementById('use-search-api')?.checked || false;
-        const evaluateRagas = document.getElementById('evaluate-ragas')?.checked || false;
-        const evaluateCrag = document.getElementById('evaluate-crag')?.checked || false;
-        const evaluateLlm = document.getElementById('evaluate-llm')?.checked || false;
-        const selectedSheet = document.getElementById('sheet-name')?.value || '';
+        const batchSize = parseInt(document.getElementById(ELEMENTS.BATCH_SIZE)?.value || CONFIG.DEFAULT_BATCH_SIZE);
+        const maxConcurrent = parseInt(document.getElementById(ELEMENTS.MAX_CONCURRENT)?.value || CONFIG.DEFAULT_MAX_CONCURRENT);
+        const useSearchApi = document.getElementById(ELEMENTS.USE_SEARCH_API)?.checked || false;
+        const evaluateRagas = document.getElementById(ELEMENTS.EVALUATE_RAGAS)?.checked || false;
+        const evaluateCrag = document.getElementById(ELEMENTS.EVALUATE_CRAG)?.checked || false;
+        const evaluateLlm = document.getElementById(ELEMENTS.EVALUATE_LLM)?.checked || false;
+        const selectedSheet = document.getElementById(ELEMENTS.SHEET_SELECT)?.value || '';
         
         // Calculate actual query count
         let totalQueries = 0;
@@ -1095,7 +1368,7 @@ class RAGEvaluatorUI {
         const totalTime = totalRounds * timePerQuery * effectiveBatchSize / parallelBatches;
         
         // Add overhead for initialization, file I/O, etc.
-        const overheadTime = Math.max(30, totalQueries * 0.5); // 30s base + 0.5s per query
+        const overheadTime = Math.max(CONFIG.BASE_OVERHEAD, totalQueries * CONFIG.OVERHEAD_PER_QUERY);
         const finalTime = totalTime + overheadTime;
         
         console.log(`🕐 Estimation details:`, {
@@ -1112,7 +1385,7 @@ class RAGEvaluatorUI {
         
         // Update UI with calculated values
         if (estimatedTimeElement) {
-            estimatedTimeElement.textContent = this.formatTime(finalTime);
+            estimatedTimeElement.textContent = UIUtils.formatTime(finalTime);
             estimatedTimeElement.title = `Based on ${totalQueries} queries with current settings`;
         }
         
@@ -1135,13 +1408,21 @@ class RAGEvaluatorUI {
         // No longer needed - preset details are shown in modal
     }
 
+    /**
+     * Calculate estimated processing time per query based on enabled features
+     * @param {boolean} useSearchApi - Whether search API is enabled
+     * @param {boolean} evaluateRagas - Whether RAGAS evaluation is enabled
+     * @param {boolean} evaluateCrag - Whether CRAG evaluation is enabled
+     * @param {boolean} evaluateLlm - Whether LLM evaluation is enabled
+     * @returns {number} Estimated time per query in seconds
+     */
     calculateTimePerQuery(useSearchApi, evaluateRagas, evaluateCrag, evaluateLlm) {
         // Base time for basic processing
-        let timePerQuery = 0.5; // 0.5 seconds base
+        let timePerQuery = CONFIG.BASE_PROCESSING_TIME;
         
         // Search API time (if enabled)
         if (useSearchApi) {
-            timePerQuery += 2.5; // Average API response time
+            timePerQuery += CONFIG.SEARCH_API_TIME;
         }
         
         // Calculate parallel evaluation time - evaluators run concurrently
@@ -1149,17 +1430,17 @@ class RAGEvaluatorUI {
         
         // RAGAS evaluation time (most time-consuming)
         if (evaluateRagas) {
-            evaluationTimes.push(12); // RAGAS is computationally expensive
+            evaluationTimes.push(CONFIG.RAGAS_EVAL_TIME);
         }
         
         // CRAG evaluation time
         if (evaluateCrag) {
-            evaluationTimes.push(3); // CRAG is lighter than RAGAS
+            evaluationTimes.push(CONFIG.CRAG_EVAL_TIME);
         }
         
         // LLM evaluation time (3 API calls per query, but concurrent)
         if (evaluateLlm) {
-            evaluationTimes.push(4); // Improved with parallel processing within LLM evaluator
+            evaluationTimes.push(CONFIG.LLM_EVAL_TIME);
         }
         
         // When running in parallel, take the maximum time (longest running evaluator)
@@ -1169,7 +1450,7 @@ class RAGEvaluatorUI {
         }
         
         // Minimum time
-        return Math.max(0.5, timePerQuery);
+        return Math.max(CONFIG.MIN_PROCESSING_TIME, timePerQuery);
     }
 
     updateEstimationDetails(queries, time, useSearchApi, evaluateRagas, evaluateCrag, evaluateLlm) {
@@ -1557,8 +1838,8 @@ class RAGEvaluatorUI {
         // Update summary stats
         this.updateElement('total-processed', totalProcessed);
         this.updateElement('successful-queries', successfulQueries);
-        this.updateElement('total-time', this.formatTime(totalTime));
-        this.updateElement('avg-time', this.formatTime(avgTime));
+        this.updateElement('total-time', UIUtils.formatTime(totalTime));
+        this.updateElement('avg-time', UIUtils.formatTime(avgTime));
         
         // Add failed queries count
         const failedQueries = stats.failed_queries || 0;
@@ -1566,20 +1847,16 @@ class RAGEvaluatorUI {
         
         // Add token usage and cost if available
         if (this.hasRealTokenUsageData(stats)) {
-            this.updateElement('total-tokens', this.formatTokenCount(stats.total_tokens));
-            this.updateElement('estimated-cost', this.formatCurrency(stats.estimated_cost_usd));
+            this.updateElement('total-tokens', UIUtils.formatTokenCount(stats.total_tokens));
+            this.updateElement('estimated-cost', UIUtils.formatCurrency(stats.estimated_cost_usd));
             
             // Show token/cost summary items
-            const tokenSummaryItem = document.getElementById('token-summary-item');
-            const costSummaryItem = document.getElementById('cost-summary-item');
-            if (tokenSummaryItem) tokenSummaryItem.style.display = 'block';
-            if (costSummaryItem) costSummaryItem.style.display = 'block';
+            UIUtils.toggleElement('token-summary-item', true);
+            UIUtils.toggleElement('cost-summary-item', true);
         } else {
             // Hide token/cost summary items if no data
-            const tokenSummaryItem = document.getElementById('token-summary-item');
-            const costSummaryItem = document.getElementById('cost-summary-item');
-            if (tokenSummaryItem) tokenSummaryItem.style.display = 'none';
-            if (costSummaryItem) costSummaryItem.style.display = 'none';
+            UIUtils.toggleElement('token-summary-item', false);
+            UIUtils.toggleElement('cost-summary-item', false);
         }
         
         // Create metrics chart
@@ -1592,6 +1869,11 @@ class RAGEvaluatorUI {
         this.addLogEntry(`✅ Results displayed: ${totalProcessed} queries processed`, 'success');
     }
 
+    /**
+     * Extract and normalize metrics from evaluation results
+     * @param {Object} result - Evaluation result object
+     * @returns {Object} Processed metrics object
+     */
     extractMetricsFromResult(result) {
         console.log('🔍 Extracting metrics from result...');
         
@@ -1653,6 +1935,10 @@ class RAGEvaluatorUI {
         return processedMetrics;
     }
 
+    /**
+     * Get default metrics when no real metrics are available
+     * @returns {Object} Default metrics object
+     */
     getDefaultMetrics() {
         return {
             'Response Relevancy': 0.85,
@@ -1668,10 +1954,7 @@ class RAGEvaluatorUI {
     }
 
     updateElement(id, value) {
-        const element = document.getElementById(id);
-        if (element) {
-            element.textContent = value;
-        }
+        UIUtils.updateElement(id, value);
     }
 
     createMetricsChart(metrics) {
@@ -1710,10 +1993,10 @@ class RAGEvaluatorUI {
                     datasets: [{
                         label: 'Evaluation Metrics',
                         data: data,
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        borderColor: 'rgba(59, 130, 246, 0.8)',
+                        backgroundColor: CONFIG.CHART_COLORS.PRIMARY + '1A', // Add alpha
+                        borderColor: CONFIG.CHART_COLORS.PRIMARY + 'CC', // Add alpha
                         borderWidth: 2,
-                        pointBackgroundColor: 'rgba(59, 130, 246, 1)',
+                        pointBackgroundColor: CONFIG.CHART_COLORS.PRIMARY,
                         pointBorderColor: '#ffffff',
                         pointBorderWidth: 2,
                         pointRadius: 5
