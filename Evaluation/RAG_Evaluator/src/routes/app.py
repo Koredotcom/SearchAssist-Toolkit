@@ -408,7 +408,11 @@ async def run_evaluation_ui(
                                     crag_columns = ['Accuracy', 'accuracy', 'crag_accuracy']
                                     
                                     llm_columns = [
-                                        'LLM Answer Relevancy', 'LLM Context Relevancy', 'LLM Answer Correctness'
+                                        'LLM Answer Relevancy', 'LLM Context Relevancy', 'LLM Answer Correctness',
+                                        'LLM Ground Truth Validity', 'LLM Answer Completeness',
+                                        'LLM Answer Relevancy Justification', 'LLM Context Relevancy Justification', 
+                                        'LLM Answer Correctness Justification', 'LLM Ground Truth Validity Justification', 
+                                        'LLM Answer Completeness Justification'
                                     ]
                                     
                                     # Check for any evaluation metrics
@@ -511,18 +515,29 @@ async def run_evaluation_ui(
                                 
                                 # Extract LLM evaluation metrics
                                 llm_columns = [
-                                    'LLM Answer Relevancy', 'LLM Context Relevancy', 'LLM Answer Correctness'
+                                    'LLM Answer Relevancy', 'LLM Context Relevancy', 'LLM Answer Correctness',
+                                    'LLM Ground Truth Validity', 'LLM Answer Completeness',
+                                    'LLM Answer Relevancy Justification', 'LLM Context Relevancy Justification', 
+                                    'LLM Answer Correctness Justification', 'LLM Ground Truth Validity Justification', 
+                                    'LLM Answer Completeness Justification'
                                 ]
                                 
                                 for llm_metric in llm_columns:
                                     if llm_metric in df.columns:
-                                        llm_values = pd.to_numeric(df[llm_metric], errors='coerce').dropna()
-                                        if len(llm_values) > 0:
-                                            avg_score = float(llm_values.mean())
-                                            actual_metrics[llm_metric] = avg_score
-                                            logger.info(f"✅ Extracted {llm_metric}: {avg_score:.4f}")
+                                        # Handle justification columns (text) vs score columns (numeric)
+                                        if 'justification' in llm_metric.lower():
+                                            # For justification columns, just log that they exist
+                                            non_null_count = df[llm_metric].notna().sum()
+                                            logger.info(f"✅ Found justification column '{llm_metric}' with {non_null_count} non-null values")
                                         else:
-                                            logger.warning(f"⚠️ No numeric values found for {llm_metric}")
+                                            # For score columns, extract numeric values
+                                            llm_values = pd.to_numeric(df[llm_metric], errors='coerce').dropna()
+                                            if len(llm_values) > 0:
+                                                avg_score = float(llm_values.mean())
+                                                actual_metrics[llm_metric] = avg_score
+                                                logger.info(f"✅ Extracted {llm_metric}: {avg_score:.4f}")
+                                            else:
+                                                logger.warning(f"⚠️ No numeric values found for {llm_metric}")
                                     else:
                                         logger.info(f"ℹ️ LLM metric '{llm_metric}' not found in columns")
                                 
@@ -641,7 +656,7 @@ async def run_evaluation_ui(
                                         ]]
                                         
                                         llm_columns = [col for col in sheet_df.columns if col.lower().startswith('llm') and 
-                                                      any(metric in col.lower() for metric in ['relevancy', 'correctness', 'relevance'])]
+                                                      any(metric in col.lower() for metric in ['relevancy', 'correctness', 'relevance', 'validity', 'completeness'])]
                                         
                                         crag_columns = [col for col in sheet_df.columns if col.lower().startswith('crag') or 
                                                        'accuracy' in col.lower()]
@@ -692,7 +707,7 @@ async def run_evaluation_ui(
                                                     col_lower = col.lower()
                                                     is_metric_column = any(metric in col_lower for metric in [
                                                         'relevancy', 'faithfulness', 'recall', 'precision', 'correctness', 
-                                                        'similarity', 'accuracy', 'llm', 'ragas', 'crag'
+                                                        'similarity', 'accuracy', 'validity', 'completeness', 'llm', 'ragas', 'crag'
                                                     ])
                                                     
                                                     if is_metric_column:

@@ -252,7 +252,7 @@ class LLMEvaluator(BaseEvaluator):
             ValueError: If prompt_type is not supported
         """
         # Validate prompt type
-        valid_types = ['answerRelevancy', 'contextRelevancy', 'answerCorrectness']
+        valid_types = ['answerRelevancy', 'contextRelevancy', 'answerCorrectness', 'groundTruthValidity', 'answerCompleteness']
         if prompt_type not in valid_types:
             raise ValueError(f"Invalid prompt_type: {prompt_type}. Must be one of {valid_types}")
         
@@ -437,6 +437,46 @@ class LLMEvaluator(BaseEvaluator):
             logger.error(f"Error evaluating answer correctness: {e}")
             return {'score': 0.5, 'justification': f'Error during evaluation: {str(e)}'}
     
+    async def evaluate_ground_truth_validity(self, session: aiohttp.ClientSession, query: str, ground_truth: str) -> Dict[str, Any]:
+        """Evaluate ground truth validity using LLM"""
+        try:
+            messages = self.get_evaluation_prompt('groundTruthValidity', user_query=query, ground_truth_answer=ground_truth)
+            result = await self.call_openai_api(session, messages)
+            
+            if result and 'score' in result:
+                # Convert 1-5 scale to 0-1 scale for consistency with RAGAS
+                score = float(result['score']) / 5.0
+                justification = result.get('justification', 'No justification provided')
+                logger.info(f"🎯 Ground Truth Validity: {score:.3f} - {justification}")
+                return {'score': score, 'justification': justification}
+            else:
+                logger.warning("Failed to get ground truth validity score, using default")
+                return {'score': 0.5, 'justification': 'Failed to get evaluation from LLM'}
+        
+        except Exception as e:
+            logger.error(f"Error evaluating ground truth validity: {e}")
+            return {'score': 0.5, 'justification': f'Error during evaluation: {str(e)}'}
+    
+    async def evaluate_answer_completeness(self, session: aiohttp.ClientSession, query: str, answer: str) -> Dict[str, Any]:
+        """Evaluate answer completeness using LLM"""
+        try:
+            messages = self.get_evaluation_prompt('answerCompleteness', user_query=query, generated_answer=answer)
+            result = await self.call_openai_api(session, messages)
+            
+            if result and 'score' in result:
+                # Convert 1-5 scale to 0-1 scale for consistency with RAGAS
+                score = float(result['score']) / 5.0
+                justification = result.get('justification', 'No justification provided')
+                logger.info(f"🎯 Answer Completeness: {score:.3f} - {justification}")
+                return {'score': score, 'justification': justification}
+            else:
+                logger.warning("Failed to get answer completeness score, using default")
+                return {'score': 0.5, 'justification': 'Failed to get evaluation from LLM'}
+        
+        except Exception as e:
+            logger.error(f"Error evaluating answer completeness: {e}")
+            return {'score': 0.5, 'justification': f'Error during evaluation: {str(e)}'}
+    
     async def evaluate_batch(self, session: aiohttp.ClientSession, data_batch: List[Dict[str, Any]], 
                            batch_size: int = 5) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Evaluate a batch of data using LLM metrics with concurrent processing"""
@@ -489,6 +529,17 @@ class LLMEvaluator(BaseEvaluator):
                     else:
                         tasks.append(asyncio.create_task(self._return_default_result(0.5, 'No answer, ground truth, or query provided')))
                     
+                    # New metrics: Ground Truth Validity and Answer Completeness
+                    if ground_truth and query:
+                        tasks.append(self.evaluate_ground_truth_validity(session, query, ground_truth))
+                    else:
+                        tasks.append(asyncio.create_task(self._return_default_result(0.5, 'No ground truth or query provided')))
+                    
+                    if answer and query:
+                        tasks.append(self.evaluate_answer_completeness(session, query, answer))
+                    else:
+                        tasks.append(asyncio.create_task(self._return_default_result(0.5, 'No answer or query provided')))
+                    
                     # Execute all evaluations concurrently for this item
                     evaluation_results = await asyncio.gather(*tasks, return_exceptions=True)
                     
@@ -498,6 +549,8 @@ class LLMEvaluator(BaseEvaluator):
                     answer_relevancy_result = evaluation_results[0] if not isinstance(evaluation_results[0], Exception) else default_result
                     context_relevancy_result = evaluation_results[1] if not isinstance(evaluation_results[1], Exception) else default_result
                     answer_correctness_result = evaluation_results[2] if not isinstance(evaluation_results[2], Exception) else default_result
+                    ground_truth_validity_result = evaluation_results[3] if not isinstance(evaluation_results[3], Exception) else default_result
+                    answer_completeness_result = evaluation_results[4] if not isinstance(evaluation_results[4], Exception) else default_result
                     
                     # Aggregate token usage from all evaluations for this item
                     item_token_usage = {
@@ -506,7 +559,7 @@ class LLMEvaluator(BaseEvaluator):
                         'total_tokens': 0
                     }
                     
-                    for eval_result in [answer_relevancy_result, context_relevancy_result, answer_correctness_result]:
+                    for eval_result in [answer_relevancy_result, context_relevancy_result, answer_correctness_result, ground_truth_validity_result, answer_completeness_result]:
                         if 'token_usage' in eval_result:
                             token_data = eval_result['token_usage']
                             item_token_usage['prompt_tokens'] += token_data.get('prompt_tokens', 0)
@@ -526,7 +579,11 @@ class LLMEvaluator(BaseEvaluator):
                         'LLM Context Relevancy': context_relevancy_result.get('score', 0.5),
                         'LLM Context Relevancy Justification': context_relevancy_result.get('justification', 'No justification available'),
                         'LLM Answer Correctness': answer_correctness_result.get('score', 0.5),
-                        'LLM Answer Correctness Justification': answer_correctness_result.get('justification', 'No justification available')
+                        'LLM Answer Correctness Justification': answer_correctness_result.get('justification', 'No justification available'),
+                        'LLM Ground Truth Validity': ground_truth_validity_result.get('score', 0.5),
+                        'LLM Ground Truth Validity Justification': ground_truth_validity_result.get('justification', 'No justification available'),
+                        'LLM Answer Completeness': answer_completeness_result.get('score', 0.5),
+                        'LLM Answer Completeness Justification': answer_completeness_result.get('justification', 'No justification available')
                     })
                     
                     return result
@@ -544,7 +601,11 @@ class LLMEvaluator(BaseEvaluator):
                         'LLM Context Relevancy': 0.5,
                         'LLM Context Relevancy Justification': f'Error during evaluation: {str(e)}',
                         'LLM Answer Correctness': 0.5,
-                        'LLM Answer Correctness Justification': f'Error during evaluation: {str(e)}'
+                        'LLM Answer Correctness Justification': f'Error during evaluation: {str(e)}',
+                        'LLM Ground Truth Validity': 0.5,
+                        'LLM Ground Truth Validity Justification': f'Error during evaluation: {str(e)}',
+                        'LLM Answer Completeness': 0.5,
+                        'LLM Answer Completeness Justification': f'Error during evaluation: {str(e)}'
                     }
         
         # Process all items concurrently with controlled concurrency
@@ -566,7 +627,11 @@ class LLMEvaluator(BaseEvaluator):
                     'LLM Context Relevancy': 0.5,
                     'LLM Context Relevancy Justification': f'Exception during evaluation: {str(result)}',
                     'LLM Answer Correctness': 0.5,
-                    'LLM Answer Correctness Justification': f'Exception during evaluation: {str(result)}'
+                    'LLM Answer Correctness Justification': f'Exception during evaluation: {str(result)}',
+                    'LLM Ground Truth Validity': 0.5,
+                    'LLM Ground Truth Validity Justification': f'Exception during evaluation: {str(result)}',
+                    'LLM Answer Completeness': 0.5,
+                    'LLM Answer Completeness Justification': f'Exception during evaluation: {str(result)}'
                 })
             else:
                 final_results.append(result)
@@ -591,7 +656,7 @@ class LLMEvaluator(BaseEvaluator):
         if not results:
             return {}
         
-        llm_metrics = ['LLM Answer Relevancy', 'LLM Context Relevancy', 'LLM Answer Correctness']
+        llm_metrics = ['LLM Answer Relevancy', 'LLM Context Relevancy', 'LLM Answer Correctness', 'LLM Ground Truth Validity', 'LLM Answer Completeness']
         averages = {}
         
         for metric in llm_metrics:

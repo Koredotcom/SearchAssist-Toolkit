@@ -411,7 +411,14 @@ class RAGEvaluatorUI {
                 "Answer Similarity": 0.91,
                 "LLM Answer Relevancy": 0.84,
                 "LLM Context Relevancy": 0.89,
-                "LLM Answer Correctness": 0.86
+                "LLM Answer Correctness": 0.86,
+                "LLM Ground Truth Validity": 0.88,
+                "LLM Answer Completeness": 0.85,
+                "LLM Answer Relevancy Justification": "The answer is highly relevant to the query about AI, providing a clear and accurate definition.",
+                "LLM Context Relevancy Justification": "The context provides comprehensive information about AI that directly supports answering the query.",
+                "LLM Answer Correctness Justification": "The answer accurately reflects the ground truth with minor variations in wording but maintains the same meaning.",
+                "LLM Ground Truth Validity Justification": "The ground truth is a valid and appropriate answer to the query about artificial intelligence.",
+                "LLM Answer Completeness Justification": "The answer provides a complete and comprehensive explanation of artificial intelligence."
             },
             "detailed_results": [
                 {
@@ -426,7 +433,14 @@ class RAGEvaluatorUI {
                     "Answer Similarity": 0.93,
                     "LLM Answer Relevancy": 0.90,
                     "LLM Context Relevancy": 0.85,
-                    "LLM Answer Correctness": 0.89
+                    "LLM Answer Correctness": 0.89,
+                    "LLM Ground Truth Validity": 0.92,
+                    "LLM Answer Completeness": 0.87,
+                    "LLM Answer Relevancy Justification": "The answer directly addresses the query about AI with relevant and accurate information.",
+                    "LLM Context Relevancy Justification": "The context provides essential information about AI that supports the answer.",
+                    "LLM Answer Correctness Justification": "The answer correctly explains AI concepts and aligns well with the ground truth.",
+                    "LLM Ground Truth Validity Justification": "The ground truth is a valid and comprehensive answer to the AI question.",
+                    "LLM Answer Completeness Justification": "The answer provides a complete explanation of artificial intelligence concepts."
                 }
             ],
             "config_used": {
@@ -457,7 +471,14 @@ class RAGEvaluatorUI {
             "Answer Similarity": 0.91,
             "LLM Answer Relevancy": 0.84,
             "LLM Context Relevancy": 0.89,
-            "LLM Answer Correctness": 0.86
+            "LLM Answer Correctness": 0.86,
+            "LLM Ground Truth Validity": 0.88,
+            "LLM Answer Completeness": 0.85,
+            "LLM Answer Relevancy Justification": "The answer is highly relevant to the query about AI, providing a clear and accurate definition.",
+            "LLM Context Relevancy Justification": "The context provides comprehensive information about AI that directly supports answering the query.",
+            "LLM Answer Correctness Justification": "The answer accurately reflects the ground truth with minor variations in wording but maintains the same meaning.",
+            "LLM Ground Truth Validity Justification": "The ground truth is a valid and appropriate answer to the query about artificial intelligence.",
+            "LLM Answer Completeness Justification": "The answer provides a complete and comprehensive explanation of artificial intelligence."
         };
         console.log('🧪 Testing chart with RAGAS + LLM metrics:', realMetrics);
         this.createMetricsChart(realMetrics);
@@ -474,7 +495,14 @@ class RAGEvaluatorUI {
                 "Faithfulness": 0.82,
                 "LLM Answer Relevancy": 0.84,
                 "LLM Context Relevancy": 0.89,
-                "LLM Answer Correctness": 0.86
+                "LLM Answer Correctness": 0.86,
+                "LLM Ground Truth Validity": 0.88,
+                "LLM Answer Completeness": 0.85,
+                "LLM Answer Relevancy Justification": "The answer is highly relevant to the query about AI, providing a clear and accurate definition.",
+                "LLM Context Relevancy Justification": "The context provides comprehensive information about AI that directly supports answering the query.",
+                "LLM Answer Correctness Justification": "The answer accurately reflects the ground truth with minor variations in wording but maintains the same meaning.",
+                "LLM Ground Truth Validity Justification": "The ground truth is a valid and appropriate answer to the query about artificial intelligence.",
+                "LLM Answer Completeness Justification": "The answer provides a complete and comprehensive explanation of artificial intelligence."
             },
             ragas_results: {
                 "answer_relevancy": 0.78,
@@ -1949,7 +1977,14 @@ class RAGEvaluatorUI {
             'Answer Similarity': 0.88,
             'LLM Answer Relevancy': 0.83,
             'LLM Context Relevancy': 0.79,
-            'LLM Answer Correctness': 0.81
+            'LLM Answer Correctness': 0.81,
+            'LLM Ground Truth Validity': 0.85,
+            'LLM Answer Completeness': 0.82,
+            'LLM Answer Relevancy Justification': "The answer is relevant to the query and provides appropriate information.",
+            'LLM Context Relevancy Justification': "The context contains relevant information that supports the answer.",
+            'LLM Answer Correctness Justification': "The answer is correct and aligns with the ground truth.",
+            'LLM Ground Truth Validity Justification': "The ground truth is valid and appropriate for the query.",
+            'LLM Answer Completeness Justification': "The answer provides complete information addressing the query."
         };
     }
 
@@ -1982,8 +2017,16 @@ class RAGEvaluatorUI {
             this.metricsChart.destroy();
         }
         
-        const labels = Object.keys(metrics);
-        const data = Object.values(metrics);
+        // Filter out justification columns (text) and keep only numeric metrics for charts
+        const numericMetrics = {};
+        Object.entries(metrics).forEach(([key, value]) => {
+            if (!key.toLowerCase().includes('justification') && typeof value === 'number') {
+                numericMetrics[key] = value;
+            }
+        });
+        
+        const labels = Object.keys(numericMetrics);
+        const data = Object.values(numericMetrics);
         
         try {
             this.metricsChart = new Chart(ctx, {
@@ -2206,7 +2249,7 @@ class RAGEvaluatorUI {
         
         const llmMetrics = columns.filter(col => 
             col.toLowerCase().includes('llm') && 
-            (col.toLowerCase().includes('relevancy') || col.toLowerCase().includes('correctness') || col.toLowerCase().includes('relevance'))
+            (col.toLowerCase().includes('relevancy') || col.toLowerCase().includes('correctness') || col.toLowerCase().includes('relevance') || col.toLowerCase().includes('validity') || col.toLowerCase().includes('completeness'))
         );
         
         const cragMetrics = columns.filter(col => 
@@ -3955,7 +3998,7 @@ class RAGEvaluatorUI {
         `;
         
         metricsWithScores.forEach(([metric, scores], metricIndex) => {
-            const cleanMetricName = metric.replace('LLM ', '').replace(' Relevancy', ' Rel.').replace(' Correctness', ' Corr.');
+            const cleanMetricName = metric.replace('LLM ', '').replace(' Relevancy', ' Rel.').replace(' Correctness', ' Corr.').replace(' Ground Truth Validity', ' GT Val.').replace(' Answer Completeness', ' Comp.').replace(' Justification', ' Just.');
             const canvasId = `histogram-${containerId}-${metricIndex}`;
             
             histogramHTML += `
