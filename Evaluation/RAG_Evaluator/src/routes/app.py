@@ -9,7 +9,7 @@ from services.run_eval import runeval
 from services.mailService import mailService
 from utils.sessionManager import get_session_manager, create_user_session, validate_session, get_session_latest_file, add_session_file
 import pandas as pd
-import tempfile
+
 import json
 from typing import Optional
 import logging
@@ -319,7 +319,7 @@ async def run_evaluation_ui(
         
         try:
             # Call the evaluation service with session-aware output handling
-            result = await runeval(excel_file_path, config_file_path, config_data, session_id)
+            result = await runeval(excel_file_path, json.dumps(dynamic_config), config_data, session_id)
             logger.info(f"🔄 Evaluation service result: {type(result)}")
             
             # Try to get actual result statistics from the session's output directory
@@ -852,9 +852,8 @@ async def run_evaluation_ui(
             return JSONResponse(content=ui_result)
         
         finally:
-            # Clean up temporary config file (keep excel file in session directory)
-            if os.path.exists(config_file_path):
-                os.unlink(config_file_path)
+            # No temporary files to clean up (in-memory config only)
+            pass
     
     except HTTPException:
         raise

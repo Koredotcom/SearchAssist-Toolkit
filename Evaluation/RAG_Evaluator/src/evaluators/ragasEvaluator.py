@@ -21,13 +21,18 @@ from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
 from ragas import evaluate
 from .baseEvaluator import BaseEvaluator
-from config.configManager import ConfigManager
+
 
 
 class RagasEvaluator(BaseEvaluator):
     def __init__(self):
-        self.config_manager = ConfigManager()
-        self.config = self.config_manager.get_config()
+        # Use default config (no file-based config manager)
+        self.config = {
+            "openai": {
+                "model_name": "gpt-4o",
+                "embedding_name": "text-embedding-ada-002"
+            }
+        }
 
     def _run_ragas_sync(self, queries, answers, ground_truths, contexts, model=""):
         """

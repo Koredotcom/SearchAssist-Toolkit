@@ -1,6 +1,7 @@
+import os
 import requests
 from typing import Dict, List, Tuple, Optional
-from config.configManager import ConfigManager
+
 from utils.jti import JTI
 
 
@@ -11,12 +12,12 @@ def generate_JWT_token(client_id, client_secret):
 
 class SearchAssistAPI:
     def __init__(self):
-        config = ConfigManager().get_config()
-        self.client_id = config.get('SA').get('client_id')
-        self.client_secret = config.get('SA').get('client_secret')
+        # Use environment variables or defaults (no file-based config)
+        self.client_id = os.getenv('SA_CLIENT_ID', '<SA_CLIENT_ID>')
+        self.client_secret = os.getenv('SA_CLIENT_SECRET', '<SA_CLIENT_SECRET>')
         self.auth_token = generate_JWT_token(self.client_id, self.client_secret)
-        self.app_id = config.get('SA').get('app_id')
-        self.domain = config.get('SA').get('domain')
+        self.app_id = os.getenv('SA_APP_ID', '<SA_APP_ID>')
+        self.domain = os.getenv('SA_DOMAIN', '<SA_DOMAIN>')
         self.base_url = f'https://{self.domain}/searchassistapi/external/stream/{self.app_id}'
 
     def _make_request(self, endpoint: str, data: Dict) -> Optional[Dict]:
@@ -93,8 +94,15 @@ from asyncio import Semaphore
 class AsyncSearchAssistAPI:
     def __init__(self, config=None):
         if config is None:
-            config = ConfigManager().get_config()
-        sa_config = config.get('SA', {})
+            # Use environment variables or defaults (no file-based config)
+            sa_config = {
+                'client_id': os.getenv('SA_CLIENT_ID', '<SA_CLIENT_ID>'),
+                'client_secret': os.getenv('SA_CLIENT_SECRET', '<SA_CLIENT_SECRET>'),
+                'app_id': os.getenv('SA_APP_ID', '<SA_APP_ID>'),
+                'domain': os.getenv('SA_DOMAIN', '<SA_DOMAIN>')
+            }
+        else:
+            sa_config = config.get('SA', {})
         
         self.client_id = sa_config.get('client_id')
         self.client_secret = sa_config.get('client_secret')

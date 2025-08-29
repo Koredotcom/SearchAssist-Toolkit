@@ -1,11 +1,17 @@
+import os
 import pandas as pd
 from pymongo import MongoClient
-from config.configManager import ConfigManager
-import os
+
 import numpy as np
 
-config_manager = ConfigManager()
-config = config_manager.get_config()
+# Use environment variables for MongoDB (no file-based config)
+config = {
+    "MongoDB": {
+        "url": os.getenv("MONGO_URL", "<MONGO_URL>"),
+        "dbName": os.getenv("DB_NAME", "<DB_NAME>"),
+        "collectionName": os.getenv("COLLECTION_NAME", "<COLLECTION_NAME>")
+    }
+}
 
 
 def fetch_last_5_testsets():

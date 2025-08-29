@@ -10,7 +10,7 @@ from loguru import logger
 from evaluators.baseEvaluator import BaseEvaluator
 from utils.fileHandling import log_response
 from utils.dataProcessing import trim_predictions_to_max_token_length
-from config.configManager import ConfigManager
+
 from utils.fileHandling import load_json_file
 
 # Give relative path of the file from src directory
@@ -23,7 +23,13 @@ class CragEvaluator(BaseEvaluator):
         self.model_name = model_name
         self.openai_client = openai_client
         self.tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-        self.config = ConfigManager().get_config()
+        # Use default config (no file-based config manager)
+        self.config = {
+            "openai": {
+                "model_name": "gpt-4o",
+                "embedding_name": "text-embedding-ada-002"
+            }
+        }
 
     def evaluate(self, queries, answers, ground_truths, contexts):
         metrics_data = []

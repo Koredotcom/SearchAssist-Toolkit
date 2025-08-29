@@ -123,3 +123,9 @@ sessions/
 *.xlsx
 *.xls
 !sample_input_file.xlsx
+
+# Security: Never track configuration files with sensitive data
+config/
+config_*.json
+**/config/
+**/config_*.json

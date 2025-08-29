@@ -1,6 +1,7 @@
+import os
 import requests
 from typing import Dict, List, Tuple, Optional
-from config.configManager import ConfigManager
+
 from utils.jti import JTI
 
 def generate_JWT_token(client_id, client_secret):
@@ -10,12 +11,12 @@ def generate_JWT_token(client_id, client_secret):
 
 class XOSearchAPI:
     def __init__(self):
-        config = ConfigManager().get_config()
-        self.client_id = config.get('UXO').get('client_id')
-        self.client_secret = config.get('UXO').get('client_secret')
+        # Use environment variables or defaults (no file-based config)
+        self.client_id = os.getenv('UXO_CLIENT_ID', '<UXO_CLIENT_ID>')
+        self.client_secret = os.getenv('UXO_CLIENT_SECRET', '<UXO_CLIENT_SECRET>')
         self.auth_token = generate_JWT_token(self.client_id, self.client_secret)
-        self.app_id = config.get('UXO').get('app_id')
-        self.domain = config.get('UXO').get('domain')
+        self.app_id = os.getenv('UXO_APP_ID', '<UXO_APP_ID>')
+        self.domain = os.getenv('UXO_DOMAIN', '<UXO_DOMAIN>')
         self.base_url = f'https://{self.domain}/api/public/bot/{self.app_id}'
 
     def _make_request(self, endpoint: str, data: Dict) -> Optional[Dict]:
@@ -91,8 +92,15 @@ from asyncio import Semaphore
 class AsyncXOSearchAPI:
     def __init__(self, config=None):
         if config is None:
-            config = ConfigManager().get_config()
-        uxo_config = config.get('UXO', {})
+            # Use environment variables or defaults (no file-based config)
+            uxo_config = {
+                'client_id': os.getenv('UXO_CLIENT_ID', '<UXO_CLIENT_ID>'),
+                'client_secret': os.getenv('UXO_CLIENT_SECRET', '<UXO_CLIENT_SECRET>'),
+                'app_id': os.getenv('UXO_APP_ID', '<UXO_APP_ID>'),
+                'domain': os.getenv('UXO_DOMAIN', '<UXO_DOMAIN>')
+            }
+        else:
+            uxo_config = config.get('UXO', {})
         
         self.client_id = uxo_config.get('client_id')
         self.client_secret = uxo_config.get('client_secret')

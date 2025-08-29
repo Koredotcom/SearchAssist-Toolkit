@@ -15,7 +15,7 @@ import argparse
 import traceback
 from datetime import datetime
 from openai import OpenAI
-from config.configManager import ConfigManager
+
 from evaluators.ragasEvaluator import RagasEvaluator
 from evaluators.cragEvaluator import CragEvaluator
 from evaluators.llmEvaluator import LLMEvaluator
@@ -751,8 +751,30 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
             print(f"🔒 Using in-memory configuration (secure)")
             config = config_data
         else:
-            config_manager = ConfigManager()
-            config = config_manager.get_config()
+            # Use default minimal config (no file-based config manager)
+            config = {
+                "cost_of_model": {
+                    "input": 0.00000015,
+                    "output": 0.0000006
+                },
+                "MongoDB": {
+                    "url": os.getenv("MONGO_URL", "<MONGO_URL>"),
+                    "dbName": os.getenv("DB_NAME", "<DB_NAME>"),
+                    "collectionName": os.getenv("COLLECTION_NAME", "<COLLECTION_NAME>")
+                },
+                "openai": {
+                    "model_name": "gpt-4o",
+                    "embedding_name": "text-embedding-ada-002"
+                },
+                "azure": {
+                    "openai_api_version": "2024-02-15-preview",
+                    "base_url": "<AZURE_BASE_URL>",
+                    "model_name": "gpt-4o",
+                    "model_deployment": "<MODEL_DEPLOYMENT>",
+                    "embedding_deployment": "<EMBEDDING_DEPLOYMENT>",
+                    "embedding_name": "text-embedding-ada-002"
+                }
+            }
             print(f"🔧 No config provided, using default minimal config")
 
         # Default to RAGAS evaluation if none specified
