@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Prevent Python from creating .pyc files
+import sys
+sys.dont_write_bytecode = True
+
 """
 RAG Evaluator UI Startup Script
 ===============================

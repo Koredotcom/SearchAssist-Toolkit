@@ -6,10 +6,10 @@ import pandas as pd
 import shutil
 from main import run
 
-async def process_files(excel_file, config_file, session_id=None):
+async def process_files(excel_file, config_content, session_id=None):
     """
     Process files with session-specific isolation to prevent multi-user conflicts.
-    Each user gets their own config and Excel file copies.
+    Configuration is kept in-memory only for security.
     """
     
     # Use session-specific directories if session_id provided
@@ -19,42 +19,34 @@ async def process_files(excel_file, config_file, session_id=None):
         session_manager = get_session_manager()
         session_dir = session_manager.get_session_directory(session_id)
         
-        # Create session-specific config directory
-        session_config_dir = os.path.join(session_dir, "config")
-        os.makedirs(session_config_dir, exist_ok=True)
-        
         excel_file_name = excel_file.split("/")[-1]
         excel_filename = secure_filename(excel_file_name)
         
         # Session-specific paths (NO SHARED FILES!)
         # Use input_ prefix pattern to match the expected filename format
         excel_path = os.path.join(session_dir, f"input_{session_id}_{excel_filename}")
-        config_path = os.path.join(session_config_dir, f"config_{session_id}.json")
         
         print(f"🔐 Using session-specific paths for session {session_id[:8]}...")
         print(f"📄 Excel: {excel_path}")
-        print(f"⚙️ Config: {config_path}")
+        print(f"🔒 Config: In-memory only (secure)")
         
     else:
         # Fallback to legacy behavior (for backwards compatibility)
         print("⚠️ WARNING: No session ID provided - using legacy shared file approach!")
         INPUT_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "../")
-        CONFIG_UPLOAD_FOLDER = os.path.join(INPUT_UPLOAD_FOLDER, "config")
-        
-        # Ensure config directory exists
-        os.makedirs(CONFIG_UPLOAD_FOLDER, exist_ok=True)
         
         excel_file_name = excel_file.split("/")[-1]
         excel_filename = secure_filename(excel_file_name)
         
         excel_path = os.path.join(INPUT_UPLOAD_FOLDER, excel_filename)
-        config_path = os.path.join(CONFIG_UPLOAD_FOLDER, 'config.json')
     
-    # Copy user-specific config (ISOLATED per session)
-    with open(config_file, 'r') as f:
-        config_content = f.read()
-        with open(config_path, 'w') as f2:
-            f2.write(config_content)
+    # Parse config content in-memory (NO FILE STORAGE!)
+    import json
+    try:
+        config_data = json.loads(config_content)
+        print(f"✅ Configuration parsed successfully (in-memory)")
+    except json.JSONDecodeError as e:
+        raise Exception(f"Invalid configuration JSON: {e}")
             
     # Debug: Check source file before copying
     print(f"🔍 Source Excel file: {excel_file}")
@@ -78,17 +70,17 @@ async def process_files(excel_file, config_file, session_id=None):
         print(f"❌ Error copying Excel file: {copy_error}")
         raise Exception(f"Failed to copy Excel file: {copy_error}")
     
-    return excel_path, config_path  # Return both paths for session isolation
+    return excel_path, config_data  # Return excel path and in-memory config data
 
 
-async def runeval(excel_file, config_file, params, session_id=None):
+async def runeval(excel_file, config_content, params, session_id=None):
     
-    excel_path, session_config_path = await process_files(excel_file, config_file, session_id)
+    excel_path, config_data = await process_files(excel_file, config_content, session_id)
     
     # Extract sheet_name from params
     sheet_name = params.get("sheet_name", "")
     print(f"🔍 Sheet selection from UI: '{sheet_name}' (empty = all sheets)")
-    print(f"🔧 Using session-specific config: {session_config_path}")
+    print(f"🔒 Using in-memory config (secure)")
     
     try:
         return await run(excel_path, 
@@ -102,7 +94,7 @@ async def runeval(excel_file, config_file, params, session_id=None):
                         batch_size=params.get("batch_size", 10),
                         max_concurrent=params.get("max_concurrent", 5),
                         session_id=session_id,
-                        session_config_path=session_config_path)  # Pass session-specific config
+                        config_data=config_data)  # Pass in-memory config data
     except Exception as e:
         raise Exception("Error in running evaluation: " + str(e))
     

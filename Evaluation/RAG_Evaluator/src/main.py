@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Prevent Python from creating .pyc files
+import sys
+sys.dont_write_bytecode = True
+
 """
 RAG Evaluator - Main Module
 ===========================
@@ -207,7 +211,7 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
     
     return all_responses
 
-def load_data(excel_file: str, sheet_name: str) -> Tuple[List[str], List[str], List[str], List[str]]:
+def load_data(excel_file: str, sheet_name: str) -> Tuple[List[str], List[str], List[str], List[str], List[Dict]]:
     """
     Load data from Excel file with required columns validation.
     
@@ -231,15 +235,18 @@ def load_data(excel_file: str, sheet_name: str) -> Tuple[List[str], List[str], L
         if missing_columns:
             raise ValueError(f"Missing required columns: {missing_columns}")
         
+        # Create empty chunk statistics for non-search API mode
+        chunk_statistics_list = [{}] * len(df)
+        
         return (df['query'].tolist(), df['answer'].tolist(), 
-                df['ground_truth'].tolist(), df['context'].tolist())
+                df['ground_truth'].tolist(), df['context'].tolist(), chunk_statistics_list)
     
     except Exception as e:
         raise
 
 async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
                                 batch_size: int = DEFAULT_BATCH_SIZE, 
-                                max_concurrent: int = DEFAULT_MAX_CONCURRENT) -> Tuple[List[str], List[str], List[str], List[str]]:
+                                max_concurrent: int = DEFAULT_MAX_CONCURRENT) -> Tuple[List[str], List[str], List[str], List[str], List[Dict]]:
     """
     Load data from Excel and call search API for responses.
     
@@ -284,20 +291,23 @@ async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
         
         # Extract data from responses
         answers, contexts = [], []
+        chunk_statistics_list = []
         error_count = 0
         
         for response in responses:
             if response is None or (isinstance(response, dict) and 'error' in response):
                 answers.append("")
                 contexts.append("")
+                chunk_statistics_list.append({})
                 error_count += 1
             else:
                 answers.append(response.get('answer', ''))
                 contexts.append(response.get('context', ''))
+                chunk_statistics_list.append(response.get('chunk_statistics', {}))
         
 
         
-        return queries, answers, ground_truths, contexts
+        return queries, answers, ground_truths, contexts, chunk_statistics_list
         
     except Exception as e:
 
@@ -311,11 +321,12 @@ async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
             # Fill with empty responses
             answers = [""] * len(queries)
             contexts = [""] * len(queries)
+            chunk_statistics_list = [{}] * len(queries)
             
-            return queries, answers, ground_truths, contexts
+            return queries, answers, ground_truths, contexts, chunk_statistics_list
         except:
             # Last resort - return dummy data
-            return ["sample query"], [""], ["sample ground truth"], [""]
+            return ["sample query"], [""], ["sample ground truth"], [""], [{}]
 
 
 async def run_ragas_evaluation(queries: List[str], answers: List[str], 
@@ -478,10 +489,10 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
     try:
         # Load data
         if use_search_api:
-            queries, answers, ground_truths, contexts = await load_data_and_call_api(
+            queries, answers, ground_truths, contexts, chunk_statistics_list = await load_data_and_call_api(
                 excel_file, sheet_name, config, batch_size, max_concurrent)
         else:
-            queries, answers, ground_truths, contexts = load_data(excel_file, sheet_name)
+            queries, answers, ground_truths, contexts, chunk_statistics_list = load_data(excel_file, sheet_name)
 
         # Initialize token usage tracker
         token_tracker = TokenUsageTracker()
@@ -589,6 +600,26 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
             # Create a basic DataFrame with the original queries if no evaluation succeeded
             print("⚠️ No evaluation methods succeeded, creating basic results DataFrame")
             final_results = create_basic_results_dataframe(queries, answers, ground_truths, contexts)
+        
+        # Add chunk statistics to the final results
+        if chunk_statistics_list and len(chunk_statistics_list) > 0:
+            print("📊 Adding chunk statistics to final results...")
+            try:
+                # Create a DataFrame from chunk statistics
+                chunk_stats_df = pd.DataFrame(chunk_statistics_list)
+                
+                # Ensure the chunk statistics DataFrame has the same number of rows as final_results
+                if len(chunk_stats_df) == len(final_results):
+                    # Add chunk statistics columns to final results
+                    for col in chunk_stats_df.columns:
+                        final_results[col] = chunk_stats_df[col].values
+                    print(f"✅ Added {len(chunk_stats_df.columns)} chunk statistics columns to final results")
+                else:
+                    print(f"⚠️ Chunk statistics length ({len(chunk_stats_df)}) doesn't match final results length ({len(final_results)})")
+            except Exception as e:
+                print(f"⚠️ Error adding chunk statistics: {e}")
+        else:
+            print("ℹ️ No chunk statistics available to add")
 
         print(f"🎯 Final results summary:")
         print(f"   Shape: {final_results.shape}")
@@ -692,7 +723,7 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
              evaluate_crag: bool = False, evaluate_llm: bool = False, use_search_api: bool = False,
              llm_model: Optional[str] = None, save_db: bool = False,
              batch_size: int = DEFAULT_BATCH_SIZE, max_concurrent: int = DEFAULT_MAX_CONCURRENT, 
-             session_id: Optional[str] = None, session_config_path: Optional[str] = None) -> str:
+             session_id: Optional[str] = None, config_data: Optional[Dict] = None) -> str:
     """
     Main run function for API usage with session-specific configuration support.
     
@@ -708,35 +739,21 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
         batch_size: Batch size for API calls
         max_concurrent: Maximum concurrent requests
         session_id: Session ID for multi-user support
-        session_config_path: Path to session-specific configuration
+        config_data: In-memory configuration data (secure)
         
     Returns:
         Success/error message string
     """
     total_token_usage = {}  # Initialize token usage tracking
     try:
-        # Use session-specific config if provided, otherwise use default
-        if session_config_path and os.path.exists(session_config_path):
-            # Security validation: ensure config path is within session directory if session_id provided
-            if session_id:
-                if "session_" in session_config_path and session_id in session_config_path:
-                    config_manager = ConfigManager.create_session_config_manager(session_config_path)
-                    print(f"🔐 Using session-specific config for secure multi-user operation")
-                else:
-                    print(f"⚠️ Invalid session config path, falling back to default config")
-                    config_manager = ConfigManager()
-            else:
-                # No session ID but valid config path - use it anyway (legacy support)
-                config_manager = ConfigManager.create_session_config_manager(session_config_path)
-                print(f"🔧 Using provided config file (legacy mode): {session_config_path}")
+        # Use in-memory config if provided, otherwise use default
+        if config_data:
+            print(f"🔒 Using in-memory configuration (secure)")
+            config = config_data
         else:
             config_manager = ConfigManager()
-            if session_config_path:
-                print(f"⚠️ Session config path doesn't exist: {session_config_path}, using default config")
-            else:
-                print(f"🔧 No session config provided, using default minimal config")
-        
-        config = config_manager.get_config()
+            config = config_manager.get_config()
+            print(f"🔧 No config provided, using default minimal config")
 
         # Default to RAGAS evaluation if none specified
         if not evaluate_ragas and not evaluate_crag and not evaluate_llm:

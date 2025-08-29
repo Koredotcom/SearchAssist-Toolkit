@@ -159,11 +159,23 @@ async def get_bot_response_async(api: AsyncSearchAssistAPI, session: aiohttp.Cli
 
     context_data, context_url = AnswerProcessor.get_context(answer)
     bot_answer = AnswerProcessor.extract_answer(answer)
+    
+    # Extract chunk statistics from the search API response
+    chunk_stats = {}
+    try:
+        from utils.chunkStatistics import ChunkStatisticsProcessor
+        chunk_stats = ChunkStatisticsProcessor.extract_chunk_statistics(answer, api_type="SA")
+        # Format chunk statistics for Excel export
+        chunk_stats_formatted = ChunkStatisticsProcessor.format_chunk_statistics_for_excel(chunk_stats)
+    except Exception as e:
+        print(f"⚠️ Error extracting chunk statistics: {e}")
+        chunk_stats_formatted = {}
 
     return {
         'query': query,
         'ground_truth': truth,
         'context': context_data,
         'context_url': context_url,
-        'answer': bot_answer
+        'answer': bot_answer,
+        'chunk_statistics': chunk_stats_formatted
     }

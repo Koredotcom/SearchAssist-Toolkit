@@ -209,116 +209,113 @@ async def run_evaluation_ui(
             content = await excel_file.read()
             f.write(content)
         
-        # Create temporary config file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as tmp_config:
-            # Build dynamic config based on user input
-            dynamic_config = {
-                "cost_of_model": {
-                    "input": 0.00000015,
-                    "output": 0.0000006
-                },
-                "MongoDB": {
-                    "url": os.getenv("MONGO_URL", "<MONGO_URL>"),
-                    "dbName": os.getenv("DB_NAME", "<DB_NAME>"),
-                    "collectionName": os.getenv("COLLECTION_NAME", "<COLLECTION_NAME>")
+        # Build dynamic config in-memory (NO FILE STORAGE!)
+        dynamic_config = {
+            "cost_of_model": {
+                "input": 0.00000015,
+                "output": 0.0000006
+            },
+            "MongoDB": {
+                "url": os.getenv("MONGO_URL", "<MONGO_URL>"),
+                "dbName": os.getenv("DB_NAME", "<DB_NAME>"),
+                "collectionName": os.getenv("COLLECTION_NAME", "<COLLECTION_NAME>")
+            }
+        }
+        
+        # Add Search API configuration if provided
+        if config_data.get('api_config') and config_data.get('use_search_api'):
+            api_config = config_data['api_config']
+            api_type = api_config.get('type', '')
+            logger.info(f"🔧 Adding {api_type} API configuration to dynamic config")
+            
+            if api_type == 'SA':
+                dynamic_config["SA"] = {
+                    "app_id": api_config.get('app_id', ''),
+                    "client_id": api_config.get('client_id', ''),
+                    "client_secret": api_config.get('client_secret', ''),
+                    "domain": api_config.get('domain', '')
                 }
+                logger.info(f"✅ SA config added with app_id: {'***' if dynamic_config['SA']['app_id'] else 'Empty'}")
+            elif api_type == 'UXO':
+                dynamic_config["UXO"] = {
+                    "app_id": api_config.get('app_id', ''),
+                    "client_id": api_config.get('client_id', ''),
+                    "client_secret": api_config.get('client_secret', ''),
+                    "domain": api_config.get('domain', '')
+                }
+                logger.info(f"✅ UXO config added with app_id: {'***' if dynamic_config['UXO']['app_id'] else 'Empty'}")
+        elif config_data.get('use_search_api'):
+            logger.warning("⚠️ Use Search API enabled but no API config provided!")
+        
+        # Add OpenAI configuration if provided
+        if config_data.get('openai_config'):
+            openai_config = config_data['openai_config']
+            dynamic_config["openai"] = {
+                "model_name": openai_config.get('model', 'gpt-4o'),
+                "embedding_name": "text-embedding-ada-002",
+                "api_key": openai_config.get('api_key', ''),
+                "org_id": openai_config.get('org_id', '')
             }
             
-            # Add Search API configuration if provided
-            if config_data.get('api_config') and config_data.get('use_search_api'):
-                api_config = config_data['api_config']
-                api_type = api_config.get('type', '')
-                logger.info(f"🔧 Adding {api_type} API configuration to dynamic config")
-                
-                if api_type == 'SA':
-                    dynamic_config["SA"] = {
-                        "app_id": api_config.get('app_id', ''),
-                        "client_id": api_config.get('client_id', ''),
-                        "client_secret": api_config.get('client_secret', ''),
-                        "domain": api_config.get('domain', '')
-                    }
-                    logger.info(f"✅ SA config added with app_id: {'***' if dynamic_config['SA']['app_id'] else 'Empty'}")
-                elif api_type == 'UXO':
-                    dynamic_config["UXO"] = {
-                        "app_id": api_config.get('app_id', ''),
-                        "client_id": api_config.get('client_id', ''),
-                        "client_secret": api_config.get('client_secret', ''),
-                        "domain": api_config.get('domain', '')
-                    }
-                    logger.info(f"✅ UXO config added with app_id: {'***' if dynamic_config['UXO']['app_id'] else 'Empty'}")
-            elif config_data.get('use_search_api'):
-                logger.warning("⚠️ Use Search API enabled but no API config provided!")
+            # Set environment variable for OpenAI
+            if openai_config.get('api_key'):
+                os.environ["OPENAI_API_KEY"] = openai_config['api_key']
+            if openai_config.get('org_id'):
+                os.environ["OPENAI_ORG_ID"] = openai_config['org_id']
+        
+        # Add Azure OpenAI configuration if provided
+        if config_data.get('azure_config'):
+            azure_config = config_data['azure_config']
+            dynamic_config["azure"] = {
+                "openai_api_version": azure_config.get('api_version', '2024-02-15-preview'),
+                "base_url": azure_config.get('endpoint', ''),
+                "model_name": azure_config.get('model', 'gpt-4o'),
+                "model_deployment": azure_config.get('deployment', ''),
+                "embedding_deployment": azure_config.get('embedding_deployment', 'text-embedding-ada-002'),
+                "embedding_name": "text-embedding-ada-002",
+                "api_key": azure_config.get('api_key', '')
+            }
             
-            # Add OpenAI configuration if provided
-            if config_data.get('openai_config'):
-                openai_config = config_data['openai_config']
-                dynamic_config["openai"] = {
-                    "model_name": openai_config.get('model', 'gpt-4o'),
-                    "embedding_name": "text-embedding-ada-002",
-                    "api_key": openai_config.get('api_key', ''),
-                    "org_id": openai_config.get('org_id', '')
-                }
-                
-                # Set environment variable for OpenAI
-                if openai_config.get('api_key'):
-                    os.environ["OPENAI_API_KEY"] = openai_config['api_key']
-                if openai_config.get('org_id'):
-                    os.environ["OPENAI_ORG_ID"] = openai_config['org_id']
+            # Set environment variables for Azure OpenAI
+            if azure_config.get('api_key'):
+                os.environ["AZURE_OPENAI_API_KEY"] = azure_config['api_key']
+            if azure_config.get('endpoint'):
+                os.environ["AZURE_OPENAI_ENDPOINT"] = azure_config['endpoint']
+        
+        # Add default placeholders for missing API configs
+        if not dynamic_config.get("SA") and not dynamic_config.get("UXO"):
+            dynamic_config["SA"] = {
+                "app_id": "<SA stream ID>",
+                "client_id": "<SA client ID>",
+                "client_secret": "<SA client secret>",
+                "domain": "<SA domain url>"
+            }
+            dynamic_config["UXO"] = {
+                "app_id": "<UXO stream ID>",
+                "client_id": "<UXO client ID>",
+                "client_secret": "<UXO client secret>",
+                "domain": "<UXO domain url>"
+            }
             
-            # Add Azure OpenAI configuration if provided
-            if config_data.get('azure_config'):
-                azure_config = config_data['azure_config']
-                dynamic_config["azure"] = {
-                    "openai_api_version": azure_config.get('api_version', '2024-02-15-preview'),
-                    "base_url": azure_config.get('endpoint', ''),
-                    "model_name": azure_config.get('model', 'gpt-4o'),
-                    "model_deployment": azure_config.get('deployment', ''),
-                    "embedding_deployment": azure_config.get('embedding_deployment', 'text-embedding-ada-002'),
-                    "embedding_name": "text-embedding-ada-002",
-                    "api_key": azure_config.get('api_key', '')
-                }
-                
-                # Set environment variables for Azure OpenAI
-                if azure_config.get('api_key'):
-                    os.environ["AZURE_OPENAI_API_KEY"] = azure_config['api_key']
-                if azure_config.get('endpoint'):
-                    os.environ["AZURE_OPENAI_ENDPOINT"] = azure_config['endpoint']
-            
-            # Add default placeholders for missing API configs
-            if not dynamic_config.get("SA") and not dynamic_config.get("UXO"):
-                dynamic_config["SA"] = {
-                    "app_id": "<SA stream ID>",
-                    "client_id": "<SA client ID>",
-                    "client_secret": "<SA client secret>",
-                    "domain": "<SA domain url>"
-                }
-                dynamic_config["UXO"] = {
-                    "app_id": "<UXO stream ID>",
-                    "client_id": "<UXO client ID>",
-                    "client_secret": "<UXO client secret>",
-                    "domain": "<UXO domain url>"
-                }
-                
-            # Add default OpenAI config if not provided
-            if not dynamic_config.get("openai"):
-                dynamic_config["openai"] = {
-                    "model_name": "gpt-4o",
-                    "embedding_name": "text-embedding-ada-002"
-                }
-            
-            # Add default Azure config if not provided  
-            if not dynamic_config.get("azure"):
-                dynamic_config["azure"] = {
-                    "openai_api_version": "2024-02-15-preview",
-                    "base_url": "<AZURE_BASE_URL>",
-                    "model_name": "gpt-4o",
-                    "model_deployment": "<MODEL_DEPLOYMENT>",
-                    "embedding_deployment": "<EMBEDDING_DEPLOYMENT>",
-                    "embedding_name": "text-embedding-ada-002"
-                }
-            
-            json.dump(dynamic_config, tmp_config)
-            config_file_path = tmp_config.name
+        # Add default OpenAI config if not provided
+        if not dynamic_config.get("openai"):
+            dynamic_config["openai"] = {
+                "model_name": "gpt-4o",
+                "embedding_name": "text-embedding-ada-002"
+            }
+        
+        # Add default Azure config if not provided  
+        if not dynamic_config.get("azure"):
+            dynamic_config["azure"] = {
+                "openai_api_version": "2024-02-15-preview",
+                "base_url": "<AZURE_BASE_URL>",
+                "model_name": "gpt-4o",
+                "model_deployment": "<MODEL_DEPLOYMENT>",
+                "embedding_deployment": "<EMBEDDING_DEPLOYMENT>",
+                "embedding_name": "text-embedding-ada-002"
+            }
+        
+        logger.info(f"🔒 Configuration built in-memory (secure)")
         
         try:
             # Call the evaluation service with session-aware output handling
@@ -415,12 +412,22 @@ async def run_evaluation_ui(
                                         'LLM Answer Completeness Justification'
                                     ]
                                     
+                                    # Add chunk statistics columns
+                                    chunk_columns = [
+                                        'Retrieved Chunk IDs', 'Retrieved Chunk Count',
+                                        'Sent to LLM Chunk IDs', 'Sent to LLM Chunk Count',
+                                        'Used in Answer Chunk IDs', 'Used in Answer Chunk Count',
+                                        'Best Support Rank', 'Chunks Used Top 5', 'Chunks Used 5-10', 
+                                        'Chunks Used 10-20', 'Used Chunk Ranks', 'Total Chunks Used'
+                                    ]
+                                    
                                     # Check for any evaluation metrics
                                     ragas_metrics = [col for col in ragas_columns if col in current_df.columns]
                                     crag_metrics = [col for col in crag_columns if col in current_df.columns]
                                     llm_metrics = [col for col in llm_columns if col in current_df.columns]
+                                    chunk_metrics = [col for col in chunk_columns if col in current_df.columns]
                                     
-                                    all_metrics = ragas_metrics + crag_metrics + llm_metrics
+                                    all_metrics = ragas_metrics + crag_metrics + llm_metrics + chunk_metrics
                                     
                                     if all_metrics or not current_df.empty:
                                         sheet_info = {
@@ -522,6 +529,15 @@ async def run_evaluation_ui(
                                     'LLM Answer Completeness Justification'
                                 ]
                                 
+                                # Extract chunk statistics columns
+                                chunk_columns = [
+                                    'Retrieved Chunk IDs', 'Retrieved Chunk Count',
+                                    'Sent to LLM Chunk IDs', 'Sent to LLM Chunk Count',
+                                    'Used in Answer Chunk IDs', 'Used in Answer Chunk Count',
+                                    'Best Support Rank', 'Chunks Used Top 5', 'Chunks Used 5-10', 
+                                    'Chunks Used 10-20', 'Used Chunk Ranks', 'Total Chunks Used'
+                                ]
+                                
                                 for llm_metric in llm_columns:
                                     if llm_metric in df.columns:
                                         # Handle justification columns (text) vs score columns (numeric)
@@ -540,6 +556,15 @@ async def run_evaluation_ui(
                                                 logger.warning(f"⚠️ No numeric values found for {llm_metric}")
                                     else:
                                         logger.info(f"ℹ️ LLM metric '{llm_metric}' not found in columns")
+                                
+                                # Extract chunk statistics
+                                for chunk_metric in chunk_columns:
+                                    if chunk_metric in df.columns:
+                                        # For chunk statistics, just log that they exist
+                                        non_null_count = df[chunk_metric].notna().sum()
+                                        logger.info(f"✅ Found chunk statistics column '{chunk_metric}' with {non_null_count} non-null values")
+                                    else:
+                                        logger.info(f"ℹ️ Chunk statistics column '{chunk_metric}' not found in columns")
                                 
                                 # Calculate token usage - try multiple approaches
                                 token_usage_extracted = {}

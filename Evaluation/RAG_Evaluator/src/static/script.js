@@ -418,7 +418,19 @@ class RAGEvaluatorUI {
                 "LLM Context Relevancy Justification": "The context provides comprehensive information about AI that directly supports answering the query.",
                 "LLM Answer Correctness Justification": "The answer accurately reflects the ground truth with minor variations in wording but maintains the same meaning.",
                 "LLM Ground Truth Validity Justification": "The ground truth is a valid and appropriate answer to the query about artificial intelligence.",
-                "LLM Answer Completeness Justification": "The answer provides a complete and comprehensive explanation of artificial intelligence."
+                "LLM Answer Completeness Justification": "The answer provides a complete and comprehensive explanation of artificial intelligence.",
+                "Retrieved Chunk IDs": "['chunk_001', 'chunk_002', 'chunk_003', 'chunk_004', 'chunk_005']",
+                "Retrieved Chunk Count": 5,
+                "Sent to LLM Chunk IDs": "['chunk_001', 'chunk_002', 'chunk_003']",
+                "Sent to LLM Chunk Count": 3,
+                "Used in Answer Chunk IDs": "['chunk_001', 'chunk_002']",
+                "Used in Answer Chunk Count": 2,
+                "Best Support Rank": 1,
+                "Chunks Used Top 5": 2,
+                "Chunks Used 5-10": 0,
+                "Chunks Used 10-20": 0,
+                "Used Chunk Ranks": "[1, 2]",
+                "Total Chunks Used": 2
             },
             "detailed_results": [
                 {
@@ -478,7 +490,19 @@ class RAGEvaluatorUI {
             "LLM Context Relevancy Justification": "The context provides comprehensive information about AI that directly supports answering the query.",
             "LLM Answer Correctness Justification": "The answer accurately reflects the ground truth with minor variations in wording but maintains the same meaning.",
             "LLM Ground Truth Validity Justification": "The ground truth is a valid and appropriate answer to the query about artificial intelligence.",
-            "LLM Answer Completeness Justification": "The answer provides a complete and comprehensive explanation of artificial intelligence."
+            "LLM Answer Completeness Justification": "The answer provides a complete and comprehensive explanation of artificial intelligence.",
+            "Retrieved Chunk IDs": "['chunk_001', 'chunk_002', 'chunk_003', 'chunk_004', 'chunk_005']",
+            "Retrieved Chunk Count": 5,
+            "Sent to LLM Chunk IDs": "['chunk_001', 'chunk_002', 'chunk_003']",
+            "Sent to LLM Chunk Count": 3,
+            "Used in Answer Chunk IDs": "['chunk_001', 'chunk_002']",
+            "Used in Answer Chunk Count": 2,
+            "Best Support Rank": 1,
+            "Chunks Used Top 5": 2,
+            "Chunks Used 5-10": 0,
+            "Chunks Used 10-20": 0,
+            "Used Chunk Ranks": "[1, 2]",
+            "Total Chunks Used": 2
         };
         console.log('🧪 Testing chart with RAGAS + LLM metrics:', realMetrics);
         this.createMetricsChart(realMetrics);
@@ -1984,7 +2008,19 @@ class RAGEvaluatorUI {
             'LLM Context Relevancy Justification': "The context contains relevant information that supports the answer.",
             'LLM Answer Correctness Justification': "The answer is correct and aligns with the ground truth.",
             'LLM Ground Truth Validity Justification': "The ground truth is valid and appropriate for the query.",
-            'LLM Answer Completeness Justification': "The answer provides complete information addressing the query."
+            'LLM Answer Completeness Justification': "The answer provides complete information addressing the query.",
+            'Retrieved Chunk IDs': "[]",
+            'Retrieved Chunk Count': 0,
+            'Sent to LLM Chunk IDs': "[]",
+            'Sent to LLM Chunk Count': 0,
+            'Used in Answer Chunk IDs': "[]",
+            'Used in Answer Chunk Count': 0,
+            'Best Support Rank': 'None',
+            'Chunks Used Top 5': 0,
+            'Chunks Used 5-10': 0,
+            'Chunks Used 10-20': 0,
+            'Used Chunk Ranks': "[]",
+            'Total Chunks Used': 0
         };
     }
 
@@ -2252,6 +2288,16 @@ class RAGEvaluatorUI {
             (col.toLowerCase().includes('relevancy') || col.toLowerCase().includes('correctness') || col.toLowerCase().includes('relevance') || col.toLowerCase().includes('validity') || col.toLowerCase().includes('completeness'))
         );
         
+        // Add chunk statistics metrics
+        const chunkMetrics = columns.filter(col => 
+            col.toLowerCase().includes('chunk') || 
+            col.toLowerCase().includes('retrieved') || 
+            col.toLowerCase().includes('sent to llm') || 
+            col.toLowerCase().includes('used in answer') ||
+            col.toLowerCase().includes('support rank') ||
+            col.toLowerCase().includes('chunks used')
+        );
+        
         const cragMetrics = columns.filter(col => 
             col.toLowerCase().includes('accuracy') || col.toLowerCase().includes('crag')
         );
@@ -2269,6 +2315,11 @@ class RAGEvaluatorUI {
             console.log('✅ Including LLM columns:', llmMetrics);
         }
         
+        if (chunkMetrics.length > 0) {
+            activeEvaluationColumns.push(...chunkMetrics);
+            console.log('✅ Including Chunk Statistics columns:', chunkMetrics);
+        }
+        
         if (config.evaluate_crag) {
             activeEvaluationColumns.push(...cragMetrics);
             console.log('✅ Including CRAG columns:', cragMetrics);
@@ -2277,7 +2328,7 @@ class RAGEvaluatorUI {
         // If no config found or no evaluation methods enabled, fall back to showing all available metrics
         if (activeEvaluationColumns.length === 0) {
             console.log('⚠️ No evaluation config found or no methods enabled, showing all available metrics');
-            activeEvaluationColumns = [...ragasMetrics, ...llmMetrics, ...cragMetrics];
+            activeEvaluationColumns = [...ragasMetrics, ...llmMetrics, ...cragMetrics, ...chunkMetrics];
         }
         
         const hasEvaluationMetrics = activeEvaluationColumns.length > 0;
@@ -2314,7 +2365,7 @@ class RAGEvaluatorUI {
                             <h5><i class="fas fa-chart-line"></i> Comprehensive Evaluation Analysis</h5>
                             <div class="dashboard-stats">
                                 <span class="stat-item">📊 ${detailedResults.length} queries analyzed</span>
-                                <span class="stat-item">📈 ${ragasMetrics.length + llmMetrics.length + cragMetrics.length} metrics evaluated</span>
+                                <span class="stat-item">📈 ${ragasMetrics.length + llmMetrics.length + cragMetrics.length + chunkMetrics.length} metrics evaluated</span>
                                 <span class="stat-item">🎯 ${ragasMetrics.length > 0 ? 'RAGAS' : ''}${llmMetrics.length > 0 ? (ragasMetrics.length > 0 ? ' + LLM' : 'LLM') : ''}${cragMetrics.length > 0 ? ' + CRAG' : ''} evaluation</span>
                             </div>
                         </div>
