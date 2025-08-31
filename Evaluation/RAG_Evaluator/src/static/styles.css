@@ -4476,6 +4476,258 @@ body.modal-open {
     overflow-y: auto;
 }
 
+.retrieval-analysis-section,
+.efficiency-analysis-section {
+    margin-top: 16px;
+}
+
+.metric-analysis {
+    background: #f8fafc;
+    border-radius: 6px;
+    padding: 16px;
+    margin-top: 16px;
+    border-left: 4px solid #3b82f6;
+}
+
+.metric-analysis h6 {
+    margin: 0 0 12px 0;
+    color: #374151;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.metric-details {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.metric-detail-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.detail-label {
+    font-size: 0.85rem;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.detail-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #374151;
+}
+
+.detail-value.excellent {
+    color: #10b981;
+}
+
+.detail-value.good {
+    color: #059669;
+}
+
+.detail-value.fair {
+    color: #f59e0b;
+}
+
+.detail-value.poor {
+    color: #ef4444;
+}
+
+/* Chunk Utilization Analysis Styles */
+.utilization-analysis-section {
+    margin-top: 16px;
+}
+
+.chunk-utilization-details {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.chunk-detail-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #f8fafc;
+    border-radius: 6px;
+    border-left: 3px solid #3b82f6;
+}
+
+.chunk-label {
+    font-size: 0.85rem;
+    color: #6b7280;
+    font-weight: 500;
+    flex: 1;
+}
+
+.chunk-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #374151;
+    margin: 0 12px;
+}
+
+.chunk-assessment {
+    font-size: 0.8rem;
+    color: #6b7280;
+    font-style: italic;
+    text-align: right;
+    flex: 1;
+}
+
+.utilization-efficiency {
+    margin-top: 16px;
+    padding: 16px;
+    background: #f0f9ff;
+    border-radius: 6px;
+    border: 1px solid #0ea5e9;
+}
+
+.efficiency-header {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #0c4a6e;
+    margin-bottom: 12px;
+}
+
+.efficiency-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.efficiency-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.efficiency-label {
+    font-size: 0.85rem;
+    color: #0c4a6e;
+    font-weight: 500;
+}
+
+.efficiency-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #0c4a6e;
+}
+
+.efficiency-value.excellent {
+    color: #10b981;
+}
+
+.efficiency-value.good {
+    color: #059669;
+}
+
+.efficiency-value.fair {
+    color: #f59e0b;
+}
+
+.efficiency-value.poor {
+    color: #ef4444;
+}
+
+.no-chunk-data {
+    text-align: center;
+    padding: 40px 20px;
+    color: #6b7280;
+}
+
+.no-data-icon {
+    font-size: 3em;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.no-data-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.no-data-subtext {
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+/* Chunk Tracking Guidance Styles */
+.chunk-tracking-guidance {
+    color: #374151;
+}
+
+.chunk-tracking-guidance h4 {
+    margin: 0 0 16px 0;
+    color: #1f2937;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.chunk-tracking-guidance h5 {
+    margin: 16px 0 8px 0;
+    color: #374151;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.guidance-section {
+    margin: 16px 0;
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 6px;
+    border-left: 3px solid #3b82f6;
+}
+
+.guidance-section ul, .guidance-section ol {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.guidance-section li {
+    margin: 4px 0;
+    line-height: 1.5;
+}
+
+.test-button {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-top: 12px;
+    transition: background-color 0.2s;
+}
+
+.test-button:hover {
+    background: #2563eb;
+}
+
+.notification {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
 /* Histograms Grid */
 .histograms-grid {
     display: grid;

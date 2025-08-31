@@ -388,6 +388,85 @@ class RAGEvaluatorUI {
      * Set test metrics data for debugging
      */
     setTestMetricsData() {
+        // Create detailed results with multiple rows to match analysis expectations
+        const detailedResults = [
+            {
+                "query": "What is artificial intelligence?",
+                "ground_truth": "Artificial intelligence is the simulation of human intelligence by machines.",
+                "answer": "Artificial intelligence (AI) is the simulation of human intelligence by machines and computer systems.",
+                "context": "AI systems can perform tasks that typically require human intelligence.",
+                "Response Relevancy": 0.87,
+                "Faithfulness": 0.82,
+                "Context Recall": 0.79,
+                "Context Precision": 0.85,
+                "Answer Correctness": 0.88,
+                "Answer Similarity": 0.91,
+                "LLM Answer Relevancy": 0.84,
+                "LLM Context Relevancy": 0.89,
+                "LLM Answer Correctness": 0.86,
+                "LLM Ground Truth Validity": 0.88,
+                "LLM Answer Completeness": 0.85,
+                "Retrieved Chunk Count": 5,
+                "Sent to LLM Chunk Count": 3,
+                "Used in Answer Chunk Count": 2,
+                "Best Support Rank": 1,
+                "Chunks Used Top 5": 2,
+                "Chunks Used 5-10": 0,
+                "Chunks Used 10-20": 0,
+                "Total Chunks Used": 2
+            },
+            {
+                "query": "How does machine learning work?",
+                "ground_truth": "Machine learning uses algorithms to learn patterns from data.",
+                "answer": "Machine learning works by using algorithms to identify patterns in data and make predictions.",
+                "context": "ML algorithms improve their performance through experience.",
+                "Response Relevancy": 0.85,
+                "Faithfulness": 0.80,
+                "Context Recall": 0.82,
+                "Context Precision": 0.78,
+                "Answer Correctness": 0.84,
+                "Answer Similarity": 0.88,
+                "LLM Answer Relevancy": 0.86,
+                "LLM Context Relevancy": 0.85,
+                "LLM Answer Correctness": 0.82,
+                "LLM Ground Truth Validity": 0.90,
+                "LLM Answer Completeness": 0.88,
+                "Retrieved Chunk Count": 4,
+                "Sent to LLM Chunk Count": 3,
+                "Used in Answer Chunk Count": 2,
+                "Best Support Rank": 1,
+                "Chunks Used Top 5": 2,
+                "Chunks Used 5-10": 0,
+                "Chunks Used 10-20": 0,
+                "Total Chunks Used": 2
+            },
+            {
+                "query": "What are neural networks?",
+                "ground_truth": "Neural networks are computing systems inspired by biological neurons.",
+                "answer": "Neural networks are computing systems that mimic the structure and function of biological neurons.",
+                "context": "They consist of interconnected nodes that process information.",
+                "Response Relevancy": 0.89,
+                "Faithfulness": 0.85,
+                "Context Recall": 0.81,
+                "Context Precision": 0.87,
+                "Answer Correctness": 0.91,
+                "Answer Similarity": 0.93,
+                "LLM Answer Relevancy": 0.88,
+                "LLM Context Relevancy": 0.92,
+                "LLM Answer Correctness": 0.89,
+                "LLM Ground Truth Validity": 0.92,
+                "LLM Answer Completeness": 0.90,
+                "Retrieved Chunk Count": 6,
+                "Sent to LLM Chunk Count": 4,
+                "Used in Answer Chunk Count": 3,
+                "Best Support Rank": 1,
+                "Chunks Used Top 5": 3,
+                "Chunks Used 5-10": 0,
+                "Chunks Used 10-20": 0,
+                "Total Chunks Used": 3
+            }
+        ];
+
         this.resultData = {
             "status": "success",
             "message": "Evaluation completed successfully",
@@ -402,6 +481,7 @@ class RAGEvaluatorUI {
                 "estimated_cost_usd": 1.3584,
                 "output_file": "test_evaluation_results.xlsx"
             },
+            "detailed_results": detailedResults,
             "metrics": {
                 "Response Relevancy": 0.87,
                 "Faithfulness": 0.82,
@@ -414,22 +494,13 @@ class RAGEvaluatorUI {
                 "LLM Answer Correctness": 0.86,
                 "LLM Ground Truth Validity": 0.88,
                 "LLM Answer Completeness": 0.85,
-                "LLM Answer Relevancy Justification": "The answer is highly relevant to the query about AI, providing a clear and accurate definition.",
-                "LLM Context Relevancy Justification": "The context provides comprehensive information about AI that directly supports answering the query.",
-                "LLM Answer Correctness Justification": "The answer accurately reflects the ground truth with minor variations in wording but maintains the same meaning.",
-                "LLM Ground Truth Validity Justification": "The ground truth is a valid and appropriate answer to the query about artificial intelligence.",
-                "LLM Answer Completeness Justification": "The answer provides a complete and comprehensive explanation of artificial intelligence.",
-                "Retrieved Chunk IDs": "['chunk_001', 'chunk_002', 'chunk_003', 'chunk_004', 'chunk_005']",
                 "Retrieved Chunk Count": 5,
-                "Sent to LLM Chunk IDs": "['chunk_001', 'chunk_002', 'chunk_003']",
                 "Sent to LLM Chunk Count": 3,
-                "Used in Answer Chunk IDs": "['chunk_001', 'chunk_002']",
                 "Used in Answer Chunk Count": 2,
                 "Best Support Rank": 1,
                 "Chunks Used Top 5": 2,
                 "Chunks Used 5-10": 0,
                 "Chunks Used 10-20": 0,
-                "Used Chunk Ranks": "[1, 2]",
                 "Total Chunks Used": 2
             },
             "detailed_results": [
@@ -466,8 +537,164 @@ class RAGEvaluatorUI {
             },
             "download_url": "/api/download-results/latest"
         };
-        console.log('✅ Test metrics data set');
+        console.log('✅ Test metrics data set with chunk tracking enabled');
         this.showResults(this.resultData);
+    }
+
+    /**
+     * Enable chunk tracking for enhanced retrieval analysis
+     */
+    enableChunkTracking() {
+        console.log('🔧 Enabling chunk tracking for enhanced analysis...');
+        
+        // Show guidance on how to enable chunk tracking
+        const guidance = `
+            <div class="chunk-tracking-guidance">
+                <h4>🔧 Enable Chunk Tracking for Enhanced Analysis</h4>
+                <p>To get comprehensive chunk utilization metrics in your evaluation, ensure your evaluation pipeline includes:</p>
+                
+                <div class="guidance-section">
+                    <h5>📊 Required Chunk Metrics:</h5>
+                    <ul>
+                        <li><strong>Retrieved Chunk Count</strong> - Number of chunks retrieved from knowledge base</li>
+                        <li><strong>Sent to LLM Chunk Count</strong> - Number of chunks sent to the language model</li>
+                        <li><strong>Used in Answer Chunk Count</strong> - Number of chunks actually used in the answer</li>
+                        <li><strong>Best Support Rank</strong> - Ranking of the most relevant chunk</li>
+                        <li><strong>Chunks Used Top 5/10/20</strong> - Distribution of chunk usage across rank ranges</li>
+                        <li><strong>Total Chunks Used</strong> - Total number of chunks utilized in the answer</li>
+                    </ul>
+                </div>
+                
+                <div class="guidance-section">
+                    <h5>🛠️ Implementation Steps:</h5>
+                    <ol>
+                        <li>Ensure your retrieval system tracks chunk IDs and ranks</li>
+                        <li>Add chunk utilization analysis to your evaluation pipeline</li>
+                        <li>Include chunk metrics in your evaluation output</li>
+                        <li>Map chunk usage patterns to answer generation</li>
+                    </ol>
+                </div>
+                
+                <div class="guidance-section">
+                    <h5>🧪 Test with Enhanced Data:</h5>
+                    <p>Click the button below to test the enhanced features with sample chunk data:</p>
+                    <button onclick="window.ragEvaluator.setTestMetricsData()" class="test-button">
+                        🧪 Load Test Data with Chunk Metrics
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        // Display guidance in a modal or notification
+        this.showNotification(guidance, 'info');
+    }
+
+    showNotification(content, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.innerHTML = content;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            padding: 20px;
+            font-size: 14px;
+        `;
+        
+        // Add close button
+        const closeButton = document.createElement('button');
+        closeButton.innerHTML = '×';
+        closeButton.style.cssText = `
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #6b7280;
+        `;
+        closeButton.onclick = () => notification.remove();
+        notification.appendChild(closeButton);
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 30 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 30000);
+    }
+
+    /**
+     * Create analysis from detailed results
+     * @param {Array} detailedResults - Array of detailed result objects
+     * @returns {Object} Analysis object with statistics and insights
+     */
+    createAnalysisFromDetailedResults(detailedResults) {
+        console.log('🔍 Creating analysis from detailed results:', detailedResults);
+        
+        const analysis = {
+            scores: {},
+            statistics: {},
+            correlations: {},
+            performance: {},
+            insights: {}
+        };
+
+        // Get all unique metric names from the detailed results
+        const allMetrics = new Set();
+        detailedResults.forEach(row => {
+            Object.keys(row).forEach(key => {
+                // Only include numeric metrics (exclude text fields like query, answer, etc.)
+                if (typeof row[key] === 'number' && key !== 'index') {
+                    allMetrics.add(key);
+                }
+            });
+        });
+
+        console.log('📊 All metrics found:', Array.from(allMetrics));
+
+        // Calculate statistics for each metric
+        Array.from(allMetrics).forEach(metric => {
+            const scores = detailedResults
+                .map(row => parseFloat(row[metric]))
+                .filter(score => !isNaN(score) && score >= 0);
+            
+            // For chunk metrics, don't filter by <= 1 range
+            const isChunkMetric = metric.toLowerCase().includes('chunk') || 
+                                 metric.toLowerCase().includes('count') || 
+                                 metric.toLowerCase().includes('rank') ||
+                                 metric.toLowerCase().includes('total');
+            
+            if (scores.length > 0) {
+                analysis.scores[metric] = scores;
+                analysis.statistics[metric] = this.calculateStatistics(scores);
+                console.log(`📈 Statistics for ${metric}:`, analysis.statistics[metric]);
+            }
+        });
+
+        // Calculate correlations
+        analysis.correlations = this.calculateCorrelations(analysis.scores);
+
+        // Analyze performance patterns
+        analysis.performance = this.analyzePerformancePatterns(detailedResults, Array.from(allMetrics));
+
+        // Generate insights
+        analysis.insights = this.generateDataInsights(analysis);
+
+        console.log('✅ Analysis created successfully:', analysis);
+        return analysis;
     }
 
     /**
@@ -1911,6 +2138,16 @@ class RAGEvaluatorUI {
             UIUtils.toggleElement('cost-summary-item', false);
         }
         
+        // Create analysis from detailed results if available
+        if (result.detailed_results && result.detailed_results.length > 0) {
+            console.log('📊 Creating analysis from detailed results...');
+            const analysis = this.createAnalysisFromDetailedResults(result.detailed_results);
+            console.log('✅ Analysis created:', analysis);
+            
+            // Store analysis for later use
+            this.currentAnalysis = analysis;
+        }
+        
         // Create metrics chart
         setTimeout(() => {
             this.createMetricsChart(metrics);
@@ -2110,6 +2347,11 @@ class RAGEvaluatorUI {
             console.log('✅ Chart created successfully');
         } catch (error) {
             console.error('❌ Error creating chart:', error);
+        }
+        
+        // Store analysis for later use if available
+        if (this.currentAnalysis) {
+            console.log('📊 Analysis available for enhanced features:', this.currentAnalysis);
         }
     }
 
@@ -2450,6 +2692,10 @@ class RAGEvaluatorUI {
                                     <h6>🎯 Answer Completeness Analysis</h6>
                                     <canvas id="completeness-chart-${sheetId}"></canvas>
                                 </div>
+                                <div class="chart-card">
+                                    <h6>📊 Chunk Utilization Distribution</h6>
+                                    <canvas id="chunk-utilization-chart-${sheetId}"></canvas>
+                                </div>
                                 <div class="insight-card">
                                     <h6>🔍 Retrieval Quality Insights</h6>
                                     <div id="retrieval-insights-${sheetId}" class="retrieval-insights-content"></div>
@@ -2650,11 +2896,18 @@ class RAGEvaluatorUI {
         allMetrics.forEach(metric => {
             const scores = detailedResults
                 .map(row => parseFloat(row[metric]))
-                .filter(score => !isNaN(score) && score >= 0 && score <= 1);
+                .filter(score => !isNaN(score) && score >= 0);
+            
+            // For chunk metrics, don't filter by <= 1 range
+            const isChunkMetric = metric.toLowerCase().includes('chunk') || 
+                                 metric.toLowerCase().includes('count') || 
+                                 metric.toLowerCase().includes('rank') ||
+                                 metric.toLowerCase().includes('total');
             
             if (scores.length > 0) {
                 analysis.scores[metric] = scores;
                 analysis.statistics[metric] = this.calculateStatistics(scores);
+                console.log(`📈 Statistics for ${metric}:`, analysis.statistics[metric]);
             }
         });
 
@@ -2936,12 +3189,16 @@ class RAGEvaluatorUI {
             let bestMatch = null;
             let bestValue = null;
 
+            console.log(`🔍 Looking for ${standardName} in possible names:`, possibleNames);
+
             possibleNames.forEach(metricName => {
+                console.log(`  Checking ${metricName} in analysis.statistics:`, analysis.statistics[metricName]);
                 if (analysis.statistics[metricName]) {
                     const stats = analysis.statistics[metricName];
                     if (bestMatch === null || metricName.toLowerCase().includes(standardName.split('_')[0])) {
                         bestMatch = metricName;
                         bestValue = stats.mean;
+                        console.log(`    ✅ Found match: ${metricName} = ${bestValue}`);
                     }
                 }
             });
@@ -2949,6 +3206,8 @@ class RAGEvaluatorUI {
             if (bestValue !== null) {
                 metrics[standardName] = bestValue;
                 console.log(`📈 Extended ${standardName}: ${bestValue.toFixed(3)} (from ${bestMatch})`);
+            } else {
+                console.log(`⚠️ Metric '${standardName}' not found in data`);
             }
         });
 
@@ -5521,6 +5780,9 @@ class RAGEvaluatorUI {
         this.populateEfficiencyInsights(`efficiency-insights-${sheetId}`, analysisData);
         this.populateUtilizationInsights(`utilization-insights-${sheetId}`, analysisData);
         
+        // Create chunk utilization charts
+        this.createChunkUtilizationChart(`chunk-utilization-chart-${sheetId}`, analysisData);
+        
         console.log('✅ Retrieval quality tab populated for sheet:', sheetId);
     }
 
@@ -5579,12 +5841,34 @@ class RAGEvaluatorUI {
                 `;
             }
             
+            if (extendedMetrics.sent_to_llm_chunk_count !== undefined) {
+                content += `
+                    <div class="metric-card info">
+                        <div class="metric-icon">🤖</div>
+                        <div class="metric-label">Sent to LLM</div>
+                        <div class="metric-value">${extendedMetrics.sent_to_llm_chunk_count.toFixed(1)}</div>
+                        <div class="metric-status">Chunks</div>
+                    </div>
+                `;
+            }
+            
             if (extendedMetrics.used_in_answer_chunk_count !== undefined) {
                 content += `
                     <div class="metric-card info">
                         <div class="metric-icon">🎯</div>
-                        <div class="metric-label">Used Chunks</div>
+                        <div class="metric-label">Used in Answer</div>
                         <div class="metric-value">${extendedMetrics.used_in_answer_chunk_count.toFixed(1)}</div>
+                        <div class="metric-status">Chunks</div>
+                    </div>
+                `;
+            }
+            
+            if (extendedMetrics.total_chunks_used !== undefined) {
+                content += `
+                    <div class="metric-card info">
+                        <div class="metric-icon">📈</div>
+                        <div class="metric-label">Total Used</div>
+                        <div class="metric-value">${extendedMetrics.total_chunks_used.toFixed(1)}</div>
                         <div class="metric-status">Chunks</div>
                     </div>
                 `;
@@ -5731,17 +6015,61 @@ class RAGEvaluatorUI {
         if (!element) return;
 
         const insights = analysisData.insights;
+        const extendedMetrics = this.extractExtendedMetrics(analysisData);
         let content = '';
 
+        // Add detailed retrieval analysis
+        content += '<div class="retrieval-analysis-section">';
+        
         if (insights.retrieval && insights.retrieval.length > 0) {
             insights.retrieval.forEach(insight => {
                 content += `<div class="insight-item retrieval">${insight}</div>`;
             });
         } else {
-            content = '<div class="insight-item">No retrieval quality insights available</div>';
+            content += '<div class="insight-item">No retrieval quality insights available</div>';
         }
+        
+        // Add detailed metric analysis
+        if (extendedMetrics.ground_truth_validity !== undefined) {
+            const gtValidity = extendedMetrics.ground_truth_validity;
+            content += `
+                <div class="metric-analysis">
+                    <h6>Ground Truth Validity Analysis</h6>
+                    <div class="metric-details">
+                        <div class="metric-detail-item">
+                            <span class="detail-label">Score:</span>
+                            <span class="detail-value">${(gtValidity * 100).toFixed(1)}%</span>
+                        </div>
+                        <div class="metric-detail-item">
+                            <span class="detail-label">Performance Level:</span>
+                            <span class="detail-value ${gtValidity >= 0.9 ? 'excellent' : gtValidity >= 0.8 ? 'good' : gtValidity >= 0.7 ? 'fair' : 'poor'}">${gtValidity >= 0.9 ? 'Excellent' : gtValidity >= 0.8 ? 'Good' : gtValidity >= 0.7 ? 'Fair' : 'Poor'}</span>
+                        </div>
+                        <div class="metric-detail-item">
+                            <span class="detail-label">Interpretation:</span>
+                            <span class="detail-value">${this.getGTValidityInterpretation(gtValidity)}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        content += '</div>';
 
         element.innerHTML = content;
+    }
+
+    getGTValidityInterpretation(score) {
+        if (score >= 0.9) {
+            return "System consistently retrieves highly accurate and relevant information from the knowledge base.";
+        } else if (score >= 0.8) {
+            return "System retrieves correct information most of the time with minor inconsistencies.";
+        } else if (score >= 0.7) {
+            return "System retrieves relevant information but may miss some important details.";
+        } else if (score >= 0.6) {
+            return "System has moderate retrieval accuracy with room for improvement.";
+        } else {
+            return "System struggles to retrieve accurate information and needs significant improvement.";
+        }
     }
 
     populateEfficiencyInsights(elementId, analysisData) {
@@ -5749,17 +6077,65 @@ class RAGEvaluatorUI {
         if (!element) return;
 
         const insights = analysisData.insights;
+        const extendedMetrics = this.extractExtendedMetrics(analysisData);
         let content = '';
 
+        // Add detailed efficiency analysis
+        content += '<div class="efficiency-analysis-section">';
+        
         if (insights.efficiency && insights.efficiency.length > 0) {
             insights.efficiency.forEach(insight => {
                 content += `<div class="insight-item efficiency">${insight}</div>`;
             });
         } else {
-            content = '<div class="insight-item">No efficiency insights available</div>';
+            content += '<div class="insight-item">No efficiency insights available</div>';
         }
+        
+        // Add efficiency score calculation
+        if (extendedMetrics.ground_truth_validity !== undefined && extendedMetrics.answer_completeness !== undefined) {
+            const gtValidity = extendedMetrics.ground_truth_validity;
+            const completeness = extendedMetrics.answer_completeness;
+            const efficiencyScore = (gtValidity + completeness) / 2;
+            const gap = Math.abs(gtValidity - completeness);
+            
+            content += `
+                <div class="metric-analysis">
+                    <h6>System Efficiency Analysis</h6>
+                    <div class="metric-details">
+                        <div class="metric-detail-item">
+                            <span class="detail-label">Overall Efficiency Score:</span>
+                            <span class="detail-value ${efficiencyScore >= 0.9 ? 'excellent' : efficiencyScore >= 0.8 ? 'good' : efficiencyScore >= 0.7 ? 'fair' : 'poor'}">${(efficiencyScore * 100).toFixed(1)}%</span>
+                        </div>
+                        <div class="metric-detail-item">
+                            <span class="detail-label">Performance Gap:</span>
+                            <span class="detail-value ${gap <= 0.1 ? 'excellent' : gap <= 0.2 ? 'good' : gap <= 0.3 ? 'fair' : 'poor'}">${(gap * 100).toFixed(1)}%</span>
+                        </div>
+                        <div class="metric-detail-item">
+                            <span class="detail-label">Balance Assessment:</span>
+                            <span class="detail-value">${this.getEfficiencyBalanceAssessment(gtValidity, completeness)}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        content += '</div>';
 
         element.innerHTML = content;
+    }
+
+    getEfficiencyBalanceAssessment(gtValidity, completeness) {
+        const gap = Math.abs(gtValidity - completeness);
+        
+        if (gap <= 0.1) {
+            return "Excellent balance between retrieval accuracy and answer completeness.";
+        } else if (gap <= 0.2) {
+            return "Good balance with minor differences between metrics.";
+        } else if (gap <= 0.3) {
+            return "Moderate imbalance - consider optimizing the weaker metric.";
+        } else {
+            return "Significant imbalance - focus on improving the lower-performing metric.";
+        }
     }
 
     populateUtilizationInsights(elementId, analysisData) {
@@ -5767,17 +6143,204 @@ class RAGEvaluatorUI {
         if (!element) return;
 
         const insights = analysisData.insights;
+        const extendedMetrics = this.extractExtendedMetrics(analysisData);
         let content = '';
 
+        // Add detailed utilization analysis
+        content += '<div class="utilization-analysis-section">';
+        
         if (insights.utilization && insights.utilization.length > 0) {
             insights.utilization.forEach(insight => {
                 content += `<div class="insight-item utilization">${insight}</div>`;
             });
         } else {
-            content = '<div class="insight-item">No utilization insights available</div>';
+            content += '<div class="insight-item">No utilization insights available</div>';
         }
+        
+        // Add detailed chunk utilization analysis
+        if (extendedMetrics.chunks_used_top5 !== undefined || 
+            extendedMetrics.chunks_used_top10 !== undefined || 
+            extendedMetrics.chunks_used_top20 !== undefined) {
+            
+            content += `
+                <div class="metric-analysis">
+                    <h6>Chunk Utilization Distribution Analysis</h6>
+                    <div class="chunk-utilization-details">
+            `;
+            
+            if (extendedMetrics.chunks_used_top5 !== undefined) {
+                const top5 = extendedMetrics.chunks_used_top5;
+                content += `
+                    <div class="chunk-detail-item">
+                        <span class="chunk-label">Top 5 Chunks Used:</span>
+                        <span class="chunk-value">${top5} chunks</span>
+                        <span class="chunk-assessment">${this.getChunkUtilizationAssessment(top5, 'top5')}</span>
+                    </div>
+                `;
+            }
+            
+            if (extendedMetrics.chunks_used_top10 !== undefined) {
+                const top10 = extendedMetrics.chunks_used_top10;
+                content += `
+                    <div class="chunk-detail-item">
+                        <span class="chunk-label">Chunks 5-10 Used:</span>
+                        <span class="chunk-value">${top10} chunks</span>
+                        <span class="chunk-assessment">${this.getChunkUtilizationAssessment(top10, 'top10')}</span>
+                    </div>
+                `;
+            }
+            
+            if (extendedMetrics.chunks_used_top20 !== undefined) {
+                const top20 = extendedMetrics.chunks_used_top20;
+                content += `
+                    <div class="chunk-detail-item">
+                        <span class="chunk-label">Chunks 10-20 Used:</span>
+                        <span class="chunk-value">${top20} chunks</span>
+                        <span class="chunk-assessment">${this.getChunkUtilizationAssessment(top20, 'top20')}</span>
+                    </div>
+                `;
+            }
+            
+            // Add utilization efficiency analysis
+            if (extendedMetrics.retrieved_chunk_count !== undefined && 
+                extendedMetrics.used_in_answer_chunk_count !== undefined) {
+                const retrieved = extendedMetrics.retrieved_chunk_count;
+                const used = extendedMetrics.used_in_answer_chunk_count;
+                const efficiency = retrieved > 0 ? (used / retrieved) * 100 : 0;
+                
+                content += `
+                    <div class="utilization-efficiency">
+                        <div class="efficiency-header">Utilization Efficiency</div>
+                        <div class="efficiency-metrics">
+                            <div class="efficiency-item">
+                                <span class="efficiency-label">Retrieved:</span>
+                                <span class="efficiency-value">${retrieved.toFixed(1)} chunks</span>
+                            </div>
+                            <div class="efficiency-item">
+                                <span class="efficiency-label">Used:</span>
+                                <span class="efficiency-value">${used.toFixed(1)} chunks</span>
+                            </div>
+                            <div class="efficiency-item">
+                                <span class="efficiency-label">Efficiency:</span>
+                                <span class="efficiency-value ${efficiency >= 70 ? 'excellent' : efficiency >= 50 ? 'good' : efficiency >= 30 ? 'fair' : 'poor'}">${efficiency.toFixed(1)}%</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            content += `
+                    </div>
+                </div>
+            `;
+        }
+        
+        content += '</div>';
 
         element.innerHTML = content;
+    }
+
+    getChunkUtilizationAssessment(count, type) {
+        if (type === 'top5') {
+            if (count >= 3) return "Excellent - heavily utilizes top-ranked chunks";
+            if (count >= 2) return "Good - effectively uses top-ranked chunks";
+            if (count >= 1) return "Fair - some use of top-ranked chunks";
+            return "Poor - minimal use of top-ranked chunks";
+        } else if (type === 'top10') {
+            if (count >= 2) return "Good - utilizes mid-ranked chunks";
+            if (count >= 1) return "Fair - some use of mid-ranked chunks";
+            return "Low - minimal use of mid-ranked chunks";
+        } else if (type === 'top20') {
+            if (count >= 2) return "Good - utilizes lower-ranked chunks";
+            if (count >= 1) return "Fair - some use of lower-ranked chunks";
+            return "Low - minimal use of lower-ranked chunks";
+        }
+        return "Standard utilization pattern";
+    }
+
+    createChunkUtilizationChart(canvasId, analysisData) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+
+        const extendedMetrics = this.extractExtendedMetrics(analysisData);
+        
+        // Check if we have chunk utilization data
+        const hasChunkData = extendedMetrics.chunks_used_top5 !== undefined || 
+                            extendedMetrics.chunks_used_top10 !== undefined || 
+                            extendedMetrics.chunks_used_top20 !== undefined;
+        
+        if (!hasChunkData) {
+            canvas.parentElement.innerHTML = `
+                <div class="no-chunk-data">
+                    <div class="no-data-icon">📊</div>
+                    <div class="no-data-text">Chunk utilization data not available</div>
+                    <div class="no-data-subtext">Enable chunk tracking for detailed utilization analysis</div>
+                </div>
+            `;
+            return;
+        }
+
+        const ctx = canvas.getContext('2d');
+        
+        // Prepare data for the chart
+        const labels = [];
+        const data = [];
+        const colors = [];
+        
+        if (extendedMetrics.chunks_used_top5 !== undefined) {
+            labels.push('Top 5');
+            data.push(extendedMetrics.chunks_used_top5);
+            colors.push('#10b981');
+        }
+        
+        if (extendedMetrics.chunks_used_top10 !== undefined) {
+            labels.push('5-10');
+            data.push(extendedMetrics.chunks_used_top10);
+            colors.push('#059669');
+        }
+        
+        if (extendedMetrics.chunks_used_top20 !== undefined) {
+            labels.push('10-20');
+            data.push(extendedMetrics.chunks_used_top20);
+            colors.push('#0d9488');
+        }
+        
+        // Create bar chart
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Chunks Used',
+                    data: data,
+                    backgroundColor: colors,
+                    borderColor: colors.map(color => color.replace('0.8', '1')),
+                    borderWidth: 1,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.label}: ${context.raw} chunks`
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            callback: (value) => Math.floor(value) === value ? value : ''
+                        }
+                    }
+                }
+            }
+        });
     }
 
     populateStatisticalInsights(elementId, analysisData) {
