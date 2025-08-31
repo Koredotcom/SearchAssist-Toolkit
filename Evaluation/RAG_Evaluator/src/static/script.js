@@ -2375,6 +2375,7 @@ class RAGEvaluatorUI {
                             <button class="tab-button active" data-tab="overview">📊 Overview</button>
                             <button class="tab-button" data-tab="correlations">🔗 Correlations</button>
                             <button class="tab-button" data-tab="performance">🎯 Performance</button>
+                            <button class="tab-button" data-tab="retrieval">🔍 Retrieval Quality</button>
                             <button class="tab-button" data-tab="insights">💡 Insights</button>
                         </div>
                         
@@ -2431,6 +2432,35 @@ class RAGEvaluatorUI {
                                 <div class="outliers-card">
                                     <h6>Performance Outliers</h6>
                                     <div id="outliers-analysis-${sheetId}" class="outliers-content"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="tab-content" id="retrieval-${sheetId}">
+                            <div class="retrieval-quality-grid">
+                                <div class="chart-card">
+                                    <h6>🔍 Retrieval Quality Overview</h6>
+                                    <div id="retrieval-overview-${sheetId}" class="retrieval-overview"></div>
+                                </div>
+                                <div class="chart-card">
+                                    <h6>📊 Ground Truth Validity Analysis</h6>
+                                    <canvas id="gt-validity-chart-${sheetId}"></canvas>
+                                </div>
+                                <div class="chart-card">
+                                    <h6>🎯 Answer Completeness Analysis</h6>
+                                    <canvas id="completeness-chart-${sheetId}"></canvas>
+                                </div>
+                                <div class="insight-card">
+                                    <h6>🔍 Retrieval Quality Insights</h6>
+                                    <div id="retrieval-insights-${sheetId}" class="retrieval-insights-content"></div>
+                                </div>
+                                <div class="insight-card">
+                                    <h6>⚡ System Efficiency Analysis</h6>
+                                    <div id="efficiency-insights-${sheetId}" class="efficiency-insights-content"></div>
+                                </div>
+                                <div class="insight-card">
+                                    <h6>🎯 Chunk Utilization Analysis</h6>
+                                    <div id="utilization-insights-${sheetId}" class="utilization-insights-content"></div>
                                 </div>
                             </div>
                         </div>
@@ -2575,19 +2605,22 @@ class RAGEvaluatorUI {
     }
 
     setupAnalysisTabs(sheetId) {
-        // Setup tab navigation
-        const tabButtons = document.querySelectorAll(`[data-tab]`);
-        const tabContents = document.querySelectorAll(`.tab-content`);
+        // Setup tab navigation for this specific sheet
+        const analysisDashboard = document.getElementById(`analysis-dashboard-${sheetId}`);
+        if (!analysisDashboard) return;
+        
+        const tabButtons = analysisDashboard.querySelectorAll(`[data-tab]`);
+        const tabContents = analysisDashboard.querySelectorAll(`.tab-content`);
         
         tabButtons.forEach(button => {
             button.addEventListener('click', () => {
                 const tabName = button.getAttribute('data-tab');
                 
-                // Update button states
+                // Update button states for this sheet only
                 tabButtons.forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
                 
-                // Update content visibility
+                // Update content visibility for this sheet only
                 tabContents.forEach(content => {
                     if (content.id.includes(tabName) && content.id.includes(sheetId)) {
                         content.classList.add('active');
@@ -2743,10 +2776,13 @@ class RAGEvaluatorUI {
             strengths: [],
             weaknesses: [],
             recommendations: [],
-            statistical: []
+            statistical: [],
+            retrieval: [],
+            efficiency: [],
+            utilization: []
         };
 
-        // Analyze metric performance
+        // Analyze metric performance (existing logic)
         Object.entries(analysis.statistics).forEach(([metric, stats]) => {
             const performance = stats.mean;
             
@@ -2762,7 +2798,7 @@ class RAGEvaluatorUI {
             }
         });
 
-        // Correlation insights
+        // Enhanced correlation insights
         Object.entries(analysis.correlations).forEach(([pair, correlation]) => {
             if (Math.abs(correlation) > 0.7) {
                 const [metric1, metric2] = pair.split('_');
@@ -2771,10 +2807,465 @@ class RAGEvaluatorUI {
             }
         });
 
+        // Generate new insights based on extended metrics
+        this.generateExtendedInsights(analysis, insights);
+
         // Generate dynamic recommendations based on evaluation rules
         insights.recommendations = this.generateDynamicRecommendations(analysis);
 
         return insights;
+    }
+
+    generateExtendedInsights(analysis, insights) {
+        console.log('🔍 Generating extended insights with new metrics');
+        console.log('📊 Available metrics in analysis:', Object.keys(analysis.statistics));
+        
+        // Check for chunk-related data
+        const hasChunkData = this.checkForChunkData(analysis);
+        console.log('📊 Has chunk data:', hasChunkData);
+        
+        // Extract extended metrics
+        const extendedMetrics = this.extractExtendedMetrics(analysis);
+        console.log('📈 Extracted extended metrics:', extendedMetrics);
+        
+        // Generate retrieval quality insights
+        this.generateRetrievalInsights(extendedMetrics, insights);
+        
+        // Generate efficiency insights
+        this.generateEfficiencyInsights(extendedMetrics, insights);
+        
+        // Generate utilization insights
+        this.generateUtilizationInsights(extendedMetrics, insights);
+        
+        // Generate cross-metric correlation insights
+        this.generateCrossMetricInsights(analysis, extendedMetrics, insights);
+        
+        console.log('✅ Generated insights:', insights);
+        
+        // Add guidance on enabling chunk metrics
+        if (!this.checkForChunkData(analysis)) {
+            this.addChunkMetricsGuidance(insights);
+        }
+    }
+
+    addChunkMetricsGuidance(insights) {
+        const guidance = [
+            '📊 To enable comprehensive chunk analysis, ensure your evaluation includes:',
+            '   • Retrieved Chunk Count - number of chunks retrieved from knowledge base',
+            '   • Sent to LLM Chunk Count - number of chunks sent to the language model',
+            '   • Used in Answer Chunk Count - number of chunks actually used in the answer',
+            '   • Best Support Rank - ranking of the most relevant chunk',
+            '   • Chunks Used Top 5/10/20 - distribution of chunk usage across rank ranges',
+            '   • Total Chunks Used - total number of chunks utilized in the answer'
+        ];
+        
+        // Add guidance to recommendations if available
+        if (insights.recommendations) {
+            insights.recommendations.push('🔧 Enable chunk tracking for detailed retrieval analysis');
+        }
+        
+        console.log('📋 Chunk metrics guidance:', guidance);
+    }
+
+    checkForChunkData(analysis) {
+        const chunkKeywords = ['chunk', 'retrieved', 'sent', 'used', 'support', 'rank'];
+        const availableMetrics = Object.keys(analysis.statistics);
+        
+        const chunkMetrics = availableMetrics.filter(metric => 
+            chunkKeywords.some(keyword => metric.toLowerCase().includes(keyword))
+        );
+        
+        console.log('🔍 Chunk-related metrics found:', chunkMetrics);
+        console.log('📊 All available metrics:', availableMetrics);
+        
+        // Also check for any metrics that might contain chunk information
+        const potentialChunkMetrics = availableMetrics.filter(metric => 
+            metric.toLowerCase().includes('id') || 
+            metric.toLowerCase().includes('count') ||
+            metric.toLowerCase().includes('total')
+        );
+        
+        if (potentialChunkMetrics.length > 0) {
+            console.log('🔍 Potential chunk-related metrics:', potentialChunkMetrics);
+        }
+        
+        return chunkMetrics.length > 0;
+    }
+
+    extractExtendedMetrics(analysis) {
+        const metrics = {};
+        
+        console.log('🔍 Available metrics in analysis.statistics:', Object.keys(analysis.statistics));
+        
+        // Extended metric mappings - updated to match actual data structure
+        const metricMappings = {
+            'ground_truth_validity': [
+                'LLM Ground Truth Validity', 'Ground Truth Validity', 'ground_truth_validity', 'GT Validity'
+            ],
+            'answer_completeness': [
+                'LLM Answer Completeness', 'Answer Completeness', 'answer_completeness', 'Completeness'
+            ],
+            'retrieved_chunk_count': [
+                'Retrieved Chunk Count', 'retrieved_chunk_count', 'Retrieved Chunks', 'Retrieved Chunk IDs'
+            ],
+            'sent_to_llm_chunk_count': [
+                'Sent to LLM Chunk Count', 'sent_to_llm_chunk_count', 'Sent to LLM Chunks', 'Sent to LLM Chunk IDs'
+            ],
+            'used_in_answer_chunk_count': [
+                'Used in Answer Chunk Count', 'used_in_answer_chunk_count', 'Used in Answer Chunks', 'Used in Answer Chunk IDs'
+            ],
+            'chunks_used_top5': [
+                'Chunks Used Top 5', 'Chunks used in top5', 'chunks_used_top5', 'Top 5 Usage'
+            ],
+            'chunks_used_top10': [
+                'Chunks Used 5-10', 'Chunks used in top10', 'chunks_used_top10', 'Top 10 Usage'
+            ],
+            'chunks_used_top20': [
+                'Chunks Used 10-20', 'Chunks used in top20', 'chunks_used_top20', 'Top 20 Usage'
+            ],
+            'total_chunks_used': [
+                'Total Chunks Used', 'total_chunks_used', 'Total Used'
+            ],
+            'best_support_rank': [
+                'Best Support Rank', 'best_support_rank', 'Support Rank'
+            ]
+        };
+
+        // Extract values for each metric category
+        Object.entries(metricMappings).forEach(([standardName, possibleNames]) => {
+            let bestMatch = null;
+            let bestValue = null;
+
+            possibleNames.forEach(metricName => {
+                if (analysis.statistics[metricName]) {
+                    const stats = analysis.statistics[metricName];
+                    if (bestMatch === null || metricName.toLowerCase().includes(standardName.split('_')[0])) {
+                        bestMatch = metricName;
+                        bestValue = stats.mean;
+                    }
+                }
+            });
+
+            if (bestValue !== null) {
+                metrics[standardName] = bestValue;
+                console.log(`📈 Extended ${standardName}: ${bestValue.toFixed(3)} (from ${bestMatch})`);
+            }
+        });
+
+        return metrics;
+    }
+
+    generateRetrievalInsights(extendedMetrics, insights) {
+        console.log('🔍 Generating retrieval insights with metrics:', extendedMetrics);
+        
+        // Ground Truth Validity insights
+        if (extendedMetrics.ground_truth_validity !== undefined) {
+            const gtValidity = extendedMetrics.ground_truth_validity;
+            console.log('📊 Ground Truth Validity:', gtValidity);
+            if (gtValidity >= 0.9) {
+                insights.retrieval.push(`✅ Excellent Ground Truth Validity (${(gtValidity * 100).toFixed(1)}%) - system retrieves highly accurate information`);
+            } else if (gtValidity >= 0.8) {
+                insights.retrieval.push(`✅ High Ground Truth Validity (${(gtValidity * 100).toFixed(1)}%) - system retrieves correct information`);
+            } else if (gtValidity < 0.6) {
+                insights.retrieval.push(`⚠️ Low Ground Truth Validity (${(gtValidity * 100).toFixed(1)}%) - retrieval strategy needs improvement`);
+            } else {
+                insights.retrieval.push(`📊 Moderate Ground Truth Validity (${(gtValidity * 100).toFixed(1)}%) - room for improvement`);
+            }
+        }
+
+        // Chunk count insights
+        if (extendedMetrics.retrieved_chunk_count !== undefined) {
+            const retrievedCount = extendedMetrics.retrieved_chunk_count;
+            console.log('📊 Retrieved Chunk Count:', retrievedCount);
+            if (retrievedCount > 15) {
+                insights.retrieval.push(`📊 Very high retrieval count (${retrievedCount.toFixed(1)} chunks) - consider reducing for efficiency`);
+            } else if (retrievedCount > 10) {
+                insights.retrieval.push(`📊 High retrieval count (${retrievedCount.toFixed(1)} chunks) - consider optimization`);
+            } else if (retrievedCount < 3) {
+                insights.retrieval.push(`📊 Low retrieval count (${retrievedCount.toFixed(1)} chunks) - may need more context`);
+            } else if (retrievedCount >= 3 && retrievedCount <= 8) {
+                insights.retrieval.push(`📊 Optimal retrieval count (${retrievedCount.toFixed(1)} chunks) - good balance of context and efficiency`);
+            }
+        }
+
+        // Support rank analysis for retrieval quality
+        if (extendedMetrics.best_support_rank !== undefined) {
+            const supportRank = extendedMetrics.best_support_rank;
+            console.log('📊 Best support rank:', supportRank);
+            
+            if (supportRank === 1) {
+                insights.retrieval.push(`🏆 Perfect retrieval ranking - most relevant chunk found first`);
+            } else if (supportRank <= 3) {
+                insights.retrieval.push(`📈 Excellent retrieval ranking - relevant chunks found in top-3`);
+            } else if (supportRank <= 5) {
+                insights.retrieval.push(`📊 Good retrieval ranking - relevant chunks found in top-5`);
+            } else {
+                insights.retrieval.push(`⚠️ Retrieval ranking needs improvement - relevant chunks found late (rank ${supportRank})`);
+            }
+        }
+
+        // Chunk distribution analysis
+        if (extendedMetrics.chunks_used_top5 !== undefined && extendedMetrics.chunks_used_top10 !== undefined && extendedMetrics.chunks_used_top20 !== undefined) {
+            const top5 = extendedMetrics.chunks_used_top5;
+            const top10 = extendedMetrics.chunks_used_top10;
+            const top20 = extendedMetrics.chunks_used_top20;
+            
+            if (top5 > 0 && top10 === 0 && top20 === 0) {
+                insights.retrieval.push(`🎯 Perfect chunk distribution - all used chunks in top-5`);
+            } else if (top5 > 0 && top10 > 0) {
+                insights.retrieval.push(`📊 Mixed chunk distribution - chunks used from multiple rank ranges`);
+            }
+        }
+        
+        // Fallback insights when chunk metrics are not available
+        if (Object.keys(extendedMetrics).length === 0) {
+            insights.retrieval.push(`📊 Chunk utilization metrics not available - consider adding retrieval analysis for deeper insights`);
+        } else if (Object.keys(extendedMetrics).filter(key => key.includes('chunk')).length === 0) {
+            // We have some metrics but no chunk metrics
+            insights.retrieval.push(`📊 Basic retrieval metrics available - add chunk analysis for comprehensive insights`);
+        }
+        
+        console.log('✅ Generated retrieval insights:', insights.retrieval);
+    }
+
+    generateEfficiencyInsights(extendedMetrics, insights) {
+        console.log('⚡ Generating efficiency insights with metrics:', extendedMetrics);
+        
+        // Calculate utilization efficiency
+        if (extendedMetrics.retrieved_chunk_count !== undefined && extendedMetrics.used_in_answer_chunk_count !== undefined) {
+            const retrievedCount = extendedMetrics.retrieved_chunk_count;
+            const usedCount = extendedMetrics.used_in_answer_chunk_count;
+            const utilizationRate = retrievedCount > 0 ? usedCount / retrievedCount : 0;
+            console.log('📊 Utilization rate:', utilizationRate);
+            
+            if (utilizationRate < 0.3) {
+                insights.efficiency.push(`🔍 Low chunk utilization (${(utilizationRate * 100).toFixed(1)}%) - system over-retrieves but under-utilizes`);
+            } else if (utilizationRate > 0.7) {
+                insights.efficiency.push(`✅ High chunk utilization (${(utilizationRate * 100).toFixed(1)}%) - efficient information extraction`);
+            } else if (utilizationRate >= 0.4 && utilizationRate <= 0.6) {
+                insights.efficiency.push(`⚡ Moderate chunk utilization (${(utilizationRate * 100).toFixed(1)}%) - balanced retrieval strategy`);
+            }
+        }
+
+        // Sent to LLM vs Used comparison
+        if (extendedMetrics.sent_to_llm_chunk_count !== undefined && extendedMetrics.used_in_answer_chunk_count !== undefined) {
+            const sentCount = extendedMetrics.sent_to_llm_chunk_count;
+            const usedCount = extendedMetrics.used_in_answer_chunk_count;
+            const llmUtilization = sentCount > 0 ? usedCount / sentCount : 0;
+            console.log('🤖 LLM utilization rate:', llmUtilization);
+            
+            if (llmUtilization < 0.5) {
+                insights.efficiency.push(`🤖 LLM under-utilizes provided context (${(llmUtilization * 100).toFixed(1)}% usage)`);
+            } else if (llmUtilization > 0.8) {
+                insights.efficiency.push(`🤖 LLM efficiently uses provided context (${(llmUtilization * 100).toFixed(1)}% usage)`);
+            }
+        }
+
+        // Retrieval efficiency analysis
+        if (extendedMetrics.retrieved_chunk_count !== undefined && extendedMetrics.sent_to_llm_chunk_count !== undefined) {
+            const retrievedCount = extendedMetrics.retrieved_chunk_count;
+            const sentCount = extendedMetrics.sent_to_llm_chunk_count;
+            const filteringEfficiency = retrievedCount > 0 ? sentCount / retrievedCount : 0;
+            
+            if (filteringEfficiency < 0.6) {
+                insights.efficiency.push(`🔍 Aggressive chunk filtering (${(filteringEfficiency * 100).toFixed(1)}% sent to LLM) - consider relaxing filters`);
+            } else if (filteringEfficiency > 0.9) {
+                insights.efficiency.push(`📊 Minimal chunk filtering (${(filteringEfficiency * 100).toFixed(1)}% sent to LLM) - consider stricter filtering`);
+            }
+        }
+        
+        // Generate insights from available metrics
+        if (extendedMetrics.ground_truth_validity !== undefined && extendedMetrics.answer_completeness !== undefined) {
+            const gtValidity = extendedMetrics.ground_truth_validity;
+            const completeness = extendedMetrics.answer_completeness;
+            
+            // Efficiency insight based on validity vs completeness
+            if (gtValidity > 0.8 && completeness < 0.7) {
+                insights.efficiency.push(`⚡ High retrieval accuracy but low completeness - consider expanding context window`);
+            } else if (gtValidity < 0.6 && completeness > 0.8) {
+                insights.efficiency.push(`⚡ High completeness but poor retrieval - focus on improving context selection`);
+            } else if (gtValidity > 0.8 && completeness > 0.8) {
+                insights.efficiency.push(`⚡ Optimal balance of retrieval accuracy and completeness - efficient system performance`);
+            } else if (gtValidity >= 0.7 && completeness >= 0.7) {
+                insights.efficiency.push(`⚡ Good balance of retrieval accuracy and completeness - system performing well`);
+            } else if (gtValidity < 0.7 && completeness < 0.7) {
+                insights.efficiency.push(`⚡ Both retrieval accuracy and completeness need improvement - consider system optimization`);
+            }
+            
+            // Additional efficiency insights based on the gap
+            const gap = Math.abs(gtValidity - completeness);
+            if (gap > 0.2) {
+                insights.efficiency.push(`⚡ Significant gap between retrieval accuracy and completeness (${(gap * 100).toFixed(1)}%) - consider balancing both metrics`);
+            }
+        }
+        
+        // Fallback insights when chunk metrics are not available
+        if (Object.keys(extendedMetrics).filter(key => key.includes('chunk')).length === 0) {
+            if (extendedMetrics.ground_truth_validity !== undefined && extendedMetrics.answer_completeness !== undefined) {
+                insights.efficiency.push(`📊 Basic efficiency analysis available - add chunk metrics for detailed utilization insights`);
+            } else {
+                insights.efficiency.push(`📊 Chunk efficiency metrics not available - add retrieval analysis for utilization insights`);
+            }
+        }
+        
+        console.log('✅ Generated efficiency insights:', insights.efficiency);
+    }
+
+    generateUtilizationInsights(extendedMetrics, insights) {
+        console.log('🎯 Generating utilization insights with metrics:', extendedMetrics);
+        
+        // Top-K utilization patterns with actual metric names
+        if (extendedMetrics.chunks_used_top5 !== undefined && extendedMetrics.chunks_used_top10 !== undefined) {
+            const top5Usage = extendedMetrics.chunks_used_top5;
+            const top10Usage = extendedMetrics.chunks_used_top10;
+            console.log('📊 Top-5 usage:', top5Usage, 'Top-10 usage:', top10Usage);
+            
+            if (top5Usage > 0 && top10Usage === 0) {
+                insights.utilization.push(`🎯 All used chunks are in top-5 (${top5Usage} chunks) - excellent ranking quality`);
+            } else if (top5Usage > top10Usage * 0.8) {
+                insights.utilization.push(`🎯 Top-5 chunks provide most value (${top5Usage} chunks) - good ranking quality`);
+            }
+        }
+
+        // Support rank analysis
+        if (extendedMetrics.best_support_rank !== undefined) {
+            const supportRank = extendedMetrics.best_support_rank;
+            console.log('📊 Best support rank:', supportRank);
+            
+            if (supportRank <= 3) {
+                insights.utilization.push(`🏆 Excellent support rank (${supportRank}) - highly relevant chunks found early`);
+            } else if (supportRank <= 10) {
+                insights.utilization.push(`📈 Good support rank (${supportRank}) - relevant chunks found in top-10`);
+            } else {
+                insights.utilization.push(`⚠️ Support rank (${supportRank}) - consider improving retrieval ranking`);
+            }
+        }
+
+        // Chunk utilization efficiency
+        if (extendedMetrics.retrieved_chunk_count !== undefined && extendedMetrics.used_in_answer_chunk_count !== undefined) {
+            const retrievedCount = extendedMetrics.retrieved_chunk_count;
+            const usedCount = extendedMetrics.used_in_answer_chunk_count;
+            const utilizationRate = retrievedCount > 0 ? usedCount / retrievedCount : 0;
+            
+            if (utilizationRate > 0.6) {
+                insights.utilization.push(`✅ High chunk utilization (${(utilizationRate * 100).toFixed(1)}%) - efficient information extraction`);
+            } else if (utilizationRate < 0.3) {
+                insights.utilization.push(`🔍 Low chunk utilization (${(utilizationRate * 100).toFixed(1)}%) - consider reducing retrieval count`);
+            }
+        }
+
+        // Total chunks used analysis
+        if (extendedMetrics.total_chunks_used !== undefined) {
+            const totalUsed = extendedMetrics.total_chunks_used;
+            console.log('📊 Total chunks used:', totalUsed);
+            
+            if (totalUsed >= 3) {
+                insights.utilization.push(`📊 Comprehensive answer using ${totalUsed} chunks - good context utilization`);
+            } else if (totalUsed === 1) {
+                insights.utilization.push(`📊 Answer relies on single chunk - consider expanding context`);
+            }
+        }
+        
+        // Generate insights from available metrics
+        if (extendedMetrics.ground_truth_validity !== undefined && extendedMetrics.answer_completeness !== undefined) {
+            const gtValidity = extendedMetrics.ground_truth_validity;
+            const completeness = extendedMetrics.answer_completeness;
+            
+            // Utilization insight based on validity vs completeness balance
+            if (gtValidity > 0.9 && completeness > 0.8) {
+                insights.utilization.push(`🎯 Excellent balance of retrieval accuracy and answer completeness - optimal system utilization`);
+            } else if (gtValidity > 0.8 && completeness < 0.6) {
+                insights.utilization.push(`🎯 Good retrieval but under-utilized context - consider expanding answer generation`);
+            } else if (gtValidity >= 0.8 && completeness >= 0.8) {
+                insights.utilization.push(`🎯 Strong performance in both retrieval accuracy and answer completeness - effective system utilization`);
+            } else if (gtValidity >= 0.7 && completeness >= 0.7) {
+                insights.utilization.push(`🎯 Balanced performance in retrieval and completeness - good system utilization`);
+            } else {
+                insights.utilization.push(`🎯 System utilization can be improved by enhancing both retrieval accuracy and answer completeness`);
+            }
+            
+            // Utilization efficiency analysis
+            const utilizationScore = (gtValidity + completeness) / 2;
+            if (utilizationScore > 0.9) {
+                insights.utilization.push(`🎯 Exceptional system utilization score (${(utilizationScore * 100).toFixed(1)}%) - near optimal performance`);
+            } else if (utilizationScore > 0.8) {
+                insights.utilization.push(`🎯 High system utilization score (${(utilizationScore * 100).toFixed(1)}%) - effective performance`);
+            } else if (utilizationScore < 0.6) {
+                insights.utilization.push(`🎯 Low system utilization score (${(utilizationScore * 100).toFixed(1)}%) - significant improvement needed`);
+            }
+        }
+        
+        // Fallback insights when chunk metrics are not available
+        if (Object.keys(extendedMetrics).filter(key => key.includes('chunk')).length === 0) {
+            if (extendedMetrics.ground_truth_validity !== undefined && extendedMetrics.answer_completeness !== undefined) {
+                insights.utilization.push(`📊 Basic utilization analysis available - add chunk metrics for detailed ranking insights`);
+            } else {
+                insights.utilization.push(`📊 Chunk utilization metrics not available - add retrieval analysis for ranking insights`);
+            }
+        }
+        
+        console.log('✅ Generated utilization insights:', insights.utilization);
+    }
+
+    generateCrossMetricInsights(analysis, extendedMetrics, insights) {
+        // Cross-metric correlations for new insights
+        const crossCorrelations = this.calculateCrossMetricCorrelations(analysis, extendedMetrics);
+        
+        crossCorrelations.forEach(corr => {
+            if (Math.abs(corr.correlation) > 0.6) {
+                const direction = corr.correlation > 0 ? 'positive' : 'negative';
+                const strength = Math.abs(corr.correlation) > 0.8 ? 'very strong' : 'strong';
+                insights.statistical.push(`🔗 ${strength} ${direction} correlation: ${corr.metric1} and ${corr.metric2} (r=${corr.correlation.toFixed(3)})`);
+            }
+        });
+    }
+
+    calculateCrossMetricCorrelations(analysis, extendedMetrics) {
+        const correlations = [];
+        const metricNames = Object.keys(extendedMetrics);
+        
+        for (let i = 0; i < metricNames.length; i++) {
+            for (let j = i + 1; j < metricNames.length; j++) {
+                const metric1 = metricNames[i];
+                const metric2 = metricNames[j];
+                
+                // Find the actual metric names in analysis.scores
+                const actualMetric1 = this.findActualMetricName(analysis, metric1);
+                const actualMetric2 = this.findActualMetricName(analysis, metric2);
+                
+                if (actualMetric1 && actualMetric2 && analysis.scores[actualMetric1] && analysis.scores[actualMetric2]) {
+                    const correlation = this.pearsonCorrelation(analysis.scores[actualMetric1], analysis.scores[actualMetric2]);
+                    correlations.push({
+                        metric1: this.formatMetricName(actualMetric1),
+                        metric2: this.formatMetricName(actualMetric2),
+                        correlation: correlation
+                    });
+                }
+            }
+        }
+        
+        return correlations;
+    }
+
+    findActualMetricName(analysis, standardName) {
+        const possibleNames = {
+            'ground_truth_validity': ['LLM Ground Truth Validity', 'Ground Truth Validity', 'ground_truth_validity', 'GT Validity'],
+            'answer_completeness': ['LLM Answer Completeness', 'Answer Completeness', 'answer_completeness', 'Completeness'],
+            'retrieved_chunk_count': ['Retrieved Chunk Count', 'retrieved_chunk_count', 'Retrieved Chunks'],
+            'sent_to_llm_chunk_count': ['Sent to LLM Chunk Count', 'sent_to_llm_chunk_count', 'Sent to LLM Chunks'],
+            'used_in_answer_chunk_count': ['Used in Answer Chunk Count', 'used_in_answer_chunk_count', 'Used in Answer Chunks'],
+            'chunks_used_top5': ['Chunks used in top5', 'chunks_used_top5', 'Top 5 Usage'],
+            'chunks_used_top10': ['Chunks used in top10', 'chunks_used_top10', 'Top 10 Usage'],
+            'chunks_used_top20': ['Chunks used in top20', 'chunks_used_top20', 'Top 20 Usage']
+        };
+        
+        const names = possibleNames[standardName] || [];
+        for (const name of names) {
+            if (analysis.scores[name]) {
+                return name;
+            }
+        }
+        return null;
     }
 
     generateDynamicRecommendations(analysis) {
@@ -2862,6 +3353,86 @@ class RAGEvaluatorUI {
                     "🔍 Consider re-ranking top-k chunks by semantic similarity.",
                     "📌 Use context-aware scoring to boost mid-relevance chunks."
                 ]
+            },
+            // Extended rules for new metrics
+            {
+                conditions: {
+                    ground_truth_validity: ">=0.8",
+                    answer_completeness: ">=0.8"
+                },
+                recommendations: [
+                    "✅ Excellent retrieval and answer generation - system is highly effective",
+                    "📊 Ground truth validity and answer completeness are both excellent",
+                    "🎯 Consider this configuration as a benchmark for similar queries"
+                ]
+            },
+            {
+                conditions: {
+                    ground_truth_validity: ">=0.8",
+                    answer_completeness: "<0.6"
+                },
+                recommendations: [
+                    "🔍 Good retrieval but incomplete answers - enhance prompt for comprehensiveness",
+                    "📝 Add instructions to encourage more detailed responses",
+                    "🧪 Try few-shot examples with comprehensive answer formats"
+                ]
+            },
+            {
+                conditions: {
+                    ground_truth_validity: "<0.6",
+                    answer_completeness: ">=0.8"
+                },
+                recommendations: [
+                    "⚠️ Poor retrieval but good answer generation - improve context selection",
+                    "🔍 Review retriever configuration and chunking strategy",
+                    "📈 Consider expanding index coverage or improving retrieval scoring"
+                ]
+            },
+            {
+                conditions: {
+                    retrieved_chunk_count: ">=10",
+                    used_in_answer_chunk_count: "<=3"
+                },
+                recommendations: [
+                    "🔍 High over-retrieval detected - system retrieves too many chunks",
+                    "📊 Consider reducing chunk count or improving retrieval precision",
+                    "🎯 Focus on top-k ranking quality rather than quantity"
+                ]
+            },
+            {
+                conditions: {
+                    retrieved_chunk_count: "<=3",
+                    answer_completeness: "<0.6"
+                },
+                recommendations: [
+                    "📈 Low retrieval count affecting answer completeness",
+                    "🔍 Increase chunk count or improve retrieval recall",
+                    "📊 Consider expanding context window for complex queries"
+                ]
+            },
+            {
+                conditions: {
+                    ground_truth_validity: ">=0.7",
+                    answer_correctness: ">=0.7",
+                    answer_completeness: "<0.6"
+                },
+                recommendations: [
+                    "✅ Good accuracy but low completeness - balance needed",
+                    "📝 Modify prompt to encourage more comprehensive responses",
+                    "🧪 Add examples showing desired answer depth and structure"
+                ]
+            },
+            {
+                conditions: {
+                    ground_truth_validity: "<0.5",
+                    retrieved_chunk_count: ">=8"
+                },
+                recommendations: [
+                    "❌ Poor retrieval quality despite high chunk count",
+                    "🔍 Fundamental issues with retriever or index quality",
+                    "🔄 Consider retraining retriever or improving index coverage",
+                    "📊 Review chunking strategy and document preprocessing"
+                ]
             }
         ];
 
@@ -2899,6 +3470,27 @@ class RAGEvaluatorUI {
             'answer_correctness': [
                 'Answer Correctness', 'LLM Answer Correctness', 'Faithfulness',
                 'answer_correctness', 'faithfulness'
+            ],
+            'ground_truth_validity': [
+                'LLM Ground Truth Validity', 'Ground Truth Validity', 'ground_truth_validity', 'GT Validity'
+            ],
+            'answer_completeness': [
+                'LLM Answer Completeness', 'Answer Completeness', 'answer_completeness', 'Completeness'
+            ],
+            'retrieved_chunk_count': [
+                'Retrieved Chunk Count', 'retrieved_chunk_count', 'Retrieved Chunks'
+            ],
+            'sent_to_llm_chunk_count': [
+                'Sent to LLM Chunk Count', 'sent_to_llm_chunk_count', 'Sent to LLM Chunks'
+            ],
+            'used_in_answer_chunk_count': [
+                'Used in Answer Chunk Count', 'used_in_answer_chunk_count', 'Used in Answer Chunks'
+            ],
+            'total_chunks_used': [
+                'Total Chunks Used', 'total_chunks_used', 'Total Used'
+            ],
+            'best_support_rank': [
+                'Best Support Rank', 'best_support_rank', 'Support Rank'
             ]
         };
 
@@ -3825,10 +4417,18 @@ class RAGEvaluatorUI {
     }
 
     generateInsights(sheetId, analysisData) {
+        console.log('🎯 Generating insights for sheet:', sheetId);
+        console.log('📊 Analysis data insights:', analysisData.insights);
+        
         // Populate all insight sections
         this.populateModelInsights(`model-insights-${sheetId}`, analysisData);
         this.populateStatisticalInsights(`statistical-insights-${sheetId}`, analysisData);
         this.populateRecommendations(`recommendations-${sheetId}`, analysisData);
+        
+        // Populate retrieval quality tab
+        this.populateRetrievalQualityTab(sheetId, analysisData);
+        
+        console.log('✅ Insights generation completed for sheet:', sheetId);
     }
 
     createSummaryRadarChart(canvasId, analysisData) {
@@ -4844,9 +5444,14 @@ class RAGEvaluatorUI {
 
     populateModelInsights(elementId, analysisData) {
         const element = document.getElementById(elementId);
-        if (!element) return;
+        if (!element) {
+            console.error('❌ Element not found:', elementId);
+            return;
+        }
 
         const insights = analysisData.insights;
+        console.log('🎯 Populating model insights for element:', elementId);
+        console.log('📊 Available insights:', insights);
         let content = '';
 
         if (insights.strengths.length > 0) {
@@ -4863,6 +5468,315 @@ class RAGEvaluatorUI {
             });
         }
 
+        // Add new insight categories
+        console.log('🔍 Checking retrieval insights:', insights.retrieval);
+        if (insights.retrieval && insights.retrieval.length > 0) {
+            content += `<div class="mb-3 mt-4"><strong>🔍 Retrieval Quality:</strong></div>`;
+            insights.retrieval.forEach(retrieval => {
+                content += `<div class="insight-item retrieval">${retrieval}</div>`;
+            });
+        }
+
+        console.log('⚡ Checking efficiency insights:', insights.efficiency);
+        if (insights.efficiency && insights.efficiency.length > 0) {
+            content += `<div class="mb-3 mt-4"><strong>⚡ System Efficiency:</strong></div>`;
+            insights.efficiency.forEach(efficiency => {
+                content += `<div class="insight-item efficiency">${efficiency}</div>`;
+            });
+        }
+
+        console.log('🎯 Checking utilization insights:', insights.utilization);
+        if (insights.utilization && insights.utilization.length > 0) {
+            content += `<div class="mb-3 mt-4"><strong>🎯 Chunk Utilization:</strong></div>`;
+            insights.utilization.forEach(utilization => {
+                content += `<div class="insight-item utilization">${utilization}</div>`;
+            });
+        }
+
+        element.innerHTML = content;
+        
+        // Log summary of what was generated
+        const insightCounts = {
+            strengths: insights.strengths ? insights.strengths.length : 0,
+            weaknesses: insights.weaknesses ? insights.weaknesses.length : 0,
+            retrieval: insights.retrieval ? insights.retrieval.length : 0,
+            efficiency: insights.efficiency ? insights.efficiency.length : 0,
+            utilization: insights.utilization ? insights.utilization.length : 0
+        };
+        console.log('📊 Insight counts generated for', elementId, ':', insightCounts);
+    }
+
+    populateRetrievalQualityTab(sheetId, analysisData) {
+        console.log('🔍 Populating retrieval quality tab for sheet:', sheetId);
+        
+        // Populate retrieval overview
+        this.populateRetrievalOverview(`retrieval-overview-${sheetId}`, analysisData);
+        
+        // Create charts for retrieval metrics
+        this.createGroundTruthValidityChart(`gt-validity-chart-${sheetId}`, analysisData);
+        this.createCompletenessChart(`completeness-chart-${sheetId}`, analysisData);
+        
+        // Populate insight sections
+        this.populateRetrievalInsights(`retrieval-insights-${sheetId}`, analysisData);
+        this.populateEfficiencyInsights(`efficiency-insights-${sheetId}`, analysisData);
+        this.populateUtilizationInsights(`utilization-insights-${sheetId}`, analysisData);
+        
+        console.log('✅ Retrieval quality tab populated for sheet:', sheetId);
+    }
+
+    populateRetrievalOverview(elementId, analysisData) {
+        const element = document.getElementById(elementId);
+        if (!element) {
+            console.error('❌ Retrieval overview element not found:', elementId);
+            return;
+        }
+
+        const extendedMetrics = this.extractExtendedMetrics(analysisData);
+        const hasChunkData = this.checkForChunkData(analysisData);
+        
+        let content = `
+            <div class="retrieval-overview-summary">
+                <div class="retrieval-metrics-grid">
+        `;
+        
+        // Add available metrics
+        if (extendedMetrics.ground_truth_validity !== undefined) {
+            const gtValidity = extendedMetrics.ground_truth_validity;
+            const gtClass = gtValidity >= 0.9 ? 'excellent' : gtValidity >= 0.8 ? 'good' : gtValidity >= 0.7 ? 'fair' : 'poor';
+            content += `
+                <div class="metric-card ${gtClass}">
+                    <div class="metric-icon">✅</div>
+                    <div class="metric-label">Ground Truth Validity</div>
+                    <div class="metric-value">${(gtValidity * 100).toFixed(1)}%</div>
+                    <div class="metric-status">${gtValidity >= 0.9 ? 'Excellent' : gtValidity >= 0.8 ? 'Good' : gtValidity >= 0.7 ? 'Fair' : 'Poor'}</div>
+                </div>
+            `;
+        }
+        
+        if (extendedMetrics.answer_completeness !== undefined) {
+            const completeness = extendedMetrics.answer_completeness;
+            const compClass = completeness >= 0.9 ? 'excellent' : completeness >= 0.8 ? 'good' : completeness >= 0.7 ? 'fair' : 'poor';
+            content += `
+                <div class="metric-card ${compClass}">
+                    <div class="metric-icon">🎯</div>
+                    <div class="metric-label">Answer Completeness</div>
+                    <div class="metric-value">${(completeness * 100).toFixed(1)}%</div>
+                    <div class="metric-status">${completeness >= 0.9 ? 'Excellent' : completeness >= 0.8 ? 'Good' : completeness >= 0.7 ? 'Fair' : 'Poor'}</div>
+                </div>
+            `;
+        }
+        
+        // Add chunk metrics if available
+        if (hasChunkData) {
+            if (extendedMetrics.retrieved_chunk_count !== undefined) {
+                content += `
+                    <div class="metric-card info">
+                        <div class="metric-icon">📊</div>
+                        <div class="metric-label">Retrieved Chunks</div>
+                        <div class="metric-value">${extendedMetrics.retrieved_chunk_count.toFixed(1)}</div>
+                        <div class="metric-status">Chunks</div>
+                    </div>
+                `;
+            }
+            
+            if (extendedMetrics.used_in_answer_chunk_count !== undefined) {
+                content += `
+                    <div class="metric-card info">
+                        <div class="metric-icon">🎯</div>
+                        <div class="metric-label">Used Chunks</div>
+                        <div class="metric-value">${extendedMetrics.used_in_answer_chunk_count.toFixed(1)}</div>
+                        <div class="metric-status">Chunks</div>
+                    </div>
+                `;
+            }
+            
+            if (extendedMetrics.best_support_rank !== undefined) {
+                const rank = extendedMetrics.best_support_rank;
+                const rankClass = rank <= 3 ? 'excellent' : rank <= 10 ? 'good' : 'fair';
+                content += `
+                    <div class="metric-card ${rankClass}">
+                        <div class="metric-icon">🏆</div>
+                        <div class="metric-label">Best Support Rank</div>
+                        <div class="metric-value">${rank.toFixed(1)}</div>
+                        <div class="metric-status">${rank <= 3 ? 'Excellent' : rank <= 10 ? 'Good' : 'Fair'}</div>
+                    </div>
+                `;
+            }
+        }
+        
+        content += `
+                </div>
+                <div class="retrieval-status">
+                    <div class="status-indicator ${hasChunkData ? 'success' : 'warning'}">
+                        <span class="status-icon">${hasChunkData ? '✅' : '⚠️'}</span>
+                        <span class="status-text">${hasChunkData ? 'Comprehensive chunk analysis available' : 'Basic retrieval analysis - enable chunk tracking for detailed insights'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        element.innerHTML = content;
+    }
+
+    createGroundTruthValidityChart(canvasId, analysisData) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+
+        const extendedMetrics = this.extractExtendedMetrics(analysisData);
+        if (extendedMetrics.ground_truth_validity === undefined) {
+            canvas.parentElement.innerHTML = '<p style="text-align: center; color: #666;">Ground Truth Validity data not available</p>';
+            return;
+        }
+
+        const ctx = canvas.getContext('2d');
+        const gtValidity = extendedMetrics.ground_truth_validity;
+        
+        // Create a gauge chart
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [gtValidity, 1 - gtValidity],
+                    backgroundColor: [
+                        gtValidity >= 0.9 ? '#10b981' : gtValidity >= 0.8 ? '#059669' : gtValidity >= 0.7 ? '#f59e0b' : '#ef4444',
+                        '#f3f4f6'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                }
+            }
+        });
+        
+        // Add center text
+        const centerText = document.createElement('div');
+        centerText.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #374151;
+        `;
+        centerText.innerHTML = `${(gtValidity * 100).toFixed(1)}%`;
+        canvas.parentElement.style.position = 'relative';
+        canvas.parentElement.appendChild(centerText);
+    }
+
+    createCompletenessChart(canvasId, analysisData) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+
+        const extendedMetrics = this.extractExtendedMetrics(analysisData);
+        if (extendedMetrics.answer_completeness === undefined) {
+            canvas.parentElement.innerHTML = '<p style="text-align: center; color: #666;">Answer Completeness data not available</p>';
+            return;
+        }
+
+        const ctx = canvas.getContext('2d');
+        const completeness = extendedMetrics.answer_completeness;
+        
+        // Create a gauge chart
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [completeness, 1 - completeness],
+                    backgroundColor: [
+                        completeness >= 0.9 ? '#10b981' : completeness >= 0.8 ? '#059669' : completeness >= 0.7 ? '#f59e0b' : '#ef4444',
+                        '#f3f4f6'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                }
+            }
+        });
+        
+        // Add center text
+        const centerText = document.createElement('div');
+        centerText.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #374151;
+        `;
+        centerText.innerHTML = `${(completeness * 100).toFixed(1)}%`;
+        canvas.parentElement.style.position = 'relative';
+        canvas.parentElement.appendChild(centerText);
+    }
+
+    populateRetrievalInsights(elementId, analysisData) {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+
+        const insights = analysisData.insights;
+        let content = '';
+
+        if (insights.retrieval && insights.retrieval.length > 0) {
+            insights.retrieval.forEach(insight => {
+                content += `<div class="insight-item retrieval">${insight}</div>`;
+            });
+        } else {
+            content = '<div class="insight-item">No retrieval quality insights available</div>';
+        }
+
+        element.innerHTML = content;
+    }
+
+    populateEfficiencyInsights(elementId, analysisData) {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+
+        const insights = analysisData.insights;
+        let content = '';
+
+        if (insights.efficiency && insights.efficiency.length > 0) {
+            insights.efficiency.forEach(insight => {
+                content += `<div class="insight-item efficiency">${insight}</div>`;
+            });
+        } else {
+            content = '<div class="insight-item">No efficiency insights available</div>';
+        }
+
+        element.innerHTML = content;
+    }
+
+    populateUtilizationInsights(elementId, analysisData) {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+
+        const insights = analysisData.insights;
+        let content = '';
+
+        if (insights.utilization && insights.utilization.length > 0) {
+            insights.utilization.forEach(insight => {
+                content += `<div class="insight-item utilization">${insight}</div>`;
+            });
+        } else {
+            content = '<div class="insight-item">No utilization insights available</div>';
+        }
+
         element.innerHTML = content;
     }
 
@@ -4873,7 +5787,7 @@ class RAGEvaluatorUI {
         const insights = analysisData.insights;
         let content = '';
 
-        if (insights.statistical.length > 0) {
+        if (insights.statistical && insights.statistical.length > 0) {
             insights.statistical.forEach(stat => {
                 content += `<div class="insight-item">${stat}</div>`;
             });
@@ -4923,18 +5837,51 @@ class RAGEvaluatorUI {
             
             // Add metric context if available
             const metricValues = this.extractRelevantMetrics(analysisData);
-            if (metricValues.context_relevancy !== undefined || metricValues.answer_correctness !== undefined) {
+            const hasMetrics = metricValues.context_relevancy !== undefined || 
+                              metricValues.answer_correctness !== undefined ||
+                              metricValues.ground_truth_validity !== undefined ||
+                              metricValues.answer_completeness !== undefined ||
+                              metricValues.retrieved_chunk_count !== undefined ||
+                              metricValues.sent_to_llm_chunk_count !== undefined ||
+                              metricValues.used_in_answer_chunk_count !== undefined ||
+                              metricValues.total_chunks_used !== undefined ||
+                              metricValues.best_support_rank !== undefined;
+            
+            if (hasMetrics) {
                 content += `
                     <div class="recommendation-context">
                         <small>📈 Based on: `;
                         
+                const metricDisplay = [];
                 if (metricValues.context_relevancy !== undefined) {
-                    content += `Context Relevancy: ${(metricValues.context_relevancy * 100).toFixed(1)}%`;
+                    metricDisplay.push(`Context Relevancy: ${(metricValues.context_relevancy * 100).toFixed(1)}%`);
                 }
                 if (metricValues.answer_correctness !== undefined) {
-                    if (metricValues.context_relevancy !== undefined) content += ', ';
-                    content += `Answer Correctness: ${(metricValues.answer_correctness * 100).toFixed(1)}%`;
+                    metricDisplay.push(`Answer Correctness: ${(metricValues.answer_correctness * 100).toFixed(1)}%`);
                 }
+                if (metricValues.ground_truth_validity !== undefined) {
+                    metricDisplay.push(`GT Validity: ${(metricValues.ground_truth_validity * 100).toFixed(1)}%`);
+                }
+                if (metricValues.answer_completeness !== undefined) {
+                    metricDisplay.push(`Completeness: ${(metricValues.answer_completeness * 100).toFixed(1)}%`);
+                }
+                if (metricValues.retrieved_chunk_count !== undefined) {
+                    metricDisplay.push(`Retrieved: ${metricValues.retrieved_chunk_count.toFixed(1)}`);
+                }
+                if (metricValues.sent_to_llm_chunk_count !== undefined) {
+                    metricDisplay.push(`Sent to LLM: ${metricValues.sent_to_llm_chunk_count.toFixed(1)}`);
+                }
+                if (metricValues.used_in_answer_chunk_count !== undefined) {
+                    metricDisplay.push(`Used: ${metricValues.used_in_answer_chunk_count.toFixed(1)}`);
+                }
+                if (metricValues.total_chunks_used !== undefined) {
+                    metricDisplay.push(`Total Used: ${metricValues.total_chunks_used.toFixed(1)}`);
+                }
+                if (metricValues.best_support_rank !== undefined) {
+                    metricDisplay.push(`Support Rank: ${metricValues.best_support_rank.toFixed(1)}`);
+                }
+                
+                content += metricDisplay.join(', ');
                 content += `</small>
                     </div>
                 `;
