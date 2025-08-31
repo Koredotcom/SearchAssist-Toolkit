@@ -4218,6 +4218,8 @@ body.modal-open {
     font-style: italic;
 }
 
+/* Recommendation action buttons removed */
+
 .insight-item.recommendation {
     margin-bottom: 8px;
     padding: 12px;

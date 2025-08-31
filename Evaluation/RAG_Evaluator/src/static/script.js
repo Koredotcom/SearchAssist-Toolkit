@@ -2772,11 +2772,11 @@ class RAGEvaluatorUI {
         `;
 
         // Schedule comprehensive chart creation after DOM update
-        if (hasEvaluationMetrics) {
-            setTimeout(() => {
-                this.createComprehensiveAnalysis(detailedResults, sheetId, ragasMetrics, llmMetrics, cragMetrics);
-                this.setupAnalysisTabs(sheetId);
-            }, 100);
+                    if (hasEvaluationMetrics) {
+                setTimeout(() => {
+                    this.createComprehensiveAnalysis(detailedResults, sheetId, ragasMetrics, llmMetrics, cragMetrics);
+                    this.setupAnalysisTabs(sheetId);
+                }, 100);
         }
 
         return tableHTML;
@@ -3677,7 +3677,218 @@ class RAGEvaluatorUI {
     }
 
     generateDynamicRecommendations(analysis) {
-        console.log('🔍 Generating dynamic recommendations based on evaluation rules');
+        console.log('🤖 Generating comprehensive dynamic recommendations...');
+        
+        try {
+            // Prepare comprehensive analysis data
+            const analysisSummary = this.prepareAnalysisSummary(analysis);
+            
+            // Generate intelligent recommendations based on all available data
+            const intelligentRecommendations = this.generateIntelligentRecommendations(analysisSummary);
+            
+            // Generate enhanced analysis recommendations (NEW)
+            const enhancedRecommendations = this.generateEnhancedRecommendations(analysisSummary);
+            
+            // Combine with rule-based recommendations
+            const ruleBasedRecommendations = this.generateRuleBasedRecommendations(analysis);
+            
+            // Combine all recommendations and apply smart filtering
+            const allRecommendations = [...intelligentRecommendations, ...enhancedRecommendations, ...ruleBasedRecommendations];
+            const filteredRecommendations = this.smartFilterRecommendations(allRecommendations, analysisSummary);
+            
+            return filteredRecommendations;
+            
+        } catch (error) {
+            console.error('❌ Error generating recommendations:', error);
+            // Fallback to rule-based recommendations
+            return this.generateRuleBasedRecommendations(analysis);
+        }
+    }
+
+    prepareAnalysisSummary(analysis) {
+        const summary = {
+            metrics: {},
+            performance: {},
+            correlations: {},
+            chunkAnalysis: {},
+            outliers: {},
+            configuration: {}
+        };
+
+        // Extract metric statistics
+        Object.entries(analysis.statistics).forEach(([metric, stats]) => {
+            summary.metrics[metric] = {
+                mean: stats.mean,
+                median: stats.median,
+                stdDev: stats.stdDev,
+                min: stats.min,
+                max: stats.max,
+                count: stats.count
+            };
+        });
+
+        // Extract performance patterns
+        if (analysis.performance) {
+            summary.performance = {
+                topPerformers: analysis.performance.topPerformers?.length || 0,
+                bottomPerformers: analysis.performance.bottomPerformers?.length || 0,
+                outliers: analysis.performance.outliers?.length || 0
+            };
+        }
+
+        // Extract correlations
+        if (analysis.correlations) {
+            summary.correlations = analysis.correlations;
+        }
+
+        // Extract chunk analysis
+        const extendedMetrics = this.extractExtendedMetrics(analysis);
+        summary.chunkAnalysis = {
+            hasChunkData: this.checkForChunkData(analysis),
+            retrievedChunkCount: extendedMetrics.retrieved_chunk_count,
+            sentToLLMChunkCount: extendedMetrics.sent_to_llm_chunk_count,
+            usedInAnswerChunkCount: extendedMetrics.used_in_answer_chunk_count,
+            totalChunksUsed: extendedMetrics.total_chunks_used,
+            bestSupportRank: extendedMetrics.best_support_rank,
+            chunksUsedTop5: extendedMetrics.chunks_used_top5,
+            chunksUsedTop10: extendedMetrics.chunks_used_top10,
+            chunksUsedTop20: extendedMetrics.chunks_used_top20
+        };
+
+        // Extract configuration info
+        summary.configuration = {
+            totalQueries: analysis.rawData?.length || 0,
+            evaluationMethods: Object.keys(analysis.statistics).filter(metric => 
+                metric.toLowerCase().includes('ragas') || 
+                metric.toLowerCase().includes('llm') || 
+                metric.toLowerCase().includes('crag')
+            )
+        };
+
+        console.log('📊 Analysis summary prepared:', summary);
+        return summary;
+    }
+
+    async generateLLMRecommendations(analysisSummary) {
+        const prompt = this.buildRecommendationPrompt(analysisSummary);
+        
+        try {
+            // Use OpenAI API to generate recommendations
+            const response = await this.callOpenAIAPI(prompt);
+            return this.parseLLMRecommendations(response);
+        } catch (error) {
+            console.error('❌ Error calling OpenAI API:', error);
+            throw error;
+        }
+    }
+
+    buildRecommendationPrompt(analysisSummary) {
+        // Use the comprehensive prompt template from prompts.json
+        return `You are an expert RAG system analyst and consultant with deep expertise in Retrieval-Augmented Generation systems, evaluation methodologies, and performance optimization. Your role is to analyze comprehensive evaluation data and provide detailed, actionable recommendations for improving RAG system performance. You understand the relationships between different metrics, system components, and optimization strategies.
+
+Based on the following comprehensive RAG system evaluation data, provide detailed, actionable recommendations for improving system performance.
+
+📊 **EVALUATION DATA:**
+${JSON.stringify(analysisSummary, null, 2)}
+
+🎯 **TASK:** Generate 5-8 specific, actionable recommendations that cover:
+
+1. **Retrieval Quality Improvements** - Based on context relevancy, chunk utilization, and support rank
+2. **Answer Quality Enhancements** - Based on answer correctness, completeness, and relevancy
+3. **System Efficiency Optimizations** - Based on chunk counts, processing patterns, and resource usage
+4. **Configuration Adjustments** - Specific settings or parameters to modify
+5. **Next Steps** - Prioritized action items for immediate implementation
+
+📋 **REQUIREMENTS:**
+- Each recommendation should be specific and actionable
+- Include priority levels (High/Medium/Low)
+- Provide concrete next steps
+- Consider the relationship between different metrics
+- Focus on practical improvements that can be implemented
+- Use emojis for visual clarity
+
+📝 **FORMAT:** Return a JSON array of recommendation objects:
+\`\`\`json
+[
+  {
+    "priority": "High/Medium/Low",
+    "category": "Retrieval/Answer Quality/Efficiency/Configuration/Next Steps",
+    "title": "Brief title",
+    "description": "Detailed description",
+    "action": "Specific action to take",
+    "impact": "Expected impact",
+    "emoji": "relevant emoji"
+  }
+]
+\`\`\`
+
+🔍 **ANALYSIS FOCUS:**
+- Identify the most critical performance bottlenecks
+- Suggest improvements that will have the highest impact
+- Consider cost-benefit trade-offs
+- Provide recommendations suitable for the current system state
+- Focus on actionable insights that can be implemented immediately
+
+Focus on providing recommendations that will have the most significant impact on system performance and user experience.`;
+    }
+
+
+
+    async callOpenAIAPI(prompt) {
+        // Check if OpenAI API is available
+        if (typeof window !== 'undefined' && window.openai && window.openai.apiKey) {
+            const response = await window.openai.chat.completions.create({
+                model: 'gpt-4',
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'You are an expert RAG system analyst providing actionable recommendations.'
+                    },
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ],
+                temperature: 0.3,
+                max_tokens: 1500
+            });
+
+            return response.choices[0].message.content;
+        } else {
+            // Fallback to local recommendation generation
+            throw new Error('OpenAI API not available, using fallback recommendations');
+        }
+    }
+
+    parseLLMRecommendations(llmResponse) {
+        try {
+            const recommendations = JSON.parse(llmResponse);
+            return recommendations.map(rec => 
+                `${rec.emoji} **${rec.priority} Priority - ${rec.category}**: ${rec.title} - ${rec.description} **Action**: ${rec.action} **Impact**: ${rec.impact}`
+            );
+        } catch (error) {
+            console.error('❌ Error parsing LLM recommendations:', error);
+            // Fallback: try to extract recommendations from text
+            return this.extractRecommendationsFromText(llmResponse);
+        }
+    }
+
+    extractRecommendationsFromText(text) {
+        // Fallback method to extract recommendations from text
+        const lines = text.split('\n').filter(line => line.trim().length > 0);
+        const recommendations = [];
+        
+        lines.forEach(line => {
+            if (line.includes('recommend') || line.includes('improve') || line.includes('optimize') || line.includes('adjust')) {
+                recommendations.push(`💡 ${line.trim()}`);
+            }
+        });
+        
+        return recommendations.length > 0 ? recommendations : ['💡 Review system configuration and retest with different parameters'];
+    }
+
+    generateRuleBasedRecommendations(analysis) {
+        console.log('🔍 Generating rule-based recommendations based on evaluation rules');
         
         // Define evaluation rules configuration
         const evaluationRules = [
@@ -6644,10 +6855,311 @@ class RAGEvaluatorUI {
 
         element.innerHTML = content;
     }
+
+    generateIntelligentRecommendations(analysisSummary) {
+        console.log('🧠 Generating intelligent recommendations based on comprehensive analysis...');
+        
+        const recommendations = [];
+        const { metrics, performance, chunkAnalysis, configuration } = analysisSummary;
+        
+        // Generate recommendations based on available metrics
+        Object.entries(metrics).forEach(([metricName, stats]) => {
+            const score = stats.mean;
+            
+            if (score < 0.6) {
+                recommendations.push(`🔍 **High Priority**: ${metricName} needs improvement (${(score * 100).toFixed(1)}%) - Review system configuration and optimize for better performance.`);
+            } else if (score < 0.8) {
+                recommendations.push(`📈 **Medium Priority**: ${metricName} has room for improvement (${(score * 100).toFixed(1)}%) - Consider fine-tuning parameters.`);
+            } else {
+                recommendations.push(`✅ **Low Priority**: ${metricName} performing well (${(score * 100).toFixed(1)}%) - Maintain current configuration.`);
+            }
+        });
+        
+        // Add chunk-specific recommendations
+        if (chunkAnalysis.hasChunkData) {
+            if (chunkAnalysis.retrievedChunkCount > 15) {
+                recommendations.push(`⚡ **Medium Priority**: High retrieval count (${chunkAnalysis.retrievedChunkCount.toFixed(1)} chunks) - Consider optimizing retrieval strategy for efficiency.`);
+            }
+            if (chunkAnalysis.bestSupportRank > 5) {
+                recommendations.push(`🏆 **High Priority**: Poor top-rank retrieval (rank ${chunkAnalysis.bestSupportRank}) - Improve ranking algorithm or increase retrieval count.`);
+            }
+        } else {
+            recommendations.push(`📊 **Medium Priority**: Enable chunk tracking for detailed efficiency analysis and optimization insights.`);
+        }
+        
+        // Add configuration recommendations
+        if (configuration.evaluationMethods.length < 2) {
+            recommendations.push(`🔧 **Medium Priority**: Limited evaluation coverage (${configuration.evaluationMethods.length} method(s)) - Enable additional evaluation methods for comprehensive analysis.`);
+        }
+        
+        // Add performance recommendations
+        if (performance.outliers > 0) {
+            recommendations.push(`📊 **Medium Priority**: ${performance.outliers} performance outliers detected - Review and investigate unusual patterns.`);
+        }
+        
+        console.log('✅ Generated intelligent recommendations:', recommendations.length);
+        return recommendations;
+    }
+
+    // NEW: Enhanced recommendation analysis functions
+    generateEnhancedRecommendations(analysisSummary) {
+        console.log('🚀 Generating enhanced analysis recommendations...');
+        
+        const recommendations = [];
+        const { metrics, performance, chunkAnalysis, configuration } = analysisSummary;
+        
+        // 1. Cross-metric correlation analysis
+        const correlationInsights = this.analyzeMetricCorrelations(metrics);
+        recommendations.push(...correlationInsights);
+        
+        // 2. Performance distribution analysis
+        const distributionInsights = this.analyzePerformanceDistribution(metrics);
+        recommendations.push(...distributionInsights);
+        
+        // 3. Efficiency optimization insights
+        const efficiencyInsights = this.analyzeEfficiencyPatterns(chunkAnalysis, metrics);
+        recommendations.push(...efficiencyInsights);
+        
+        // 4. Configuration optimization
+        const configInsights = this.analyzeConfigurationOptimization(configuration, metrics);
+        recommendations.push(...configInsights);
+        
+        // 5. Data quality insights
+        const dataQualityInsights = this.analyzeDataQuality(analysisSummary);
+        recommendations.push(...dataQualityInsights);
+        
+        console.log('✅ Generated enhanced recommendations:', recommendations.length);
+        return recommendations;
+    }
+
+    analyzeMetricCorrelations(metrics) {
+        const recommendations = [];
+        const metricEntries = Object.entries(metrics);
+        
+        // Find potential correlations between metrics
+        for (let i = 0; i < metricEntries.length; i++) {
+            for (let j = i + 1; j < metricEntries.length; j++) {
+                const [metric1, stats1] = metricEntries[i];
+                const [metric2, stats2] = metricEntries[j];
+                
+                const score1 = stats1.mean;
+                const score2 = stats2.mean;
+                
+                // Detect inverse relationships
+                if (score1 < 0.6 && score2 > 0.8) {
+                    recommendations.push(`🔄 **Medium Priority**: ${metric1} (${(score1 * 100).toFixed(1)}%) and ${metric2} (${(score2 * 100).toFixed(1)}%) show inverse relationship - consider balancing optimization efforts.`);
+                }
+                
+                // Detect both poor performance
+                if (score1 < 0.6 && score2 < 0.6) {
+                    recommendations.push(`🚨 **High Priority**: Both ${metric1} and ${metric2} need attention - may indicate systemic issues requiring comprehensive review.`);
+                }
+            }
+        }
+        
+        return recommendations;
+    }
+
+    analyzePerformanceDistribution(metrics) {
+        const recommendations = [];
+        
+        Object.entries(metrics).forEach(([metricName, stats]) => {
+            const { mean, stdDev, min, max } = stats;
+            const variance = stdDev / mean; // Coefficient of variation
+            
+            // High variance indicates inconsistent performance
+            if (variance > 0.3) {
+                recommendations.push(`📊 **Medium Priority**: ${metricName} shows high variability (${(variance * 100).toFixed(1)}% CV) - consider standardizing inputs or improving consistency.`);
+            }
+            
+            // Large gap between min and max indicates potential for optimization
+            if ((max - min) > 0.4) {
+                recommendations.push(`🎯 **Medium Priority**: ${metricName} has wide performance range (${(min * 100).toFixed(1)}%-${(max * 100).toFixed(1)}%) - investigate best-performing cases for optimization insights.`);
+            }
+        });
+        
+        return recommendations;
+    }
+
+    analyzeEfficiencyPatterns(chunkAnalysis, metrics) {
+        const recommendations = [];
+        
+        if (!chunkAnalysis.hasChunkData) return recommendations;
+        
+        const { retrievedChunkCount, sentToLLMChunkCount, usedInAnswerChunkCount, bestSupportRank } = chunkAnalysis;
+        
+        // Analyze chunk utilization efficiency
+        if (retrievedChunkCount && usedInAnswerChunkCount) {
+            const utilizationRate = usedInAnswerChunkCount / retrievedChunkCount;
+            
+            if (utilizationRate < 0.3) {
+                recommendations.push(`⚡ **High Priority**: Low chunk utilization (${(utilizationRate * 100).toFixed(1)}%) - optimize retrieval precision or reduce chunk count.`);
+            } else if (utilizationRate > 0.8) {
+                recommendations.push(`📈 **Low Priority**: Excellent chunk utilization (${(utilizationRate * 100).toFixed(1)}%) - system is efficiently using retrieved context.`);
+            }
+        }
+        
+        // Analyze processing efficiency
+        if (sentToLLMChunkCount && retrievedChunkCount) {
+            const processingRate = sentToLLMChunkCount / retrievedChunkCount;
+            
+            if (processingRate < 0.5) {
+                recommendations.push(`🔍 **Medium Priority**: Low processing rate (${(processingRate * 100).toFixed(1)}%) - consider increasing chunks sent to LLM for better context.`);
+            }
+        }
+        
+        // Analyze support rank patterns
+        if (bestSupportRank) {
+            if (bestSupportRank > 10) {
+                recommendations.push(`🏆 **High Priority**: Poor support ranking (rank ${bestSupportRank}) - critical need to improve retrieval relevance scoring.`);
+            } else if (bestSupportRank > 5) {
+                recommendations.push(`📊 **Medium Priority**: Suboptimal support ranking (rank ${bestSupportRank}) - consider re-ranking or expanding retrieval.`);
+            }
+        }
+        
+        return recommendations;
+    }
+
+    analyzeConfigurationOptimization(configuration, metrics) {
+        const recommendations = [];
+        
+        // Analyze evaluation coverage
+        const evaluationMethods = configuration.evaluationMethods || [];
+        const hasRAGAS = evaluationMethods.some(m => m.toLowerCase().includes('ragas'));
+        const hasLLM = evaluationMethods.some(m => m.toLowerCase().includes('llm'));
+        const hasCRAG = evaluationMethods.some(m => m.toLowerCase().includes('crag'));
+        
+        if (!hasRAGAS && !hasLLM && !hasCRAG) {
+            recommendations.push(`🔧 **High Priority**: No evaluation methods detected - enable RAGAS, LLM, or CRAG evaluation for comprehensive analysis.`);
+        } else if (evaluationMethods.length === 1) {
+            recommendations.push(`📊 **Medium Priority**: Single evaluation method (${evaluationMethods[0]}) - consider adding complementary evaluation methods for broader insights.`);
+        }
+        
+        // Analyze dataset size
+        const totalQueries = configuration.totalQueries || 0;
+        if (totalQueries < 10) {
+            recommendations.push(`📈 **Medium Priority**: Small dataset (${totalQueries} queries) - consider larger evaluation set for more reliable insights.`);
+        } else if (totalQueries > 100) {
+            recommendations.push(`✅ **Low Priority**: Large dataset (${totalQueries} queries) - comprehensive evaluation provides reliable insights.`);
+        }
+        
+        return recommendations;
+    }
+
+    analyzeDataQuality(analysisSummary) {
+        const recommendations = [];
+        const { metrics, performance } = analysisSummary;
+        
+        // Check for data completeness
+        const metricCount = Object.keys(metrics).length;
+        if (metricCount < 3) {
+            recommendations.push(`📊 **Medium Priority**: Limited metrics (${metricCount}) - consider enabling more evaluation metrics for comprehensive analysis.`);
+        }
+        
+        // Check for performance outliers
+        if (performance.outliers > 0) {
+            const outlierPercentage = (performance.outliers / (analysisSummary.configuration.totalQueries || 1)) * 100;
+            
+            if (outlierPercentage > 20) {
+                recommendations.push(`🚨 **High Priority**: High outlier rate (${outlierPercentage.toFixed(1)}%) - investigate data quality and system stability issues.`);
+            } else {
+                recommendations.push(`📊 **Medium Priority**: ${performance.outliers} outliers detected - review unusual cases for optimization opportunities.`);
+            }
+        }
+        
+        // Check for metric consistency
+        const metricValues = Object.values(metrics).map(m => m.mean);
+        const avgMetric = metricValues.reduce((a, b) => a + b, 0) / metricValues.length;
+        const metricVariance = metricValues.reduce((sum, val) => sum + Math.pow(val - avgMetric, 2), 0) / metricValues.length;
+        
+        if (metricVariance > 0.1) {
+            recommendations.push(`📈 **Medium Priority**: High metric variance detected - consider balancing optimization across all metrics for consistent performance.`);
+        }
+        
+        return recommendations;
+    }
+
+    // NEW: Smart filtering to avoid overwhelming users
+    smartFilterRecommendations(recommendations, analysisSummary) {
+        console.log('🎯 Applying smart filtering to recommendations...');
+        
+        // Remove duplicates and similar recommendations
+        const uniqueRecommendations = this.removeDuplicateRecommendations(recommendations);
+        
+        // Prioritize by importance and system context
+        const prioritizedRecommendations = this.prioritizeRecommendations(uniqueRecommendations, analysisSummary);
+        
+        // Limit to most impactful recommendations (max 12-15)
+        const maxRecommendations = 15;
+        const finalRecommendations = prioritizedRecommendations.slice(0, maxRecommendations);
+        
+        console.log(`✅ Filtered to ${finalRecommendations.length} recommendations from ${recommendations.length} total`);
+        return finalRecommendations;
+    }
+
+    removeDuplicateRecommendations(recommendations) {
+        const uniqueRecommendations = [];
+        const seenKeywords = new Set();
+        
+        recommendations.forEach(rec => {
+            // Extract key concepts from recommendation
+            const keywords = rec.toLowerCase()
+                .replace(/[^\w\s]/g, ' ')
+                .split(/\s+/)
+                .filter(word => word.length > 3)
+                .slice(0, 5)
+                .join(' ');
+            
+            if (!seenKeywords.has(keywords)) {
+                seenKeywords.add(keywords);
+                uniqueRecommendations.push(rec);
+            }
+        });
+        
+        return uniqueRecommendations;
+    }
+
+    prioritizeRecommendations(recommendations, analysisSummary) {
+        const { metrics, configuration } = analysisSummary;
+        
+        // Score each recommendation based on priority and relevance
+        const scoredRecommendations = recommendations.map(rec => {
+            let score = 0;
+            
+            // Priority scoring
+            if (rec.includes('**High Priority**')) score += 10;
+            else if (rec.includes('**Medium Priority**')) score += 5;
+            else if (rec.includes('**Low Priority**')) score += 2;
+            
+            // Critical issue scoring
+            if (rec.includes('🚨') || rec.includes('critical') || rec.includes('systemic')) score += 5;
+            
+            // Relevance to current system state
+            if (rec.includes('chunk') && !analysisSummary.chunkAnalysis.hasChunkData) score += 3;
+            if (rec.includes('evaluation') && configuration.evaluationMethods.length < 2) score += 3;
+            if (rec.includes('dataset') && configuration.totalQueries < 20) score += 2;
+            
+            // Performance impact scoring
+            const hasLowPerformance = Object.values(metrics).some(stats => stats.mean < 0.6);
+            if (hasLowPerformance && rec.includes('improvement')) score += 3;
+            
+            return { recommendation: rec, score };
+        });
+        
+        // Sort by score (highest first)
+        scoredRecommendations.sort((a, b) => b.score - a.score);
+        
+        return scoredRecommendations.map(item => item.recommendation);
+    }
+
+    // NEW: Enhanced UI functions for recommendation actions
+    // Modal functionality removed
 }
+
+// Modal functionality removed
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🌐 DOM loaded, initializing RAG Evaluator UI...');
-    new RAGEvaluatorUI();
+    window.ragEvaluatorUI = new RAGEvaluatorUI();
 }); 

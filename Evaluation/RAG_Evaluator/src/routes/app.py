@@ -1,5 +1,6 @@
 import sys
 import os
+import tempfile
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
