@@ -608,16 +608,25 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
                 # Create a DataFrame from chunk statistics
                 chunk_stats_df = pd.DataFrame(chunk_statistics_list)
                 
+                # Debug: Log chunk statistics info
+                print(f"📊 Chunk statistics DataFrame shape: {chunk_stats_df.shape}")
+                print(f"📊 Chunk statistics columns: {list(chunk_stats_df.columns)}")
+                if len(chunk_stats_df) > 0:
+                    print(f"📊 Sample chunk statistics row: {chunk_stats_df.iloc[0].to_dict()}")
+                
                 # Ensure the chunk statistics DataFrame has the same number of rows as final_results
                 if len(chunk_stats_df) == len(final_results):
                     # Add chunk statistics columns to final results
                     for col in chunk_stats_df.columns:
                         final_results[col] = chunk_stats_df[col].values
                     print(f"✅ Added {len(chunk_stats_df.columns)} chunk statistics columns to final results")
+                    print(f"📊 Final results columns after adding chunk stats: {list(final_results.columns)}")
                 else:
                     print(f"⚠️ Chunk statistics length ({len(chunk_stats_df)}) doesn't match final results length ({len(final_results)})")
             except Exception as e:
                 print(f"⚠️ Error adding chunk statistics: {e}")
+                import traceback
+                traceback.print_exc()
         else:
             print("ℹ️ No chunk statistics available to add")
 

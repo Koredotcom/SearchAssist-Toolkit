@@ -393,7 +393,7 @@ class ChunkStatisticsProcessor:
             support_metrics = stats.get('support_metrics', {})
             chunk_distribution = stats.get('chunk_distribution', {})
             
-            return {
+            formatted_stats = {
                 'Retrieved Chunk IDs': json.dumps(stats.get('retrieved_chunk_ids', []), separators=(',', ':')),
                 'Retrieved Chunk Count': stats.get('retrieved_chunk_count', 0),
                 'Sent to LLM Chunk IDs': json.dumps(stats.get('sent_to_llm_chunk_ids', []), separators=(',', ':')),
@@ -408,6 +408,12 @@ class ChunkStatisticsProcessor:
                 'Used Chunk Ranks': json.dumps(chunk_distribution.get('used_chunk_ranks', []), separators=(',', ':')),
                 'Total Chunks Used': chunk_distribution.get('total_chunks_used', 0)
             }
+            
+            # Add debug logging
+            logger.debug(f"Formatted chunk statistics: {formatted_stats}")
+            logger.info(f"Chunk statistics formatted successfully with {len(formatted_stats)} columns")
+            
+            return formatted_stats
         except Exception as e:
             logger.error(f"Error formatting chunk statistics: {e}")
             return ChunkStatisticsProcessor._create_empty_excel_format()

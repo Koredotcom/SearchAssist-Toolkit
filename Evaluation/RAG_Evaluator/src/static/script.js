@@ -2835,9 +2835,33 @@ class RAGEvaluatorUI {
         if (filteredMetrics.length === 0) {
             console.log('⚠️ No evaluation config found or no methods enabled, including all metrics with data');
             const allPossibleMetrics = [...ragasMetrics, ...llmMetrics, ...cragMetrics];
+            
+            // Get all available columns from the data
+            const availableColumns = detailedResults.length > 0 ? Object.keys(detailedResults[0]) : [];
+            console.log('📊 Available columns in data:', availableColumns);
+            
+            // Filter metrics that exist in the data
             filteredMetrics = allPossibleMetrics.filter(metric => 
                 detailedResults.some(row => row[metric] !== undefined && row[metric] !== null && row[metric] !== '')
             );
+            
+            // Also include any chunk-related columns that might not be in the standard metrics
+            const chunkColumns = availableColumns.filter(col => 
+                col.toLowerCase().includes('chunk') || 
+                col.toLowerCase().includes('retrieved') || 
+                col.toLowerCase().includes('sent') || 
+                col.toLowerCase().includes('used') ||
+                col.toLowerCase().includes('support') ||
+                col.toLowerCase().includes('rank') ||
+                col.toLowerCase().includes('top') ||
+                col.toLowerCase().includes('count')
+            );
+            
+            console.log('📊 Found chunk-related columns:', chunkColumns);
+            filteredMetrics = [...filteredMetrics, ...chunkColumns];
+            
+            // Remove duplicates
+            filteredMetrics = [...new Set(filteredMetrics)];
         }
         
         console.log('🎯 Final filtered metrics for charts:', filteredMetrics);
@@ -2881,6 +2905,13 @@ class RAGEvaluatorUI {
     analyzeEvaluationData(detailedResults, allMetrics) {
         console.log('🔍 Analyzing evaluation data with metrics:', allMetrics);
         console.log('🔍 Raw detailed results for this sheet:', detailedResults);
+        
+        // Debug: Log all available columns in the data
+        if (detailedResults.length > 0) {
+            const sampleRow = detailedResults[0];
+            console.log('📊 Available columns in data:', Object.keys(sampleRow));
+            console.log('📊 Sample row data:', sampleRow);
+        }
         
         const analysis = {
             metrics: allMetrics,
@@ -3096,8 +3127,11 @@ class RAGEvaluatorUI {
         console.log('✅ Generated insights:', insights);
         
         // Add guidance on enabling chunk metrics
-        if (!this.checkForChunkData(analysis)) {
+        if (!hasChunkData) {
+            console.log('⚠️ No chunk data detected, adding guidance');
             this.addChunkMetricsGuidance(insights);
+        } else {
+            console.log('✅ Chunk data detected, skipping guidance');
         }
     }
 
@@ -3115,40 +3149,79 @@ class RAGEvaluatorUI {
         // Add guidance to recommendations if available
         if (insights.recommendations) {
             insights.recommendations.push('🔧 Enable chunk tracking for detailed retrieval analysis');
+            insights.recommendations.push('🔧 Use Search API option to get chunk-level data');
+            insights.recommendations.push('🔧 Ensure your RAG system provides chunk metadata');
         }
         
         console.log('📋 Chunk metrics guidance:', guidance);
+        
+        // Also add a more detailed explanation
+        const detailedGuidance = {
+            'How to Enable Chunk Analysis': [
+                '1. Check "Use Search API" in the configuration',
+                '2. Ensure your RAG system returns chunk metadata',
+                '3. Look for columns like "Retrieved Chunk Count", "Total Chunks Used" in results',
+                '4. Chunk analysis provides insights into retrieval efficiency and quality'
+            ]
+        };
+        
+        console.log('📋 Detailed chunk guidance:', detailedGuidance);
     }
 
     checkForChunkData(analysis) {
-        const chunkKeywords = ['chunk', 'retrieved', 'sent', 'used', 'support', 'rank'];
-        const availableMetrics = Object.keys(analysis.statistics);
+        const chunkKeywords = ['chunk', 'retrieved', 'sent', 'used', 'support', 'rank', 'top', 'count'];
         
+        // Check in statistics (processed metrics)
+        const availableMetrics = Object.keys(analysis.statistics);
         const chunkMetrics = availableMetrics.filter(metric => 
             chunkKeywords.some(keyword => metric.toLowerCase().includes(keyword))
         );
         
-        console.log('🔍 Chunk-related metrics found:', chunkMetrics);
-        console.log('📊 All available metrics:', availableMetrics);
+        console.log('🔍 Chunk-related metrics found in statistics:', chunkMetrics);
+        console.log('📊 All available metrics in statistics:', availableMetrics);
+        
+        // Also check in raw data columns (unprocessed data)
+        const rawDataColumns = analysis.rawData && analysis.rawData.length > 0 ? Object.keys(analysis.rawData[0]) : [];
+        const chunkColumns = rawDataColumns.filter(col => 
+            chunkKeywords.some(keyword => col.toLowerCase().includes(keyword))
+        );
+        
+        console.log('🔍 Chunk-related columns found in raw data:', chunkColumns);
+        console.log('📊 All available columns in raw data:', rawDataColumns);
         
         // Also check for any metrics that might contain chunk information
         const potentialChunkMetrics = availableMetrics.filter(metric => 
             metric.toLowerCase().includes('id') || 
             metric.toLowerCase().includes('count') ||
-            metric.toLowerCase().includes('total')
+            metric.toLowerCase().includes('total') ||
+            metric.toLowerCase().includes('used') ||
+            metric.toLowerCase().includes('top')
         );
         
         if (potentialChunkMetrics.length > 0) {
             console.log('🔍 Potential chunk-related metrics:', potentialChunkMetrics);
         }
         
-        return chunkMetrics.length > 0;
+        // More comprehensive check - look for any metrics that could be chunk-related
+        const hasChunkData = chunkMetrics.length > 0 || 
+                           chunkColumns.length > 0 ||
+                           potentialChunkMetrics.some(metric => 
+                               metric.toLowerCase().includes('chunk') ||
+                               metric.toLowerCase().includes('retrieved') ||
+                               metric.toLowerCase().includes('sent') ||
+                               metric.toLowerCase().includes('used')
+                           );
+        
+        console.log('📊 Final chunk data detection result:', hasChunkData);
+        console.log('📊 Summary - Chunk metrics:', chunkMetrics.length, 'Chunk columns:', chunkColumns.length);
+        return hasChunkData;
     }
 
     extractExtendedMetrics(analysis) {
         const metrics = {};
         
         console.log('🔍 Available metrics in analysis.statistics:', Object.keys(analysis.statistics));
+        console.log('🔍 Available columns in raw data:', analysis.rawData && analysis.rawData.length > 0 ? Object.keys(analysis.rawData[0]) : []);
         
         // Extended metric mappings - updated to match actual data structure
         const metricMappings = {
@@ -3191,6 +3264,7 @@ class RAGEvaluatorUI {
 
             console.log(`🔍 Looking for ${standardName} in possible names:`, possibleNames);
 
+            // First try exact matches in statistics
             possibleNames.forEach(metricName => {
                 console.log(`  Checking ${metricName} in analysis.statistics:`, analysis.statistics[metricName]);
                 if (analysis.statistics[metricName]) {
@@ -3198,10 +3272,85 @@ class RAGEvaluatorUI {
                     if (bestMatch === null || metricName.toLowerCase().includes(standardName.split('_')[0])) {
                         bestMatch = metricName;
                         bestValue = stats.mean;
-                        console.log(`    ✅ Found match: ${metricName} = ${bestValue}`);
+                        console.log(`    ✅ Found match in statistics: ${metricName} = ${bestValue}`);
                     }
                 }
             });
+
+            // If no exact match found in statistics, try raw data columns
+            if (bestValue === null && analysis.rawData && analysis.rawData.length > 0) {
+                const rawDataColumns = Object.keys(analysis.rawData[0]);
+                console.log(`🔍 No exact match found in statistics for ${standardName}, trying raw data columns:`, rawDataColumns);
+                
+                possibleNames.forEach(metricName => {
+                    if (rawDataColumns.includes(metricName)) {
+                        // Calculate mean from raw data
+                        const values = analysis.rawData
+                            .map(row => parseFloat(row[metricName]))
+                            .filter(val => !isNaN(val));
+                        
+                        if (values.length > 0) {
+                            const mean = values.reduce((a, b) => a + b, 0) / values.length;
+                            bestMatch = metricName;
+                            bestValue = mean;
+                            console.log(`    ✅ Found match in raw data: ${metricName} = ${bestValue}`);
+                        }
+                    }
+                });
+            }
+
+            // If still no match found, try partial matching with all available metrics
+            if (bestValue === null) {
+                const availableMetrics = Object.keys(analysis.statistics);
+                console.log(`🔍 No exact match found for ${standardName}, trying partial matching with:`, availableMetrics);
+                
+                availableMetrics.forEach(metricName => {
+                    const metricLower = metricName.toLowerCase();
+                    const standardLower = standardName.toLowerCase();
+                    
+                    // Check if the metric name contains key parts of the standard name
+                    if (metricLower.includes(standardLower.replace(/_/g, ' ')) || 
+                        metricLower.includes(standardLower.replace(/_/g, '')) ||
+                        standardLower.split('_').some(part => metricLower.includes(part))) {
+                        
+                        const stats = analysis.statistics[metricName];
+                        if (stats && stats.mean !== undefined) {
+                            bestMatch = metricName;
+                            bestValue = stats.mean;
+                            console.log(`    ✅ Found partial match: ${metricName} = ${bestValue}`);
+                        }
+                    }
+                });
+            }
+
+            // If still no match, try partial matching in raw data columns
+            if (bestValue === null && analysis.rawData && analysis.rawData.length > 0) {
+                const rawDataColumns = Object.keys(analysis.rawData[0]);
+                console.log(`🔍 No partial match found in statistics for ${standardName}, trying partial matching in raw data:`, rawDataColumns);
+                
+                rawDataColumns.forEach(columnName => {
+                    const columnLower = columnName.toLowerCase();
+                    const standardLower = standardName.toLowerCase();
+                    
+                    // Check if the column name contains key parts of the standard name
+                    if (columnLower.includes(standardLower.replace(/_/g, ' ')) || 
+                        columnLower.includes(standardLower.replace(/_/g, '')) ||
+                        standardLower.split('_').some(part => columnLower.includes(part))) {
+                        
+                        // Calculate mean from raw data
+                        const values = analysis.rawData
+                            .map(row => parseFloat(row[columnName]))
+                            .filter(val => !isNaN(val));
+                        
+                        if (values.length > 0) {
+                            const mean = values.reduce((a, b) => a + b, 0) / values.length;
+                            bestMatch = columnName;
+                            bestValue = mean;
+                            console.log(`    ✅ Found partial match in raw data: ${columnName} = ${bestValue}`);
+                        }
+                    }
+                });
+            }
 
             if (bestValue !== null) {
                 metrics[standardName] = bestValue;
@@ -5895,6 +6044,24 @@ class RAGEvaluatorUI {
                         <span class="status-icon">${hasChunkData ? '✅' : '⚠️'}</span>
                         <span class="status-text">${hasChunkData ? 'Comprehensive chunk analysis available' : 'Basic retrieval analysis - enable chunk tracking for detailed insights'}</span>
                     </div>
+                    ${!hasChunkData ? `
+                    <div class="retrieval-help">
+                        <details>
+                            <summary>How to enable chunk analysis</summary>
+                            <div class="help-content">
+                                <p><strong>To get detailed chunk analysis:</strong></p>
+                                <ol>
+                                    <li>Check "Use Search API" in the configuration</li>
+                                    <li>Ensure your RAG system returns chunk metadata</li>
+                                    <li>Look for columns like "Retrieved Chunk Count", "Total Chunks Used" in results</li>
+                                    <li>Chunk analysis provides insights into retrieval efficiency and quality</li>
+                                </ol>
+                                <p><strong>Available columns in your data:</strong></p>
+                                <code>${analysisData.rawData && analysisData.rawData.length > 0 ? Object.keys(analysisData.rawData[0]).join(', ') : 'No data available'}</code>
+                            </div>
+                        </details>
+                    </div>
+                    ` : ''}
                 </div>
             </div>
         `;
