@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Quality Analysis UI Integration</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="src/static/styles.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-brain"></i>
+                    <div class="logo-text">
+                        <h1>RAG Evaluator</h1>
+                        <p class="subtitle">Quality Analysis UI Test</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Test Results Section -->
+            <section class="card" id="results-section">
+                <div class="card-header">
+                    <i class="fas fa-chart-bar"></i>
+                    <h2>Test Results</h2>
+                    <span class="status-badge success">Completed</span>
+                </div>
+                <div class="card-content">
+                    <div class="results-summary">
+                        <div class="summary-grid">
+                            <div class="summary-item success">
+                                <i class="fas fa-list-ol"></i>
+                                <h3>100</h3>
+                                <p>Total Processed</p>
+                            </div>
+                            <div class="summary-item success">
+                                <i class="fas fa-check-circle"></i>
+                                <h3>95</h3>
+                                <p>Successful</p>
+                            </div>
+                            <div class="summary-item warning">
+                                <i class="fas fa-times-circle"></i>
+                                <h3>5</h3>
+                                <p>Failed</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="results-actions">
+                        <button class="btn-download" id="download-results">
+                            <i class="fas fa-download"></i>
+                            Download Results
+                        </button>
+                        <button class="btn-secondary" id="toggle-quality-analysis">
+                            <i class="fas fa-search"></i>
+                            Show Quality Analysis
+                        </button>
+                    </div>
+
+                    <!-- Quality Analysis Section -->
+                    <div class="quality-analysis-container" id="quality-analysis-container" style="display: none;">
+                        <h4><i class="fas fa-search"></i> Quality Analysis - Unused Chunk Analysis</h4>
+                        
+                        <!-- Quality Analysis Summary -->
+                        <div class="quality-summary" id="quality-summary">
+                            <div class="quality-summary-grid">
+                                <div class="quality-summary-item">
+                                    <i class="fas fa-question-circle"></i>
+                                    <h3 id="total-questions-analyzed">100</h3>
+                                    <p>Total Questions</p>
+                                </div>
+                                <div class="quality-summary-item">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <h3 id="questions-with-unused-chunks">25</h3>
+                                    <p>With Unused Chunks</p>
+                                </div>
+                                <div class="quality-summary-item">
+                                    <i class="fas fa-percentage"></i>
+                                    <h3 id="unused-chunks-percentage">25%</h3>
+                                    <p>Unused Chunks %</p>
+                                </div>
+                                <div class="quality-summary-item">
+                                    <i class="fas fa-chart-pie"></i>
+                                    <h3 id="avg-unused-chunks">3.2</h3>
+                                    <p>Avg Unused/Question</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Category Distribution -->
+                        <div class="category-distribution" id="category-distribution">
+                            <h5><i class="fas fa-sitemap"></i> Issue Categories</h5>
+                            <div class="category-grid" id="category-grid">
+                                <!-- Categories will be populated dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Recommendations -->
+                        <div class="recommendations" id="recommendations">
+                            <h5><i class="fas fa-lightbulb"></i> Recommendations</h5>
+                            <div class="recommendations-list" id="recommendations-list">
+                                <!-- Recommendations will be populated dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Detailed Analysis Table -->
+                        <div class="detailed-analysis" id="detailed-analysis">
+                            <h5><i class="fas fa-table"></i> Detailed Analysis</h5>
+                            <div class="table-container">
+                                <table class="analysis-table" id="analysis-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Query</th>
+                                            <th>Category</th>
+                                            <th>Unused Chunks</th>
+                                            <th>Context Relevance</th>
+                                            <th>Ground Truth Validity</th>
+                                            <th>Context Overload</th>
+                                            <th>Reasoning</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="analysis-table-body">
+                                        <!-- Rows will be populated dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // Test data for quality analysis
+        const testAnalysisData = {
+            summary: {
+                total_questions_analyzed: 100,
+                questions_with_unused_chunks: 25,
+                avg_unused_chunks_per_question: 3.2,
+                category_distribution: {
+                    'context_irrelevant': 12,
+                    'ground_truth_invalid': 5,
+                    'context_overload': 4,
+                    'answer_generation_failure': 2,
+                    'mixed_issues': 2
+                },
+                recommendations: [
+                    "🔍 Reduce chunks sent to LLM to prevent information overload",
+                    "🎯 Improve retrieval relevance by fine-tuning embedding models",
+                    "✅ Review and validate ground truth answers for accuracy",
+                    "🤖 Optimize LLM prompts for better context utilization"
+                ]
+            },
+            analysis_list: [
+                {
+                    query: "What is the capital of France?",
+                    category: "context_irrelevant",
+                    unused_count: 5,
+                    context_relevance_score: 0.3,
+                    ground_truth_validity_score: 0.9,
+                    context_overload_score: 0.4,
+                    reasoning: "Low chunk utilization (30%), suggesting irrelevant context"
+                },
+                {
+                    query: "How does photosynthesis work?",
+                    category: "context_overload",
+                    unused_count: 8,
+                    context_relevance_score: 0.7,
+                    ground_truth_validity_score: 0.8,
+                    context_overload_score: 0.9,
+                    reasoning: "Too many chunks (18) sent to LLM, causing information overload"
+                },
+                {
+                    query: "What is quantum computing?",
+                    category: "ground_truth_invalid",
+                    unused_count: 3,
+                    context_relevance_score: 0.6,
+                    ground_truth_validity_score: 0.4,
+                    context_overload_score: 0.3,
+                    reasoning: "Ground truth validity score (0.40) suggests invalid reference answer"
+                }
+            ]
+        };
+
+        // Test the quality analysis display
+        function testQualityAnalysis() {
+            console.log('🧪 Testing Quality Analysis UI...');
+            
+            // Display category distribution
+            displayCategoryDistribution(testAnalysisData.summary.category_distribution);
+            
+            // Display recommendations
+            displayRecommendations(testAnalysisData.summary.recommendations);
+            
+            // Display detailed analysis table
+            displayDetailedAnalysisTable(testAnalysisData.analysis_list);
+            
+            console.log('✅ Quality Analysis UI test completed');
+        }
+
+        // Display category distribution
+        function displayCategoryDistribution(categoryDistribution) {
+            const categoryGrid = document.getElementById('category-grid');
+            if (!categoryGrid) return;
+            
+            categoryGrid.innerHTML = '';
+            
+            const categoryIcons = {
+                'context_irrelevant': 'fas fa-exclamation-triangle',
+                'ground_truth_invalid': 'fas fa-times-circle',
+                'context_overload': 'fas fa-layer-group',
+                'answer_generation_failure': 'fas fa-robot',
+                'mixed_issues': 'fas fa-random'
+            };
+            
+            const categoryNames = {
+                'context_irrelevant': 'Context Irrelevant',
+                'ground_truth_invalid': 'Ground Truth Invalid',
+                'context_overload': 'Context Overload',
+                'answer_generation_failure': 'Answer Generation Failure',
+                'mixed_issues': 'Mixed Issues'
+            };
+            
+            for (const [category, count] of Object.entries(categoryDistribution)) {
+                const categoryItem = document.createElement('div');
+                categoryItem.className = `category-item ${category}`;
+                
+                const icon = categoryIcons[category] || 'fas fa-question-circle';
+                const name = categoryNames[category] || category;
+                
+                categoryItem.innerHTML = `
+                    <i class="${icon}"></i>
+                    <div class="category-info">
+                        <h6>${name}</h6>
+                        <p>${count} questions affected</p>
+                    </div>
+                `;
+                
+                categoryGrid.appendChild(categoryItem);
+            }
+        }
+
+        // Display recommendations
+        function displayRecommendations(recommendations) {
+            const recommendationsList = document.getElementById('recommendations-list');
+            if (!recommendationsList) return;
+            
+            recommendationsList.innerHTML = '';
+            
+            recommendations.forEach(recommendation => {
+                const recommendationItem = document.createElement('div');
+                recommendationItem.className = 'recommendation-item';
+                
+                recommendationItem.innerHTML = `
+                    <i class="fas fa-lightbulb"></i>
+                    <p>${recommendation}</p>
+                `;
+                
+                recommendationsList.appendChild(recommendationItem);
+            });
+        }
+
+        // Display detailed analysis table
+        function displayDetailedAnalysisTable(analysisList) {
+            const tableBody = document.getElementById('analysis-table-body');
+            if (!tableBody) return;
+            
+            tableBody.innerHTML = '';
+            
+            analysisList.forEach(analysis => {
+                const row = document.createElement('tr');
+                
+                const query = analysis.query && analysis.query.length > 50 
+                    ? analysis.query.substring(0, 50) + '...' 
+                    : analysis.query || 'N/A';
+                
+                row.innerHTML = `
+                    <td title="${analysis.query || 'N/A'}">${query}</td>
+                    <td>
+                        <span class="category-badge ${analysis.category}">
+                            ${formatCategoryName(analysis.category)}
+                        </span>
+                    </td>
+                    <td>${analysis.unused_count || 0}</td>
+                    <td>${formatScore(analysis.context_relevance_score)}</td>
+                    <td>${formatScore(analysis.ground_truth_validity_score)}</td>
+                    <td>${formatScore(analysis.context_overload_score)}</td>
+                    <td title="${analysis.reasoning || 'N/A'}">
+                        ${truncateText(analysis.reasoning || 'N/A', 60)}
+                    </td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Format category name
+        function formatCategoryName(category) {
+            const categoryNames = {
+                'context_irrelevant': 'Context Irrelevant',
+                'ground_truth_invalid': 'Ground Truth Invalid',
+                'context_overload': 'Context Overload',
+                'answer_generation_failure': 'Answer Generation Failure',
+                'mixed_issues': 'Mixed Issues'
+            };
+            
+            return categoryNames[category] || category;
+        }
+
+        // Format score
+        function formatScore(score) {
+            if (score === null || score === undefined || score === 'N/A') {
+                return 'N/A';
+            }
+            
+            if (typeof score === 'number') {
+                return score.toFixed(3);
+            }
+            
+            return score;
+        }
+
+        // Truncate text
+        function truncateText(text, maxLength) {
+            if (!text || text.length <= maxLength) {
+                return text;
+            }
+            
+            return text.substring(0, maxLength) + '...';
+        }
+
+        // Toggle quality analysis
+        function toggleQualityAnalysis() {
+            const qualityContainer = document.getElementById('quality-analysis-container');
+            const toggleButton = document.getElementById('toggle-quality-analysis');
+            
+            if (!qualityContainer || !toggleButton) {
+                console.error('❌ Quality analysis elements not found');
+                return;
+            }
+            
+            const isVisible = qualityContainer.style.display !== 'none';
+            
+            if (isVisible) {
+                qualityContainer.style.display = 'none';
+                toggleButton.innerHTML = '<i class="fas fa-search"></i> Show Quality Analysis';
+                toggleButton.className = 'btn-secondary';
+            } else {
+                qualityContainer.style.display = 'block';
+                toggleButton.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Quality Analysis';
+                toggleButton.className = 'btn-secondary active';
+            }
+            
+            console.log(`🔍 Quality analysis ${isVisible ? 'hidden' : 'shown'}`);
+        }
+
+        // Setup event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Quality Analysis UI Test Loaded');
+            
+            // Setup toggle button
+            const toggleButton = document.getElementById('toggle-quality-analysis');
+            if (toggleButton) {
+                toggleButton.addEventListener('click', toggleQualityAnalysis);
+            }
+            
+            // Test the quality analysis display
+            setTimeout(testQualityAnalysis, 500);
+        });
+    </script>
+</body>
+</html>

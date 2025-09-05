@@ -956,6 +956,7 @@ class RAGEvaluatorUI {
         const buttons = [
             { id: ELEMENTS.DOWNLOAD_RESULTS, handler: () => this.downloadResults(), label: 'Download' },
             { id: ELEMENTS.VIEW_DETAILS, handler: () => this.viewDetails(), label: 'View Details' },
+            { id: 'toggle-quality-analysis', handler: () => this.toggleQualityAnalysis(), label: 'Toggle Quality Analysis' },
             { id: ELEMENTS.NEW_EVALUATION, handler: () => this.resetForNewEvaluation(), label: 'New Evaluation' }
         ];
 
@@ -2154,6 +2155,11 @@ class RAGEvaluatorUI {
             this.setupDirectListeners(); // Ensure buttons work
         }, 100);
         
+        // Display quality analysis if available
+        if (result.unused_chunk_analysis) {
+            this.displayQualityAnalysis(result.unused_chunk_analysis);
+        }
+        
         this.enableForm();
         this.addLogEntry(`✅ Results displayed: ${totalProcessed} queries processed`, 'success');
     }
@@ -2353,6 +2359,259 @@ class RAGEvaluatorUI {
         if (this.currentAnalysis) {
             console.log('📊 Analysis available for enhanced features:', this.currentAnalysis);
         }
+    }
+
+    /**
+     * Display quality analysis results in the UI
+     * @param {Object} analysisData - Unused chunk analysis data
+     */
+    displayQualityAnalysis(analysisData) {
+        console.log('🔍 Displaying quality analysis:', analysisData);
+        
+        const qualityContainer = document.getElementById('quality-analysis-container');
+        if (!qualityContainer) {
+            console.error('❌ Quality analysis container not found');
+            return;
+        }
+
+        // Show the quality analysis container
+        qualityContainer.style.display = 'block';
+        
+        // Show and update the toggle button
+        const toggleButton = document.getElementById('toggle-quality-analysis');
+        if (toggleButton) {
+            toggleButton.style.display = 'inline-flex';
+            toggleButton.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Quality Analysis';
+            toggleButton.className = 'btn-secondary active';
+        }
+        
+        // Extract summary data
+        const summary = analysisData.summary || {};
+        const analysisList = analysisData.analysis_list || [];
+        
+        // Update summary statistics
+        this.updateElement('total-questions-analyzed', summary.total_questions_analyzed || 0);
+        this.updateElement('questions-with-unused-chunks', summary.questions_with_unused_chunks || 0);
+        
+        const percentage = summary.total_questions_analyzed > 0 
+            ? Math.round((summary.questions_with_unused_chunks / summary.total_questions_analyzed) * 100)
+            : 0;
+        this.updateElement('unused-chunks-percentage', `${percentage}%`);
+        
+        this.updateElement('avg-unused-chunks', summary.avg_unused_chunks_per_question || 0);
+        
+        // Display category distribution
+        this.displayCategoryDistribution(summary.category_distribution || {});
+        
+        // Display recommendations
+        this.displayRecommendations(summary.recommendations || []);
+        
+        // Display detailed analysis table
+        this.displayDetailedAnalysisTable(analysisList);
+        
+        console.log('✅ Quality analysis displayed successfully');
+    }
+
+    /**
+     * Display category distribution in the UI
+     * @param {Object} categoryDistribution - Category distribution data
+     */
+    displayCategoryDistribution(categoryDistribution) {
+        const categoryGrid = document.getElementById('category-grid');
+        if (!categoryGrid) return;
+        
+        categoryGrid.innerHTML = '';
+        
+        const categoryIcons = {
+            'context_irrelevant': 'fas fa-exclamation-triangle',
+            'ground_truth_invalid': 'fas fa-times-circle',
+            'context_overload': 'fas fa-layer-group',
+            'answer_generation_failure': 'fas fa-robot',
+            'mixed_issues': 'fas fa-random'
+        };
+        
+        const categoryNames = {
+            'context_irrelevant': 'Context Irrelevant',
+            'ground_truth_invalid': 'Ground Truth Invalid',
+            'context_overload': 'Context Overload',
+            'answer_generation_failure': 'Answer Generation Failure',
+            'mixed_issues': 'Mixed Issues'
+        };
+        
+        for (const [category, count] of Object.entries(categoryDistribution)) {
+            const categoryItem = document.createElement('div');
+            categoryItem.className = `category-item ${category}`;
+            
+            const icon = categoryIcons[category] || 'fas fa-question-circle';
+            const name = categoryNames[category] || category;
+            
+            categoryItem.innerHTML = `
+                <i class="${icon}"></i>
+                <div class="category-info">
+                    <h6>${name}</h6>
+                    <p>${count} questions affected</p>
+                </div>
+            `;
+            
+            categoryGrid.appendChild(categoryItem);
+        }
+    }
+
+    /**
+     * Display recommendations in the UI
+     * @param {Array} recommendations - List of recommendations
+     */
+    displayRecommendations(recommendations) {
+        const recommendationsList = document.getElementById('recommendations-list');
+        if (!recommendationsList) return;
+        
+        recommendationsList.innerHTML = '';
+        
+        if (recommendations.length === 0) {
+            recommendationsList.innerHTML = `
+                <div class="recommendation-item">
+                    <i class="fas fa-check-circle"></i>
+                    <p>No specific recommendations at this time. Your system appears to be performing well.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        recommendations.forEach(recommendation => {
+            const recommendationItem = document.createElement('div');
+            recommendationItem.className = 'recommendation-item';
+            
+            recommendationItem.innerHTML = `
+                <i class="fas fa-lightbulb"></i>
+                <p>${recommendation}</p>
+            `;
+            
+            recommendationsList.appendChild(recommendationItem);
+        });
+    }
+
+    /**
+     * Display detailed analysis table in the UI
+     * @param {Array} analysisList - List of analysis items
+     */
+    displayDetailedAnalysisTable(analysisList) {
+        const tableBody = document.getElementById('analysis-table-body');
+        if (!tableBody) return;
+        
+        tableBody.innerHTML = '';
+        
+        if (analysisList.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" style="text-align: center; color: var(--gray-500);">
+                        <i class="fas fa-info-circle"></i> No detailed analysis data available
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        analysisList.forEach(analysis => {
+            const row = document.createElement('tr');
+            
+            // Truncate query if too long
+            const query = analysis.query && analysis.query.length > 50 
+                ? analysis.query.substring(0, 50) + '...' 
+                : analysis.query || 'N/A';
+            
+            row.innerHTML = `
+                <td title="${analysis.query || 'N/A'}">${query}</td>
+                <td>
+                    <span class="category-badge ${analysis.category}">
+                        ${this.formatCategoryName(analysis.category)}
+                    </span>
+                </td>
+                <td>${analysis.unused_count || 0}</td>
+                <td>${this.formatScore(analysis.context_relevance_score)}</td>
+                <td>${this.formatScore(analysis.ground_truth_validity_score)}</td>
+                <td>${this.formatScore(analysis.context_overload_score)}</td>
+                <td title="${analysis.reasoning || 'N/A'}">
+                    ${this.truncateText(analysis.reasoning || 'N/A', 60)}
+                </td>
+            `;
+            
+            tableBody.appendChild(row);
+        });
+    }
+
+    /**
+     * Format category name for display
+     * @param {string} category - Category string
+     * @returns {string} Formatted category name
+     */
+    formatCategoryName(category) {
+        const categoryNames = {
+            'context_irrelevant': 'Context Irrelevant',
+            'ground_truth_invalid': 'Ground Truth Invalid',
+            'context_overload': 'Context Overload',
+            'answer_generation_failure': 'Answer Generation Failure',
+            'mixed_issues': 'Mixed Issues'
+        };
+        
+        return categoryNames[category] || category;
+    }
+
+    /**
+     * Format score for display
+     * @param {number|string} score - Score value
+     * @returns {string} Formatted score
+     */
+    formatScore(score) {
+        if (score === null || score === undefined || score === 'N/A') {
+            return 'N/A';
+        }
+        
+        if (typeof score === 'number') {
+            return score.toFixed(3);
+        }
+        
+        return score;
+    }
+
+    /**
+     * Truncate text for display
+     * @param {string} text - Text to truncate
+     * @param {number} maxLength - Maximum length
+     * @returns {string} Truncated text
+     */
+    truncateText(text, maxLength) {
+        if (!text || text.length <= maxLength) {
+            return text;
+        }
+        
+        return text.substring(0, maxLength) + '...';
+    }
+
+    /**
+     * Toggle quality analysis section visibility
+     */
+    toggleQualityAnalysis() {
+        const qualityContainer = document.getElementById('quality-analysis-container');
+        const toggleButton = document.getElementById('toggle-quality-analysis');
+        
+        if (!qualityContainer || !toggleButton) {
+            console.error('❌ Quality analysis elements not found');
+            return;
+        }
+        
+        const isVisible = qualityContainer.style.display !== 'none';
+        
+        if (isVisible) {
+            qualityContainer.style.display = 'none';
+            toggleButton.innerHTML = '<i class="fas fa-search"></i> Show Quality Analysis';
+            toggleButton.className = 'btn-secondary';
+        } else {
+            qualityContainer.style.display = 'block';
+            toggleButton.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Quality Analysis';
+            toggleButton.className = 'btn-secondary active';
+        }
+        
+        console.log(`🔍 Quality analysis ${isVisible ? 'hidden' : 'shown'}`);
     }
 
     // Button handlers
@@ -2683,14 +2942,6 @@ class RAGEvaluatorUI {
                                 <div class="chart-card">
                                     <h6>🔍 Retrieval Quality Overview</h6>
                                     <div id="retrieval-overview-${sheetId}" class="retrieval-overview"></div>
-                                </div>
-                                <div class="chart-card">
-                                    <h6>📊 Ground Truth Validity Analysis</h6>
-                                    <canvas id="gt-validity-chart-${sheetId}"></canvas>
-                                </div>
-                                <div class="chart-card">
-                                    <h6>🎯 Answer Completeness Analysis</h6>
-                                    <canvas id="completeness-chart-${sheetId}"></canvas>
                                 </div>
                                 <div class="chart-card">
                                     <h6>📊 Chunk Utilization Distribution</h6>
@@ -6131,9 +6382,7 @@ Focus on providing recommendations that will have the most significant impact on
         // Populate retrieval overview
         this.populateRetrievalOverview(`retrieval-overview-${sheetId}`, analysisData);
         
-        // Create charts for retrieval metrics
-        this.createGroundTruthValidityChart(`gt-validity-chart-${sheetId}`, analysisData);
-        this.createCompletenessChart(`completeness-chart-${sheetId}`, analysisData);
+        // Charts removed - Ground Truth Validity and Answer Completeness pie charts
         
         // Populate insight sections
         this.populateRetrievalInsights(`retrieval-insights-${sheetId}`, analysisData);
@@ -6280,113 +6529,7 @@ Focus on providing recommendations that will have the most significant impact on
         element.innerHTML = content;
     }
 
-    createGroundTruthValidityChart(canvasId, analysisData) {
-        const canvas = document.getElementById(canvasId);
-        if (!canvas) return;
-
-        const extendedMetrics = this.extractExtendedMetrics(analysisData);
-        if (extendedMetrics.ground_truth_validity === undefined) {
-            canvas.parentElement.innerHTML = '<p style="text-align: center; color: #666;">Ground Truth Validity data not available</p>';
-            return;
-        }
-
-        const ctx = canvas.getContext('2d');
-        const gtValidity = extendedMetrics.ground_truth_validity;
-        
-        // Create a gauge chart
-        new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                datasets: [{
-                    data: [gtValidity, 1 - gtValidity],
-                    backgroundColor: [
-                        gtValidity >= 0.9 ? '#10b981' : gtValidity >= 0.8 ? '#059669' : gtValidity >= 0.7 ? '#f59e0b' : '#ef4444',
-                        '#f3f4f6'
-                    ],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '70%',
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { enabled: false }
-                }
-            }
-        });
-        
-        // Add center text
-        const centerText = document.createElement('div');
-        centerText.style.cssText = `
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            font-size: 1.5em;
-            font-weight: bold;
-            color: #374151;
-        `;
-        centerText.innerHTML = `${(gtValidity * 100).toFixed(1)}%`;
-        canvas.parentElement.style.position = 'relative';
-        canvas.parentElement.appendChild(centerText);
-    }
-
-    createCompletenessChart(canvasId, analysisData) {
-        const canvas = document.getElementById(canvasId);
-        if (!canvas) return;
-
-        const extendedMetrics = this.extractExtendedMetrics(analysisData);
-        if (extendedMetrics.answer_completeness === undefined) {
-            canvas.parentElement.innerHTML = '<p style="text-align: center; color: #666;">Answer Completeness data not available</p>';
-            return;
-        }
-
-        const ctx = canvas.getContext('2d');
-        const completeness = extendedMetrics.answer_completeness;
-        
-        // Create a gauge chart
-        new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                datasets: [{
-                    data: [completeness, 1 - completeness],
-                    backgroundColor: [
-                        completeness >= 0.9 ? '#10b981' : completeness >= 0.8 ? '#059669' : completeness >= 0.7 ? '#f59e0b' : '#ef4444',
-                        '#f3f4f6'
-                    ],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '70%',
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { enabled: false }
-                }
-            }
-        });
-        
-        // Add center text
-        const centerText = document.createElement('div');
-        centerText.style.cssText = `
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            font-size: 1.5em;
-            font-weight: bold;
-            color: #374151;
-        `;
-        centerText.innerHTML = `${(completeness * 100).toFixed(1)}%`;
-        canvas.parentElement.style.position = 'relative';
-        canvas.parentElement.appendChild(centerText);
-    }
+    // Chart creation functions removed - Ground Truth Validity and Answer Completeness pie charts
 
     populateRetrievalInsights(elementId, analysisData) {
         const element = document.getElementById(elementId);

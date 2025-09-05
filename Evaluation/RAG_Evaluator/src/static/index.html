@@ -502,6 +502,10 @@
                             <i class="fas fa-eye"></i>
                             View Details
                         </button>
+                        <button class="btn-secondary" id="toggle-quality-analysis" style="display: none;">
+                            <i class="fas fa-search"></i>
+                            Show Quality Analysis
+                        </button>
                         <button class="btn-secondary" id="new-evaluation">
                             <i class="fas fa-plus"></i>
                             New Evaluation
@@ -511,6 +515,76 @@
                     <div class="metrics-container" id="metrics-container">
                         <h4><i class="fas fa-chart-line"></i> Evaluation Metrics</h4>
                         <canvas id="metrics-chart"></canvas>
+                    </div>
+
+                    <!-- Quality Analysis Section -->
+                    <div class="quality-analysis-container" id="quality-analysis-container" style="display: none;">
+                        <h4><i class="fas fa-search"></i> Quality Analysis - Unused Chunk Analysis</h4>
+                        
+                        <!-- Quality Analysis Summary -->
+                        <div class="quality-summary" id="quality-summary">
+                            <div class="quality-summary-grid">
+                                <div class="quality-summary-item">
+                                    <i class="fas fa-question-circle"></i>
+                                    <h3 id="total-questions-analyzed">0</h3>
+                                    <p>Total Questions</p>
+                                </div>
+                                <div class="quality-summary-item">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <h3 id="questions-with-unused-chunks">0</h3>
+                                    <p>With Unused Chunks</p>
+                                </div>
+                                <div class="quality-summary-item">
+                                    <i class="fas fa-percentage"></i>
+                                    <h3 id="unused-chunks-percentage">0%</h3>
+                                    <p>Unused Chunks %</p>
+                                </div>
+                                <div class="quality-summary-item">
+                                    <i class="fas fa-chart-pie"></i>
+                                    <h3 id="avg-unused-chunks">0</h3>
+                                    <p>Avg Unused/Question</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Category Distribution -->
+                        <div class="category-distribution" id="category-distribution">
+                            <h5><i class="fas fa-sitemap"></i> Issue Categories</h5>
+                            <div class="category-grid" id="category-grid">
+                                <!-- Categories will be populated dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Recommendations -->
+                        <div class="recommendations" id="recommendations">
+                            <h5><i class="fas fa-lightbulb"></i> Recommendations</h5>
+                            <div class="recommendations-list" id="recommendations-list">
+                                <!-- Recommendations will be populated dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Detailed Analysis Table -->
+                        <div class="detailed-analysis" id="detailed-analysis">
+                            <h5><i class="fas fa-table"></i> Detailed Analysis</h5>
+                            <div class="table-container">
+                                <table class="analysis-table" id="analysis-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Query</th>
+                                            <th>Category</th>
+                                            <th>Unused Chunks</th>
+                                            <th>Context Relevance</th>
+                                            <th>Ground Truth Validity</th>
+                                            <th>Context Overload</th>
+                                            <th>Reasoning</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="analysis-table-body">
+                                        <!-- Rows will be populated dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>

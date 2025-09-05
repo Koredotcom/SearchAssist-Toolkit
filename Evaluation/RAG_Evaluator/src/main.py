@@ -21,6 +21,7 @@ from evaluators.cragEvaluator import CragEvaluator
 from evaluators.llmEvaluator import LLMEvaluator
 from utils.evaluationResult import ResultsConverter
 from utils.dbservice import dbService
+from utils.unusedChunkAnalyzer import UnusedChunkAnalyzer
 import asyncio
 import aiohttp
 from asyncio import Semaphore
@@ -630,6 +631,44 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
         else:
             print("ℹ️ No chunk statistics available to add")
 
+        # Perform unused chunk analysis for quality analysis
+        unused_chunk_analysis = None
+        unused_chunk_summary = None
+        if chunk_statistics_list and len(chunk_statistics_list) > 0:
+            print("🔍 Performing unused chunk analysis for quality assessment...")
+            try:
+                # Extract LLM evaluation results if available for enhanced analysis
+                llm_eval_results = None
+                if has_llm and not llm_results.empty:
+                    # Convert LLM results to list format for analysis
+                    llm_eval_results = []
+                    for _, row in llm_results.iterrows():
+                        eval_result = {}
+                        if 'LLM Context Relevancy' in row:
+                            eval_result['context_relevancy_score'] = row['LLM Context Relevancy']
+                        if 'LLM Ground Truth Validity' in row:
+                            eval_result['ground_truth_validity_score'] = row['LLM Ground Truth Validity']
+                        llm_eval_results.append(eval_result)
+                
+                # Run unused chunk analysis
+                unused_chunk_analysis, unused_chunk_summary = UnusedChunkAnalyzer.analyze_unused_chunks(
+                    queries, answers, ground_truths, chunk_statistics_list, llm_eval_results
+                )
+                
+                print(f"✅ Unused chunk analysis completed: {len(unused_chunk_analysis)} questions analyzed")
+                print(f"📊 Unused chunk summary: {unused_chunk_summary.questions_with_unused_chunks} questions with unused chunks")
+                
+                # Add unused chunk analysis to total_set_result for later use
+                total_set_result['unused_chunk_analysis'] = {
+                    'analysis_count': len(unused_chunk_analysis),
+                    'summary': unused_chunk_summary.__dict__ if unused_chunk_summary else None
+                }
+                
+            except Exception as e:
+                print(f"⚠️ Error in unused chunk analysis: {e}")
+                import traceback
+                traceback.print_exc()
+
         print(f"🎯 Final results summary:")
         print(f"   Shape: {final_results.shape}")
         print(f"   Columns: {list(final_results.columns)}")
@@ -721,7 +760,13 @@ async def process_single_sheet(input_file: str, sheet_name: str, config: Dict,
                 print(f"⚠️ Database save failed for sheet '{sheet_name}': {db_error}")
         
         print(f"✨ Completed processing sheet '{sheet_name}': {len(results_df)} rows")
-        return results_df, total_set_result
+        
+        # Extract unused chunk analysis data for detailed tab creation
+        unused_chunk_data = None
+        if 'unused_chunk_analysis' in total_set_result:
+            unused_chunk_data = total_set_result['unused_chunk_analysis']
+        
+        return results_df, total_set_result, unused_chunk_data
         
     except Exception as sheet_error:
         print(f"❌ Error processing sheet '{sheet_name}': {sheet_error}")
@@ -922,7 +967,12 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
                     continue
                 
                 # Unpack results
-                results_df, total_set_result = result[0], result[1]
+                if len(result) == 3:
+                    results_df, total_set_result, unused_chunk_data = result[0], result[1], result[2]
+                else:
+                    # Handle legacy return format
+                    results_df, total_set_result = result[0], result[1]
+                    unused_chunk_data = None
                 
                 if results_df is None or results_df.empty:
                     print(f"⚠️ Empty results for sheet '{sheet_name}', creating empty result")
@@ -953,6 +1003,53 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
                     'recommendation': ['Check configuration and try again']
                 })
                 summary_df.to_excel(writer, sheet_name="Processing_Summary", index=False)
+            
+            # Add Quality Analysis tab with unused chunk analysis
+            if successful_sheets > 0:
+                print("📊 Creating Quality Analysis tab with unused chunk analysis...")
+                try:
+                    # Collect unused chunk analysis from all processed sheets
+                    all_unused_analysis = []
+                    all_unused_summaries = []
+                    
+                    for i, (sheet_name, result) in enumerate(zip(sheet_names, sheet_results)):
+                        if not isinstance(result, Exception) and result:
+                            if len(result) == 3:
+                                # New format with unused chunk data
+                                _, total_set_result, unused_chunk_data = result[0], result[1], result[2]
+                                if unused_chunk_data and unused_chunk_data.get('summary'):
+                                    all_unused_summaries.append(unused_chunk_data['summary'])
+                                if unused_chunk_data and unused_chunk_data.get('analysis_list'):
+                                    all_unused_analysis.extend(unused_chunk_data['analysis_list'])
+                            else:
+                                # Legacy format
+                                _, total_set_result = result[0], result[1]
+                                if 'unused_chunk_analysis' in total_set_result:
+                                    unused_data = total_set_result['unused_chunk_analysis']
+                                    if unused_data and unused_data.get('summary'):
+                                        all_unused_summaries.append(unused_data['summary'])
+                    
+                    # Create Quality Analysis tab
+                    if all_unused_summaries:
+                        quality_analysis_df = UnusedChunkAnalyzer._create_quality_analysis_tab(all_unused_summaries)
+                        quality_analysis_df.to_excel(writer, sheet_name="Quality_Analysis", index=False)
+                        print(f"✅ Quality Analysis tab created with {len(quality_analysis_df)} rows")
+                        
+                        # Create Detailed Unused Chunk Analysis tab
+                        if all_unused_analysis:
+                            detailed_analysis_df = UnusedChunkAnalyzer._create_detailed_analysis_tab(all_unused_analysis)
+                            if not detailed_analysis_df.empty:
+                                detailed_analysis_df.to_excel(writer, sheet_name="Detailed_Unused_Chunk_Analysis", index=False)
+                                print(f"✅ Detailed Unused Chunk Analysis tab created with {len(detailed_analysis_df)} rows")
+                        else:
+                            print("ℹ️ No detailed analysis data available for Detailed Unused Chunk Analysis tab")
+                    else:
+                        print("ℹ️ No unused chunk analysis data available for Quality Analysis tab")
+                        
+                except Exception as e:
+                    print(f"⚠️ Error creating Quality Analysis tab: {e}")
+                    import traceback
+                    traceback.print_exc()
 
         # Add output file to session manager if session_id provided
         if session_id and os.path.exists(output_file_path):
