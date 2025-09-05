@@ -12,10 +12,12 @@ async function formatData(rawData, lookupFields) {
             data["content"] = item[lookupFields?.content] || ""
             data["url"] = item[lookupFields?.url] || ""
             data["type"] = item[lookupFields?.type] || ""
-            data["createdOn"] = item[lookupFields?.createdOn] || ""
-            data["updatedOn"] = item[lookupFields?.updatedOn] || ""
+            data["doc_created_on"] = item[lookupFields?.doc_created_on] || ""
+            data["doc_updated_on"] = item[lookupFields?.doc_updated_on] || ""
             data["rawData"] = item || {}
             data["sys_racl"] = item[lookupFields?.sys_racl] || ""
+            data["sys_file_type"] = item[lookupFields?.sys_file_type] || "json"
+            data["html"] = item[lookupFields?.html] || ""
             formattedData.push(data)
         }
         return { data: formattedData }
