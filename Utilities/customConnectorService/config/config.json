@@ -21,10 +21,12 @@
         "title": "short_description",
         "content": "text",
         "url": "",
-        "createdOn": "sys_created_on",
-        "updatedOn": "sys_updated_on",
+        "doc_created_on": "sys_created_on",
+        "doc_updated_on": "sys_updated_on",
         "type": "sys_class_name",
-        "sys_racl": "permissions"
+        "sys_racl": "permissions",
+        "sys_file_type": "sys_file_type",
+        "html":"text"
       },
       "hasMore": "rel=\"next\""
     }
