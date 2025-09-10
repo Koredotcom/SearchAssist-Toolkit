@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Retrieval Benchmark Evaluator
 
@@ -1016,8 +1015,15 @@ Relevance: [0-1]"""
                     if record_data.get('used_in_answer', 0) > 0:
                         used_in_answer_record_titles.append(record_title)
                 
-                # Get original chunk texts from JSON data
+                # Get original chunk texts and record titles from JSON data
                 original_chunk_texts = json_item.get('original_chunk_texts', [])
+                record_titles = json_item.get('recordTitles', [])
+                
+                # Format original chunk texts for Excel (join with separator)
+                original_chunk_texts_formatted = ' | '.join(original_chunk_texts) if original_chunk_texts else 'None'
+                
+                # Format record titles for Excel (join with separator)
+                record_titles_formatted = ' | '.join(record_titles) if record_titles else 'None'
                 
                 # Evaluate chunk overlap
                 overlap_evaluation = self.evaluate_chunk_overlap(chunk_results, original_chunk_texts)
@@ -1025,13 +1031,12 @@ Relevance: [0-1]"""
                 # Store basic results
                 basic_results.append({
                     'query': query,
-                    'answer': answer,
+                    'original_chunk_texts': original_chunk_texts_formatted,  # Add formatted original chunk texts
+                    'record_titles': record_titles_formatted,  # Add formatted record titles
                     'qualified_chunks': chunk_analysis['qualified_chunks'],
                     'sent_to_llm': chunk_analysis['sent_to_llm'],
                     'used_in_answer': chunk_analysis['used_in_answer'],
                     'qualified_record_titles': ', '.join(qualified_record_titles) if qualified_record_titles else 'None',
-                    'sent_to_llm_record_titles': ', '.join(sent_to_llm_record_titles) if sent_to_llm_record_titles else 'None',
-                    'used_in_answer_record_titles': ', '.join(used_in_answer_record_titles) if used_in_answer_record_titles else 'None',
                     'error_message': error_message,
                     'chunk_results': chunk_results,  # Store for later relevance calculation
                     # Chunk overlap metrics
@@ -1040,7 +1045,8 @@ Relevance: [0-1]"""
                     'chunks_original': overlap_evaluation['chunks_original'],
                     'overlapping_chunks': overlap_evaluation['overlapping_chunks'],
                     'overlap_percentage': overlap_evaluation['overlap_percentage'],
-                    'overlap_explanation': overlap_evaluation['overlap_explanation']
+                    'overlap_explanation': overlap_evaluation['overlap_explanation'],
+                    'original_chunk_texts_raw': original_chunk_texts  # Keep raw for top-N analysis
                 })
             
             except Exception as e:
@@ -1070,6 +1076,25 @@ Relevance: [0-1]"""
                 overlapping_chunks = result.get('overlapping_chunks', 0)
                 chunks_original = result.get('chunks_original', 0)
                 print(f"📊 Query {i+1}: '{query[:50]}...' - Overlap: {overlapping_chunks}/{chunks_original} chunks found (Score: {chunk_overlap_score:.3f})")
+                
+                # Calculate top-N chunk overlap analysis for additional columns
+                chunk_results = result.get('chunk_results', [])
+                original_chunk_texts = result.get('original_chunk_texts_raw', [])
+                
+                # Top 5 chunks analysis
+                top_5_chunks = chunk_results[:5] if chunk_results else []
+                top_5_overlap = self.evaluate_chunk_overlap(top_5_chunks, original_chunk_texts)
+                result['top_5_chunk_overlap_score'] = top_5_overlap['chunk_overlap_score']
+                
+                # Top 10 chunks analysis
+                top_10_chunks = chunk_results[:10] if chunk_results else []
+                top_10_overlap = self.evaluate_chunk_overlap(top_10_chunks, original_chunk_texts)
+                result['top_10_chunk_overlap_score'] = top_10_overlap['chunk_overlap_score']
+                
+                # Top 15 chunks analysis
+                top_15_chunks = chunk_results[:15] if chunk_results else []
+                top_15_overlap = self.evaluate_chunk_overlap(top_15_chunks, original_chunk_texts)
+                result['top_15_chunk_overlap_score'] = top_15_overlap['chunk_overlap_score']
                 
                 # Set the scores
                 result['context_relevance_score'] = context_relevance_score
@@ -1102,13 +1127,15 @@ Relevance: [0-1]"""
         # Format DataFrame columns
         df = self._format_dataframe_columns_with_overlap(df)
         
-        # Save final results to file
+        # Save final results to file (single sheet)
         with pd.ExcelWriter(output_file, engine='openpyxl', mode='w') as writer:
-            df.to_excel(writer, sheet_name='Final_Results', index=False)
+            df.to_excel(writer, sheet_name='Results', index=False)
         
         print(f"💾 Final results saved to: {output_file}")
         
         return df, output_file
+    
+
     
     async def evaluate_comprehensive_terminal_with_overlap(self, queries: List[str], search_responses: List[Dict], 
                                                         json_data: List[Tuple]) -> Tuple[pd.DataFrame, str]:
@@ -1153,8 +1180,15 @@ Relevance: [0-1]"""
                     if record_data.get('used_in_answer', 0) > 0:
                         used_in_answer_record_titles.append(record_title)
                 
-                # Get original chunk texts from JSON data
+                # Get original chunk texts and record titles from JSON data
                 original_chunk_texts = json_item.get('original_chunk_texts', [])
+                record_titles = json_item.get('recordTitles', [])
+                
+                # Format original chunk texts for Excel (join with separator)
+                original_chunk_texts_formatted = ' | '.join(original_chunk_texts) if original_chunk_texts else 'None'
+                
+                # Format record titles for Excel (join with separator)
+                record_titles_formatted = ' | '.join(record_titles) if record_titles else 'None'
                 
                 # Evaluate chunk overlap
                 overlap_evaluation = self.evaluate_chunk_overlap(chunk_results, original_chunk_texts)
@@ -1162,13 +1196,12 @@ Relevance: [0-1]"""
                 # Store basic results
                 basic_results.append({
                     'query': query,
-                    'answer': answer,
+                    'original_chunk_texts': original_chunk_texts_formatted,  # Add formatted original chunk texts
+                    'record_titles': record_titles_formatted,  # Add formatted record titles
                     'qualified_chunks': chunk_analysis['qualified_chunks'],
                     'sent_to_llm': chunk_analysis['sent_to_llm'],
                     'used_in_answer': chunk_analysis['used_in_answer'],
                     'qualified_record_titles': ', '.join(qualified_record_titles) if qualified_record_titles else 'None',
-                    'sent_to_llm_record_titles': ', '.join(sent_to_llm_record_titles) if sent_to_llm_record_titles else 'None',
-                    'used_in_answer_record_titles': ', '.join(used_in_answer_record_titles) if used_in_answer_record_titles else 'None',
                     'error_message': error_message,
                     'chunk_results': chunk_results,  # Store for later relevance calculation
                     # Chunk overlap metrics
@@ -1207,6 +1240,25 @@ Relevance: [0-1]"""
                 overlapping_chunks = result.get('overlapping_chunks', 0)
                 chunks_original = result.get('chunks_original', 0)
                 print(f"📊 Query {i+1}: '{query[:50]}...' - Overlap: {overlapping_chunks}/{chunks_original} chunks found (Score: {chunk_overlap_score:.3f})")
+                
+                # Calculate top-N chunk overlap analysis for additional columns
+                chunk_results = result.get('chunk_results', [])
+                original_chunk_texts = result.get('original_chunk_texts_raw', [])
+                
+                # Top 5 chunks analysis
+                top_5_chunks = chunk_results[:5] if chunk_results else []
+                top_5_overlap = self.evaluate_chunk_overlap(top_5_chunks, original_chunk_texts)
+                result['top_5_chunk_overlap_score'] = top_5_overlap['chunk_overlap_score']
+                
+                # Top 10 chunks analysis
+                top_10_chunks = chunk_results[:10] if chunk_results else []
+                top_10_overlap = self.evaluate_chunk_overlap(top_10_chunks, original_chunk_texts)
+                result['top_10_chunk_overlap_score'] = top_10_overlap['chunk_overlap_score']
+                
+                # Top 15 chunks analysis
+                top_15_chunks = chunk_results[:15] if chunk_results else []
+                top_15_overlap = self.evaluate_chunk_overlap(top_15_chunks, original_chunk_texts)
+                result['top_15_chunk_overlap_score'] = top_15_overlap['chunk_overlap_score']
                 
                 # Set the scores
                 result['context_relevance_score'] = context_relevance_score
@@ -1324,14 +1376,16 @@ Relevance: [0-1]"""
             Formatted DataFrame
         """
         # Safely round numeric columns
-        numeric_columns = ['answer_relevance_score', 'context_relevance_score', 'chunk_overlap_score', 
-                          'chunks_retrieved', 'chunks_original', 'overlapping_chunks', 'overlap_percentage']
+        numeric_columns = ['context_relevance_score', 'chunk_overlap_score', 
+                          'chunks_retrieved', 'chunks_original', 'overlapping_chunks', 'overlap_percentage',
+                          'top_5_chunk_overlap_score', 'top_10_chunk_overlap_score', 'top_15_chunk_overlap_score']
         for col in numeric_columns:
             if col in df.columns:
                 try:
                     # Convert to numeric first, then round
                     numeric_series = pd.to_numeric(df[col], errors='coerce')
-                    if col in ['chunk_overlap_score', 'overlap_percentage']:
+                    if col in ['chunk_overlap_score', 'overlap_percentage', 'top_5_chunk_overlap_score', 
+                              'top_10_chunk_overlap_score', 'top_15_chunk_overlap_score']:
                         df[col] = numeric_series.round(4).fillna(0.0)
                     else:
                         df[col] = numeric_series.round(2).fillna(0.0)
@@ -1342,11 +1396,13 @@ Relevance: [0-1]"""
         
         # Ensure proper column order
         column_order = [
-            'query', 'answer', 'answer_relevance_score', 'context_relevance_score', 'chunk_overlap_score',
+            'query', 'original_chunk_texts', 'record_titles', 'context_relevance_score', 'chunk_overlap_score',
             'qualified_chunks', 'sent_to_llm', 'used_in_answer', 
             'chunks_retrieved', 'chunks_original', 'overlapping_chunks', 'overlap_percentage',
-            'qualified_record_titles', 'sent_to_llm_record_titles', 'used_in_answer_record_titles',
-            'context_relevance_explanation', 'answer_relevance_explanation', 'overlap_explanation',
+            # Top-N chunk overlap analysis columns (scores only)
+            'top_5_chunk_overlap_score', 'top_10_chunk_overlap_score', 'top_15_chunk_overlap_score',
+            'qualified_record_titles',
+            'context_relevance_explanation', 'overlap_explanation',
             'evaluation_status', 'error_message'
         ]
         
@@ -1819,7 +1875,7 @@ def print_summary_report(summary: Dict):
 
 def ensure_outputs_directory():
     """Ensure the outputs directory exists."""
-    outputs_dir = "outputs"
+    outputs_dir = "Evaluation/RAG_Evaluator/src/outputs"
     if not os.path.exists(outputs_dir):
         os.makedirs(outputs_dir)
         print("📁 Created outputs directory")
@@ -1914,7 +1970,7 @@ Examples:
             queries = load_data_from_excel(args.input, args.sheet)
         
         # Apply sampling if specified
-        if args.sample:
+        if args.sample and args.input:
             queries = queries[:args.sample]
             print(f"📊 Evaluating first {len(queries)} samples")
         elif args.json_input:

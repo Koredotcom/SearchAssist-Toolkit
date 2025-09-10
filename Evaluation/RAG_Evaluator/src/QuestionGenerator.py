@@ -64,6 +64,22 @@ class QuestionGenerator:
         self.allowed_languages = self.language_filter_config.get('allowed_languages', ['en'])
         self.exclude_code_content = self.language_filter_config.get('exclude_code_content', True)
 
+    def extract_unique_record_titles(self, chunks: List[Dict]) -> List[str]:
+        """
+        Extract unique record titles from chunks.
+        
+        Args:
+            chunks: List of chunk dictionaries
+            
+        Returns:
+            List of unique record titles
+        """
+        record_titles = set()
+        for chunk in chunks:
+            record_title = chunk.get('recordTitle', '')
+            if record_title:
+                record_titles.add(record_title)
+        return list(record_titles)
     
     def detect_language(self, text: str) -> str:
         """
@@ -475,15 +491,15 @@ class QuestionGenerator:
             if should_close_session:
                 await session.close()
     
-    def generate_question_from_chunks(self, chunks: List[Dict]) -> Tuple[str, List[str]]:
+    def generate_question_from_chunks(self, chunks: List[Dict]) -> Tuple[str, List[str], List[Dict]]:
         """
-        Generate a question from a list of chunks using LLM and return chunk texts.
+        Generate a question from a list of chunks using LLM and return chunk texts and used chunks.
         
         Args:
             chunks: List of chunk dictionaries
             
         Returns:
-            Tuple of (generated_question, chunk_texts_used)
+            Tuple of (generated_question, chunk_texts_used, chunks_used)
         """
         # Get configuration for question generation
         target_specific_data = self.config.get('question_generation', {}).get('target_specific_data', False)
@@ -493,6 +509,7 @@ class QuestionGenerator:
         # Prepare chunks with indices for tracking
         chunk_texts = []
         chunk_indices = []  # Track which chunks are used
+        valid_chunks = []   # Store the actual chunk objects
         
         # Limit chunks if targeting specific data
         max_chunks = min(max_chunks_per_question, len(chunks)) if target_specific_data else min(5, len(chunks))
@@ -510,9 +527,10 @@ class QuestionGenerator:
                 
                 chunk_texts.append(chunk_text)
                 chunk_indices.append(i)
+                valid_chunks.append(chunk)
         
         if not chunk_texts:
-            return "No valid chunk text found after language and code filtering.", []
+            return "No valid chunk text found after language and code filtering.", [], []
         
         # If we have very few chunks, use all of them
         min_chunks = self.config.get('question_generation', {}).get('min_chunks_per_question', 1)
@@ -532,8 +550,10 @@ DIVERSITY RULE: Choose a different topic/theme than previous questions. If you s
 
 CHUNK ASSIGNMENT RULE: These chunks are specifically assigned to you for this question. Use ONLY these chunks to generate your question. Do not reference or consider any other chunks.
 
+KEYWORD REQUIREMENT: Your question MUST include specific keywords, product names, service names, or technical terms that appear in the chunk content. This ensures the question is specific enough to retrieve the same chunks when searched.
+
 Text chunks:
-{chr(10).join(f"Chunk {i+1}: {text[:200]}..." for i, text in enumerate(chunk_texts))}
+{chr(10).join(f"Chunk {i+1}: {text}..." for i, text in enumerate(chunk_texts))}
 
 Generate a detailed customer question that:
 1. Sounds like something a real customer would ask
@@ -544,6 +564,7 @@ Generate a detailed customer question that:
 6. Is written in {target_language} language
 7. Focuses on a unique topic/theme to ensure diversity
 8. Uses ONLY the chunks provided above (no other chunks)
+9. MUST include specific keywords from the chunk content to ensure precise retrieval
 
 Format your response as:
 Question: [your question here]
@@ -557,8 +578,10 @@ DIVERSITY RULE: Choose a different topic/theme than previous questions. If you s
 
 CHUNK ASSIGNMENT RULE: These chunks are specifically assigned to you for this question. Use ONLY these chunks to generate your question. Do not reference or consider any other chunks.
 
+KEYWORD REQUIREMENT: Your question MUST include specific keywords, product names, service names, or technical terms that appear in the chunk content. This ensures the question is specific enough to retrieve the same chunks when searched.
+
 Text chunks:
-{chr(10).join(f"Chunk {i+1}: {text[:200]}..." for i, text in enumerate(chunk_texts))}
+{chr(10).join(f"Chunk {i+1}: {text}..." for i, text in enumerate(chunk_texts))}
 
 Generate a simple customer question that:
 1. Sounds like something a real customer would ask
@@ -570,6 +593,7 @@ Generate a simple customer question that:
 7. Keep the query relevant to the chunk content and at most 8-12 words
 8. Focuses on a unique topic/theme to ensure diversity
 9. Uses ONLY the chunks provided above (no other chunks)
+10. MUST include specific keywords from the chunk content to ensure precise retrieval
 
 Format your response as:
 Question: [your question here]
@@ -585,15 +609,18 @@ Used chunks: [ONLY list chunk numbers you actually used for generating this spec
             # Parse the response to extract question and used chunks
             question, used_chunk_indices = self.parse_question_response(response, chunk_indices)
             
-            # Get the chunk texts that were actually used
+            # Get the chunk texts and chunks that were actually used
             used_chunk_texts = []
+            used_chunks = []
             for idx in used_chunk_indices:
                 if idx < len(chunk_texts):
                     used_chunk_texts.append(chunk_texts[idx])
+                if idx < len(valid_chunks):
+                    used_chunks.append(valid_chunks[idx])
             
-            return question, used_chunk_texts
+            return question, used_chunk_texts, used_chunks
         else:
-            return "Failed to generate question.", []
+            return "Failed to generate question.", [], []
     
     def parse_question_response(self, response: str, chunk_indices: List[int]) -> Tuple[str, List[int]]:
         """
@@ -631,10 +658,17 @@ Used chunks: [ONLY list chunk numbers you actually used for generating this spec
                         used_chunk_indices.append(chunk_indices[chunk_idx])
                 
                 return question, used_chunk_indices
+                # If parsing succeeded but no chunks were found, use all chunks
+                if not used_chunk_indices and chunk_indices:
+                    used_chunk_indices = chunk_indices
             except:
                 pass
         
         # Fallback: if parsing fails, assume all chunks were used
+        used_chunk_indices = []
+        # If no chunks were parsed, use all available chunks
+        if not used_chunk_indices and chunk_indices:
+            used_chunk_indices = chunk_indices
         return cleaned_response, chunk_indices
     
     async def _get_auth_headers(self) -> Dict[str, str]:
@@ -843,14 +877,14 @@ Used chunks: [ONLY list chunk numbers you actually used for generating this spec
                 max_chunks_per_question = self.config.get('question_generation', {}).get('chunks_per_question', 20)
                 min_chunks = self.config.get('question_generation', {}).get('min_chunks_per_question', 10)
                 
-                # Calculate total chunks needed based on chunks_per_question and questions_per_batch
-                total_chunks_needed = max_chunks_per_question * questions_per_batch
+                # Calculate total chunks needed - use max_chunks_per_question only, not multiplied by questions_per_batch
+                total_chunks_needed = max_chunks_per_question
                 
                 # Get total chunk count (this will be cached after first call)
                 if not hasattr(self, '_total_chunks_available'):
                     self._total_chunks_available = await self.get_total_chunk_count()
                 
-                # Get all chunks needed for this batch (50 chunks from API)
+                # Get all chunks needed for this batch
                 all_chunks = await self.get_random_chunks(total_chunks_needed, min_chunks, self._total_chunks_available, session)
                 if not all_chunks:
                     return None
@@ -861,21 +895,27 @@ Used chunks: [ONLY list chunk numbers you actually used for generating this spec
                     print(f"   ❌ No qualified chunks after language filtering")
                     return None
                 
-                # Calculate chunks per question based on max_chunks_per_question and questions_per_batch
+                # Calculate how many questions we can generate based on available chunks
                 total_qualified_chunks = len(filtered_chunks)
-                chunks_per_question_actual = min(max_chunks_per_question, total_qualified_chunks // questions_per_batch)
                 
-                # Ensure we have enough chunks for all questions
-                if chunks_per_question_actual < min_chunks:
-                    print(f"   ⚠️ Warning: Only {chunks_per_question_actual} chunks per question (minimum {min_chunks} required)")
-                    if chunks_per_question_actual < 1:
-                        return None
+                # Calculate maximum questions possible with min_chunks_per_question
+                max_questions_possible = total_qualified_chunks // min_chunks
                 
-                print(f"   📊 Dividing {total_qualified_chunks} qualified chunks into {questions_per_batch} questions ({chunks_per_question_actual} chunks each, max {max_chunks_per_question})")
+                # Use the smaller of: questions_per_batch or max_questions_possible
+                actual_questions_to_generate = min(questions_per_batch, max_questions_possible)
+                
+                if actual_questions_to_generate == 0:
+                    print(f"   ❌ Not enough chunks to generate any questions (need at least {min_chunks} chunks)")
+                    return None
+                
+                # Calculate chunks per question (distribute chunks evenly)
+                chunks_per_question_actual = total_qualified_chunks // actual_questions_to_generate
+                
+                print(f"   📊 Dividing {total_qualified_chunks} qualified chunks into {actual_questions_to_generate} questions ({chunks_per_question_actual} chunks each)")
                 
                 # Generate questions with dedicated chunk sets
                 batch_questions = []
-                for i in range(questions_per_batch):
+                for i in range(actual_questions_to_generate):
                     # Get dedicated chunk set for this question
                     start_idx = i * chunks_per_question_actual
                     end_idx = start_idx + chunks_per_question_actual
@@ -888,14 +928,18 @@ Used chunks: [ONLY list chunk numbers you actually used for generating this spec
                     print(f"   🔍 Generating question {i+1} with {len(question_chunks)} dedicated chunks...")
                     
                     # Generate question from dedicated chunk set
-                    question, original_chunk_texts = self.generate_question_from_chunks(question_chunks)
+                    question, original_chunk_texts, used_chunks = self.generate_question_from_chunks(question_chunks)
                     
                     if question and question != "Failed to generate question." and question != "No valid chunk text found after language and code filtering.":
-                        # Create evaluation data entry with original chunk texts
+                        # Extract unique record titles from the chunks that were actually used for generation
+                        record_titles = self.extract_unique_record_titles(used_chunks)
+                        
+                        # Create evaluation data entry with original chunk texts and record titles
                         evaluation_entry = {
                             "query": question,
                             "chunks": question_chunks,  # Only chunks assigned to this question
                             "original_chunk_texts": original_chunk_texts,  # Original chunk texts used for generation
+                            "recordTitles": record_titles,  # Unique record titles from chunks actually used
                             "total_chunks_available": self._total_chunks_available,
                             "chunks_used_for_generation": len(original_chunk_texts),
                             "chunks_assigned_to_question": len(question_chunks),
@@ -947,14 +991,18 @@ Used chunks: [ONLY list chunk numbers you actually used for generating this spec
                     return None
                 
                 # Generate question from chunks
-                question, original_chunk_texts = self.generate_question_from_chunks(chunks)
+                question, original_chunk_texts, used_chunks = self.generate_question_from_chunks(chunks)
                 
                 if question and question != "Failed to generate question.":
-                    # Create evaluation data entry with original chunk texts
+                    # Extract unique record titles from the chunks that were actually used for generation
+                    record_titles = self.extract_unique_record_titles(used_chunks)
+                    
+                    # Create evaluation data entry with original chunk texts and record titles
                     evaluation_entry = {
                         "query": question,
                         "chunks": chunks,  # All chunks available for this question
                         "original_chunk_texts": original_chunk_texts,  # Original chunk texts used for generation
+                        "recordTitles": record_titles,  # Unique record titles from chunks actually used
                         "total_chunks_available": self._total_chunks_available,
                         "chunks_used_for_generation": len(original_chunk_texts),
                         "generation_timestamp": datetime.now().isoformat()
