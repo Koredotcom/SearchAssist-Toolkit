@@ -5,6 +5,7 @@ from werkzeug.utils import secure_filename
 import pandas as pd
 import shutil
 from main import run
+import traceback    
 
 async def process_files(excel_file, config_content, session_id=None):
     """
@@ -24,8 +25,9 @@ async def process_files(excel_file, config_content, session_id=None):
         
         # Session-specific paths (NO SHARED FILES!)
         # Use input_ prefix pattern to match the expected filename format
-        excel_path = os.path.join(session_dir, f"input_{session_id}_{excel_filename}")
-        
+        # excel_path = os.path.join(session_dir, f"input_{session_id}_{excel_filename}")
+        print("excel file", excel_file)
+        excel_path = excel_file
         print(f"🔐 Using session-specific paths for session {session_id[:8]}...")
         print(f"📄 Excel: {excel_path}")
         print(f"🔒 Config: In-memory only (secure)")
@@ -56,7 +58,12 @@ async def process_files(excel_file, config_content, session_id=None):
     
     # Copy Excel file to session-specific location
     try:
-        shutil.copy2(excel_file, excel_path)
+        # os.makedirs(session_dir, exist_ok=True)
+        dest_dir = os.path.dirname(excel_path)
+        os.makedirs(dest_dir, exist_ok=True)
+
+        # Now copy
+        # shutil.copy2(excel_file, excel_path)
         print(f"✅ Copied Excel file from {excel_file} to {excel_path}")
         
         # Verify the copy was successful

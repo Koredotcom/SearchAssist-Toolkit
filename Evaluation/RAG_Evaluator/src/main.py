@@ -12,7 +12,7 @@ Provides evaluation functionality for RAG systems using RAGAS and CRAG metrics.
 import pandas as pd
 import os
 import argparse
-import traceback
+import traceback as tb
 from datetime import datetime
 from openai import OpenAI
 
@@ -63,7 +63,9 @@ class TokenUsageTracker:
         """Check if any token usage has been recorded."""
         return self.total_usage.get('total_tokens', 0) > 0
 
-async def call_search_api_batch(queries: List[str], ground_truths: List[str], 
+async def call_search_api_batch(queries: List[str], ground_truths: List[str],
+                                doc_ids: List[Optional[str]],
+                                record_titles: List[Optional[str]], 
                                config: Dict, batch_size: int = DEFAULT_BATCH_SIZE, 
                                max_concurrent: int = DEFAULT_MAX_CONCURRENT) -> List[Dict]:
     """
@@ -83,7 +85,7 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
     
     # Initialize the appropriate async API with fallback handling
     api = None
-    get_bot_response_async = None
+    get_bot_response_fn = None
     
     # Check for valid (non-placeholder) API configurations
     sa_config = config.get('SA', {})
@@ -99,19 +101,24 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
     sa_valid = is_valid_api_config(sa_config)
     uxo_valid = is_valid_api_config(uxo_config)
     
-
-    
     if sa_valid:
         try:
             from api.SASearch import AsyncSearchAssistAPI, get_bot_response_async
             api = AsyncSearchAssistAPI(config)
+            get_bot_response_fn = get_bot_response_async
         except (ValueError, Exception):
             api = None
     elif uxo_valid:
         try:
             from api.XOSearch import AsyncXOSearchAPI, get_bot_response_async
             api = AsyncXOSearchAPI(config)
-        except (ValueError, Exception):
+            get_bot_response_fn = get_bot_response_async
+        # except (ValueError, Exception):
+        except Exception as e:
+            print("❌ AsyncXOSearchAPI initialization failed")
+            print("❌ Error:", str(e))
+            # import traceback
+            tb.print_exc()
             api = None
     else:
         api = None
@@ -131,11 +138,11 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
     
     semaphore = Semaphore(max_concurrent)
     
-    async def process_single_query(session, query, ground_truth):
+    async def process_single_query(session, query, ground_truth, expected_doc_id, expected_record_title):
         """Process a single query with the search API."""
         async with semaphore:
             try:
-                result = await get_bot_response_async(api, session, query, ground_truth)
+                result = await get_bot_response_fn(api, session, query, ground_truth,expected_doc_id, expected_record_title)
                 if result is None:
                     return {
                         "error": "API call returned None - check credentials and configuration", 
@@ -162,15 +169,17 @@ async def call_search_api_batch(queries: List[str], ground_truths: List[str],
         for batch_num in range(total_batches):
             start_idx = batch_num * batch_size
             end_idx = min(start_idx + batch_size, len(queries))
-            
             batch_queries = queries[start_idx:end_idx]
             batch_ground_truths = ground_truths[start_idx:end_idx]
+            batch_doc_ids = doc_ids[start_idx:end_idx]
+            batch_record_titles = record_titles[start_idx:end_idx]
+            
             
 
             
             batch_start_time = time.time()
-            tasks = [process_single_query(session, q, gt) 
-                    for q, gt in zip(batch_queries, batch_ground_truths)]
+            tasks = [process_single_query(session, q, gt, doc_id,r_title) 
+                    for q, gt, doc_id, r_title in zip(batch_queries, batch_ground_truths, batch_doc_ids, batch_record_titles)]
             
             batch_responses = await asyncio.gather(*tasks, return_exceptions=True)
             
@@ -270,12 +279,14 @@ async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
         
         queries = df['query'].tolist()
         ground_truths = df['ground_truth'].tolist()
+        doc_ids = df['doc_id'].tolist() if 'doc_id' in df.columns else [None] * len(queries)
+        record_titles = df['record_title'].tolist() if 'record_title' in df.columns else [None] * len(queries)
         
         start_time = time.time()
         
         # Call search API with error handling
         try:
-            responses = await call_search_api_batch(queries, ground_truths, config, batch_size, max_concurrent)
+            responses = await call_search_api_batch(queries, ground_truths, doc_ids, record_titles, config, batch_size, max_concurrent)
             processing_time = time.time() - start_time
             
         except Exception as api_error:
@@ -294,6 +305,7 @@ async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
         answers, contexts = [], []
         chunk_statistics_list = []
         error_count = 0
+        extra_columns_list = []
         
         for response in responses:
             if response is None or (isinstance(response, dict) and 'error' in response):
@@ -301,14 +313,20 @@ async def load_data_and_call_api(excel_file: str, sheet_name: str, config: Dict,
                 contexts.append("")
                 chunk_statistics_list.append({})
                 error_count += 1
+                extra_columns_list.append({})
             else:
                 answers.append(response.get('answer', ''))
                 contexts.append(response.get('context', ''))
                 chunk_statistics_list.append(response.get('chunk_statistics', {}))
+                extra = {
+            k: v for k, v in response.items()
+            if k not in {'query', 'ground_truth', 'answer', 'context', 'chunk_statistics'}
+        }
+                extra_columns_list.append(extra)
         
 
         
-        return queries, answers, ground_truths, contexts, chunk_statistics_list
+        return queries, answers, ground_truths, contexts, chunk_statistics_list, doc_ids, record_titles, extra_columns_list
         
     except Exception as e:
 
@@ -488,9 +506,12 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
         Tuple of (results_dataframe, summary_metrics)
     """
     try:
+        print("🚦 use_search_api =", use_search_api)
+        print("🚦 use_search_api =", use_search_api)
+
         # Load data
         if use_search_api:
-            queries, answers, ground_truths, contexts, chunk_statistics_list = await load_data_and_call_api(
+            queries, answers, ground_truths, contexts, chunk_statistics_list, doc_ids, record_titles,extra_columns_list = await load_data_and_call_api(
                 excel_file, sheet_name, config, batch_size, max_concurrent)
         else:
             queries, answers, ground_truths, contexts, chunk_statistics_list = load_data(excel_file, sheet_name)
@@ -597,6 +618,26 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
         
         final_results = determine_final_results(result_converter, has_ragas, has_crag, has_llm)
         
+        if extra_columns_list and len(extra_columns_list) == len(final_results):
+            extra_df = pd.DataFrame(extra_columns_list)
+            for col in extra_df.columns:
+                final_results[col] = extra_df[col].values
+
+        if final_results is None:
+            final_results = create_basic_results_dataframe(
+            queries, answers, ground_truths, contexts
+            )
+        
+        if 'answer' in final_results.columns:
+            final_results['answer'] = final_results['answer'].fillna('').replace('N/A', '')
+
+        if doc_ids:
+           final_results["expected_doc_id"] = doc_ids
+
+        if record_titles:
+           final_results["expected_record_title"] = record_titles
+
+        
         if final_results is None:
             # Create a basic DataFrame with the original queries if no evaluation succeeded
             print("⚠️ No evaluation methods succeeded, creating basic results DataFrame")
@@ -626,8 +667,8 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
                     print(f"⚠️ Chunk statistics length ({len(chunk_stats_df)}) doesn't match final results length ({len(final_results)})")
             except Exception as e:
                 print(f"⚠️ Error adding chunk statistics: {e}")
-                import traceback
-                traceback.print_exc()
+                # import traceback
+                tb.print_exc()
         else:
             print("ℹ️ No chunk statistics available to add")
 
@@ -666,8 +707,8 @@ async def evaluate_with_ragas_and_crag(excel_file: str, sheet_name: str, config:
                 
             except Exception as e:
                 print(f"⚠️ Error in unused chunk analysis: {e}")
-                import traceback
-                traceback.print_exc()
+                # import traceback
+                tb.print_exc()
 
         print(f"🎯 Final results summary:")
         print(f"   Shape: {final_results.shape}")
@@ -707,7 +748,7 @@ async def process_single_sheet(input_file: str, sheet_name: str, config: Dict,
                              evaluate_ragas: bool, evaluate_crag: bool, evaluate_llm: bool,
                              use_search_api: bool, llm_model: Optional[str], save_db: bool,
                              batch_size: int = DEFAULT_BATCH_SIZE, 
-                             max_concurrent: int = DEFAULT_MAX_CONCURRENT) -> Tuple[pd.DataFrame, Dict]:
+                             max_concurrent: int = DEFAULT_MAX_CONCURRENT) -> Tuple[pd.DataFrame, Dict, Optional[Dict]]:
     """
     Process a single sheet asynchronously.
     
@@ -901,7 +942,13 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
         os.makedirs(output_dir, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        base_filename = os.path.splitext(os.path.basename(input_file))[0]
+        # base_filename = os.path.splitext(os.path.basename(input_file))[0]
+        # Strip input_<session>_ prefix if present
+        raw_name = os.path.basename(input_file)
+        if raw_name.startswith("input_"):
+            raw_name = "_".join(raw_name.split("_", 2)[2:])
+        base_filename = os.path.splitext(raw_name)[0]
+
         
         if session_id:
             output_filename = f"{base_filename}_evaluation_output_{session_id[:8]}_{timestamp}.xlsx"
@@ -938,6 +985,11 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
         # Process results and write to Excel
         successful_sheets = 0
         processed_sheets = []
+        
+        # 🔐 Ensure output directory exists BEFORE writing Excel
+        output_parent_dir = os.path.dirname(output_file_path)
+        os.makedirs(output_parent_dir, exist_ok=True)
+
         
         with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
             for i, (sheet_name, result) in enumerate(zip(sheet_names, sheet_results)):
@@ -1048,8 +1100,8 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
                         
                 except Exception as e:
                     print(f"⚠️ Error creating Quality Analysis tab: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    # import traceback
+                    tb.print_exc()
 
         # Add output file to session manager if session_id provided
         if session_id and os.path.exists(output_file_path):
@@ -1078,7 +1130,7 @@ async def run(input_file: str, sheet_name: str = "", evaluate_ragas: bool = Fals
     except Exception as e:
         error_message = f"❌ Critical error: {e}"
         print(error_message)
-        traceback.print_exc()
+        tb.print_exc()
         return error_message
 
 def run_sync(*args, **kwargs):

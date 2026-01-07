@@ -56,6 +56,15 @@ html {
     --primary-800: #1e40af;
     --primary-900: #1e3a8a;
     
+    /* Primary Aliases (for button styles) */
+    --primary: #3b82f6;        /* Same as primary-500 */
+    --primary-dark: #2563eb;   /* Same as primary-600 */
+    
+    /* Semantic Color Aliases */
+    --success: #10b981;        /* Same as success-500 */
+    --warning: #f59e0b;        /* Same as warning-500 */
+    --error: #ef4444;          /* Same as error-500 */
+    
     /* Semantic Colors */
     --success-50: #ecfdf5;
     --success-100: #d1fae5;
@@ -165,6 +174,7 @@ html {
     
     /* Transitions & Animations */
     --transition-none: none;
+    --transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);  /* Generic transition alias */
     --transition-all: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-colors: color 150ms cubic-bezier(0.4, 0, 0.2, 1), background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-opacity: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);

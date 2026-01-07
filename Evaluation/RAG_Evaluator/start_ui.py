@@ -14,8 +14,8 @@ Usage:
 
 The UI will be available at:
     - Main Interface: http://localhost:8001
-    - API Documentation: http://localhost:8001/api/docs
-    - Interactive API: http://localhost:8001/api/redoc
+    - API Documentation: http://localhost:8001/evaluator/api/docs
+    - Interactive API: http://localhost:8001/evaluator/api/redoc
 
 Features:
     - Modern drag & drop file upload
@@ -97,9 +97,9 @@ def start_server():
         print("🚀 Starting RAG Evaluator UI Server...")
         print("=" * 60)
         print("📊 Main Interface:     http://localhost:8001")
-        print("📖 API Documentation:  http://localhost:8001/api/docs")
-        print("🔄 Interactive API:    http://localhost:8001/api/redoc")
-        print("💡 Health Check:       http://localhost:8001/api/health")
+        print("📖 API Documentation:  http://localhost:8001/evaluator/api/docs")
+        print("🔄 Interactive API:    http://localhost:8001/evaluator/api/redoc")
+        print("💡 Health Check:       http://localhost:8001/evaluator/api/health")
         print("=" * 60)
         print("🎯 Features:")
         print("   • Drag & drop file upload")
@@ -177,8 +177,8 @@ def show_help():
     print("   • python start_ui.py --version - Show version information")
     print("\n🌐 Accessing the Application:")
     print("   • Web Interface: http://localhost:8001")
-    print("   • API Docs: http://localhost:8001/api/docs")
-    print("   • Health Check: http://localhost:8001/api/health")
+    print("   • API Docs: http://localhost:8001/evaluator/api/docs")
+    print("   • Health Check: http://localhost:8001/evaluator/api/health")
     print("\n📚 For detailed documentation, see README.md and UI_README.md")
 
 def check_python_version():

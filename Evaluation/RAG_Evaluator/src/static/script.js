@@ -48,12 +48,12 @@ const CONFIG = {
 
 // API Endpoints
 const API_ENDPOINTS = {
-    CREATE_SESSION: '/api/create-session',
-    SESSION_STATUS: '/api/session-status',
-    UPLOAD_FILE: '/api/upload-file',
-    START_EVALUATION: '/api/start-evaluation',
-    EVALUATION_PROGRESS: '/api/evaluation-progress',
-    DOWNLOAD_RESULTS: '/api/download-results'
+    CREATE_SESSION: '/evaluator/api/create-session',
+    SESSION_STATUS: '/evaluator/api/session-status',
+    UPLOAD_FILE: '/evaluator/api/upload-file',
+    START_EVALUATION: '/evaluator/api/start-evaluation',
+    EVALUATION_PROGRESS: '/evaluator/api/evaluation-progress',
+    DOWNLOAD_RESULTS: '/evaluator/api/download-results'
 };
 
 // DOM Element IDs
@@ -1508,7 +1508,7 @@ class RAGEvaluatorUI {
             const formData = new FormData();
             formData.append('file', file);
 
-            const response = await fetch('/api/get-sheet-names', {
+            const response = await fetch('/evaluator/api/get-sheet-names', {
                 method: 'POST',
                 body: formData
             });
@@ -1951,7 +1951,7 @@ class RAGEvaluatorUI {
             }
         }
         
-        const response = await fetch('/api/runeval', {
+        const response = await fetch('/evaluator/api/runeval', {
             method: 'POST',
             body: formData
         });
@@ -5644,7 +5644,7 @@ Focus on providing recommendations that will have the most significant impact on
         const element = document.getElementById(elementId);
         if (!element) return;
 
-        const allScores = Object.values(analysisData.scores).flat();
+        const allScores      = Object.values(analysisData.scores).flat();
         const overallMean = allScores.reduce((a, b) => a + b, 0) / allScores.length;
         const overallStdDev = Math.sqrt(allScores.reduce((acc, score) => acc + Math.pow(score - overallMean, 2), 0) / allScores.length);
 

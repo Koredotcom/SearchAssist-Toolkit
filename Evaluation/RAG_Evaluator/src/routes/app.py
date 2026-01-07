@@ -15,6 +15,28 @@ import json
 from typing import Optional
 import logging
 
+import traceback as tb
+
+
+import time
+
+def write_job_status(session_dir, status, **kwargs):
+    data = {
+        "status": status,
+        "updated_at": time.time(),
+        **kwargs
+    }
+    with open(os.path.join(session_dir, "job_status.json"), "w") as f:
+        json.dump(data, f)
+
+def read_job_status(session_dir):
+    path = os.path.join(session_dir, "job_status.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, "r") as f:
+        return json.load(f)
+
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,8 +46,8 @@ app = FastAPI(
     title="RAG Evaluator API",
     description="Advanced RAG System Performance Evaluation",
     version="2.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc"
+    docs_url="/evaluator/api/docs",
+    redoc_url="/evaluator/api/redoc"
 )
 
 # Mount static files
@@ -51,6 +73,738 @@ class Body(BaseModel):
 
 class SessionRequest(BaseModel):
     client_info: Optional[dict] = None
+# def build_ui_like_response(session_id: str, request: Request):
+#     session_manager = get_session_manager()
+#     session_dir = session_manager.get_session_directory(session_id)
+
+#     output_file = get_session_latest_file(session_id)
+#     if not output_file or not os.path.exists(output_file):
+#         return None
+
+#     # -------------------------------------------------
+#     # Read ALL sheets (exclude non-data / analysis ones)
+#     # -------------------------------------------------
+#     excel = pd.ExcelFile(output_file)
+#     dfs = []
+
+#     for sheet in excel.sheet_names:
+#         # Skip UI / analysis helper sheets
+#         if sheet.lower() in ["quality_analysis", "summary", "metrics"]:
+#             continue
+
+#         try:
+#             sheet_df = pd.read_excel(output_file, sheet_name=sheet)
+#             sheet_df["_sheet_name"] = sheet
+#             dfs.append(sheet_df)
+#         except Exception:
+#             continue
+
+#     if not dfs:
+#         return None
+
+#     df = pd.concat(dfs, ignore_index=True)
+
+#     # -------------------------------------------------
+#     # Processing stats
+#     # -------------------------------------------------
+#     total = len(df)
+
+#     answer_col = None
+#     for col in ["answer", "response", "generated_answer"]:
+#         if col in df.columns:
+#             answer_col = col
+#             break
+
+#     successful = (
+#         len(df[df[answer_col].notna()])
+#         if answer_col
+#         else total
+#     )
+
+#     processing_stats = {
+#         "total_processed": total,
+#         "successful_queries": successful,
+#         "failed_queries": total - successful,
+#         "success_rate": round((successful / total) * 100, 2) if total else 0
+#     }
+
+#     # -------------------------------------------------
+#     # Metrics (same as UI API – dynamic)
+#     # -------------------------------------------------
+#     metric_columns = [
+#         # RAGAS
+#         "Response Relevancy", "Faithfulness",
+#         "Context Recall", "Context Precision",
+#         "Answer Correctness", "Answer Similarity",
+
+#         # LLM
+#         "LLM Answer Relevancy", "LLM Context Relevancy",
+#         "LLM Answer Correctness", "LLM Ground Truth Validity",
+#         "LLM Answer Completeness",
+
+#         # CRAG
+#         "Accuracy", "crag_accuracy"
+#     ]
+
+#     metrics = {}
+#     for col in metric_columns:
+#         if col in df.columns:
+#             values = pd.to_numeric(df[col], errors="coerce").dropna()
+#             if not values.empty:
+#                 metrics[col] = round(values.mean(), 4)
+
+#     # -------------------------------------------------
+#     # Performance metrics (DYNAMIC – from job_status)
+#     # -------------------------------------------------
+#     performance_metrics = {}
+#     status_file = os.path.join(session_dir, "job_status.json")
+
+#     if os.path.exists(status_file):
+#         with open(status_file) as f:
+#             status_data = json.load(f)
+
+#         total_time = status_data.get("total_time_sec")
+#         peak_memory = status_data.get("peak_memory_mb")
+
+#         if total_time and processing_stats["total_processed"]:
+#             performance_metrics["average_response_time"] = (
+#                 f"{round(total_time / processing_stats['total_processed'], 2)}s"
+#             )
+
+#         if peak_memory:
+#             performance_metrics["peak_memory_usage"] = f"{peak_memory}MB"
+
+#         if processing_stats["total_processed"]:
+#             efficiency = (
+#                 processing_stats["successful_queries"]
+#                 / processing_stats["total_processed"]
+#             ) * 100
+#             performance_metrics["processing_efficiency"] = f"{round(efficiency, 2)}%"
+
+#     # -------------------------------------------------
+#     # Detailed results (UI-safe limit)
+#     # -------------------------------------------------
+#     detailed_results = []
+
+#     display_columns = ["query", "answer", "ground_truth"] + [
+#         col for col in metric_columns if col in df.columns
+#     ]
+#     display_columns = [c for c in display_columns if c in df.columns]
+
+#     for _, row in df.head(200).iterrows():
+#         row_data = {
+#             "_sheet_name": row.get("_sheet_name", "Sheet1")
+#         }
+
+#         for col in display_columns:
+#             val = row.get(col)
+#             if pd.isna(val):
+#                 row_data[col] = "N/A"
+#             elif isinstance(val, (int, float)):
+#                 row_data[col] = float(val)
+#             else:
+#                 sval = str(val)
+#                 row_data[col] = sval[:200] + "..." if len(sval) > 200 else sval
+
+#         detailed_results.append(row_data)
+
+#     # -------------------------------------------------
+#     # Download URL
+#     # -------------------------------------------------
+#     base_url = str(request.base_url).rstrip("/")
+#     download_url = f"{base_url}/evaluator/api/download-results/{session_id}"
+
+#     # -------------------------------------------------
+#     # Final API-2 response (UI compatible)
+#     # -------------------------------------------------
+#     return {
+#         "status": "success",
+#         "job_id": session_id,
+#         "processing_stats": processing_stats,
+#         "metrics": metrics,
+#         "performance_metrics": performance_metrics,
+#         "detailed_results": detailed_results,
+#         "download_url": download_url
+#     }
+
+# def build_ui_like_response(session_id: str, request: Request):
+#     session_manager = get_session_manager()
+#     session_dir = session_manager.get_session_directory(session_id)
+
+#     output_file = get_session_latest_file(session_id)
+#     if not output_file or not os.path.exists(output_file):
+#         return None
+
+#     # -------------------------------------------------
+#     # Read ALL sheets (INCLUDING Quality_Analysis)
+#     # -------------------------------------------------
+#     excel = pd.ExcelFile(output_file)
+#     dfs = []
+
+#     for sheet in excel.sheet_names:
+#         try:
+#             sheet_df = pd.read_excel(output_file, sheet_name=sheet)
+#             sheet_df["_sheet_name"] = sheet
+#             dfs.append(sheet_df)
+#         except Exception:
+#             continue
+
+#     if not dfs:
+#         return None
+
+#     df = pd.concat(dfs, ignore_index=True)
+
+#     # -------------------------------------------------
+#     # Detect ANSWER column (robust, UI-aligned)
+#     # -------------------------------------------------
+#     answer_col = None
+#     for col in df.columns:
+#         if col.strip().lower() in [
+#             "answer",
+#             "generated answer",
+#             "generated_answer",
+#             "response"
+#         ]:
+#             answer_col = col
+#             break
+
+#     # -------------------------------------------------
+#     # Processing stats (MATCH UI)
+#     # -------------------------------------------------
+#     total = len(df)
+
+#     successful = (
+#         len(df[df[answer_col].notna()])
+#         if answer_col
+#         else total
+#     )
+
+#     processing_stats = {
+#         "total_processed": total,
+#         "successful_queries": successful,
+#         "failed_queries": total - successful,
+#         "success_rate": round((successful / total) * 100, 2) if total else 0,
+#         "output_file": os.path.basename(output_file)
+#     }
+
+#     # -------------------------------------------------
+#     # Metrics (same aggregation as UI)
+#     # -------------------------------------------------
+#     metric_columns = [
+#         "Response Relevancy", "Faithfulness",
+#         "Context Recall", "Context Precision",
+#         "Answer Correctness", "Answer Similarity",
+
+#         "LLM Answer Relevancy", "LLM Context Relevancy",
+#         "LLM Answer Correctness", "LLM Ground Truth Validity",
+#         "LLM Answer Completeness",
+
+#         "Accuracy", "crag_accuracy"
+#     ]
+
+#     metrics = {}
+#     for col in metric_columns:
+#         if col in df.columns:
+#             values = pd.to_numeric(df[col], errors="coerce").dropna()
+#             if not values.empty:
+#                 metrics[col] = round(values.mean(), 4)
+
+#     # -------------------------------------------------
+#     # Performance metrics (from job_status.json)
+#     # -------------------------------------------------
+#     performance_metrics = {}
+#     status_file = os.path.join(session_dir, "job_status.json")
+
+#     if os.path.exists(status_file):
+#         with open(status_file) as f:
+#             status_data = json.load(f)
+
+#         total_time = status_data.get("total_time_sec")
+#         peak_memory = status_data.get("peak_memory_mb")
+
+#         if total_time and processing_stats["total_processed"]:
+#             performance_metrics["average_response_time"] = (
+#                 f"{round(total_time / processing_stats['total_processed'], 2)}s"
+#             )
+
+#         if peak_memory:
+#             performance_metrics["peak_memory_usage"] = f"{round(peak_memory, 2)}MB"
+
+#         if processing_stats["total_processed"]:
+#             efficiency = (
+#                 processing_stats["successful_queries"]
+#                 / processing_stats["total_processed"]
+#             ) * 100
+#             performance_metrics["processing_efficiency"] = f"{round(efficiency, 2)}%"
+
+#     # -------------------------------------------------
+#     # Detailed results (MATCH UI – answers, justifications, context, chunks)
+#     # -------------------------------------------------
+#     detailed_results = []
+
+#     display_columns = [
+#         col for col in df.columns
+#         if any(key in col.lower() for key in [
+#             "query",
+#             "answer",
+#             "ground_truth",
+#             "relevancy",
+#             "correctness",
+#             "validity",
+#             "completeness",
+#             "justification",
+#             "context",
+#             "chunk"
+#         ])
+#     ]
+
+#     for _, row in df.head(200).iterrows():
+#         row_data = {
+#             "_sheet_name": row.get("_sheet_name", "Sheet1")
+#         }
+
+#         for col in display_columns:
+#             val = row.get(col)
+
+#             if pd.isna(val):
+#                 row_data[col] = "N/A"
+#             elif isinstance(val, (int, float)):
+#                 row_data[col] = float(val)
+#             else:
+#                 sval = str(val)
+#                 row_data[col] = sval[:500] + "..." if len(sval) > 500 else sval
+
+#         detailed_results.append(row_data)
+
+#     # -------------------------------------------------
+#     # Download URL
+#     # -------------------------------------------------
+#     base_url = str(request.base_url).rstrip("/")
+#     download_url = f"{base_url}/evaluator/api/download-results/{session_id}"
+
+#     # -------------------------------------------------
+#     # Final API-2 response (UI-equivalent)
+#     # -------------------------------------------------
+#     return {
+#         "status": "success",   # API-2 will override to "completed"
+#         "job_id": session_id,
+#         "processing_stats": processing_stats,
+#         "metrics": metrics,
+#         "performance_metrics": performance_metrics,
+#         "detailed_results": detailed_results,
+#         "download_url": download_url
+#     }
+
+# def build_ui_like_response(session_id: str, request: Request):
+#     session_manager = get_session_manager()
+#     session_dir = session_manager.get_session_directory(session_id)
+
+#     output_file = get_session_latest_file(session_id)
+#     if not output_file or not os.path.exists(output_file):
+#         return None
+
+#     # -------------------------------------------------
+#     # Read ALL sheets safely
+#     # -------------------------------------------------
+#     try:
+#         excel = pd.ExcelFile(output_file)
+#     except Exception:
+#         return None
+
+#     dfs = []
+#     for sheet in excel.sheet_names:
+#         try:
+#             sheet_df = pd.read_excel(output_file, sheet_name=sheet)
+#             sheet_df["_sheet_name"] = sheet
+#             dfs.append(sheet_df)
+#         except Exception:
+#             continue
+
+#     if not dfs:
+#         return None
+
+#     df = pd.concat(dfs, ignore_index=True)
+
+#     # -------------------------------------------------
+#     # Detect QUERY & ANSWER columns (UI-aligned)
+#     # -------------------------------------------------
+#     query_col = next(
+#         (c for c in df.columns if c.strip().lower() == "query"),
+#         None
+#     )
+
+#     answer_col = next(
+#         (c for c in df.columns if c.strip().lower() in [
+#             "answer", "generated_answer", "generated answer", "response"
+#         ]),
+#         None
+#     )
+
+#     # -------------------------------------------------
+#     # Processing stats (✔ COUNT ROWS, NOT COLUMNS)
+#     # -------------------------------------------------
+#     if query_col:
+#         valid_query_df = df[df[query_col].notna()]
+#         total = valid_query_df.shape[0]
+#     else:
+#         valid_query_df = pd.DataFrame()
+#         total = 0
+
+#     if answer_col and not valid_query_df.empty:
+#         successful = valid_query_df[
+#             valid_query_df[answer_col].astype(str).str.strip() != ""
+#         ].shape[0]
+#     else:
+#         successful = 0
+
+#     processing_stats = {
+#         "total_processed": total,
+#         "successful_queries": successful,
+#         "failed_queries": total - successful,
+#         "success_rate": round((successful / total) * 100, 2) if total else 0,
+#         "output_file": os.path.basename(output_file)
+#     }
+
+#     # -------------------------------------------------
+#     # Metrics (same aggregation as UI)
+#     # -------------------------------------------------
+#     metric_columns = [
+#         "Response Relevancy", "Faithfulness",
+#         "Context Recall", "Context Precision",
+#         "Answer Correctness", "Answer Similarity",
+#         "LLM Answer Relevancy", "LLM Context Relevancy",
+#         "LLM Answer Correctness", "LLM Ground Truth Validity",
+#         "LLM Answer Completeness",
+#         "Accuracy", "crag_accuracy"
+#     ]
+
+#     metrics = {}
+#     for col in metric_columns:
+#         if col in df.columns:
+#             values = pd.to_numeric(df[col], errors="coerce").dropna()
+#             if not values.empty:
+#                 metrics[col] = round(values.mean(), 4)
+
+#     # -------------------------------------------------
+#     # Performance metrics (from job_status.json)
+#     # -------------------------------------------------
+#     performance_metrics = {}
+#     status_file = os.path.join(session_dir, "job_status.json")
+
+#     if os.path.exists(status_file):
+#         with open(status_file) as f:
+#             status_data = json.load(f)
+
+#         total_time = status_data.get("total_time_sec")
+#         peak_memory = status_data.get("peak_memory_mb")
+
+#         if total_time and total:
+#             performance_metrics["average_response_time"] = (
+#                 f"{round(total_time / total, 2)}s"
+#             )
+
+#         if peak_memory:
+#             performance_metrics["peak_memory_usage"] = f"{round(peak_memory, 2)}MB"
+
+#         if total:
+#             efficiency = (successful / total) * 100
+#             performance_metrics["processing_efficiency"] = f"{round(efficiency, 2)}%"
+
+#     # -------------------------------------------------
+#     # Detailed results (UI-style, row-based)
+#     # -------------------------------------------------
+#     detailed_results = []
+
+#     display_columns = [
+#         c for c in df.columns
+#         if any(k in c.lower() for k in [
+#             "query", "answer", "ground_truth",
+#             "relevancy", "correctness", "validity",
+#             "completeness", "justification",
+#             "context", "chunk"
+#         ])
+#     ]
+
+#     for _, row in valid_query_df.head(200).iterrows():
+#         row_data = {
+#             "_sheet_name": row.get("_sheet_name", "Sheet1")
+#         }
+
+#         for col in display_columns:
+#             val = row.get(col)
+
+#             if pd.isna(val):
+#                 row_data[col] = "N/A"
+#             elif isinstance(val, (int, float)):
+#                 row_data[col] = float(val)
+#             else:
+#                 sval = str(val)
+#                 row_data[col] = sval[:500] + "..." if len(sval) > 500 else sval
+
+#         detailed_results.append(row_data)
+
+#     # -------------------------------------------------
+#     # Download URL
+#     # -------------------------------------------------
+#     base_url = str(request.base_url).rstrip("/")
+#     download_url = f"{base_url}/evaluator/api/download-results/{session_id}"
+
+#     # -------------------------------------------------
+#     # Final API-2 response (UI-equivalent)
+#     # -------------------------------------------------
+#     return {
+#         "status": "success",   # overridden to "completed" by API-2
+#         "job_id": session_id,
+#         "processing_stats": processing_stats,
+#         "metrics": metrics,
+#         "performance_metrics": performance_metrics,
+#         "detailed_results": detailed_results,
+#         "download_url": download_url
+#     }
+
+
+def safe_float(val):
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+def is_valid_query_row(row: dict) -> bool:
+    """
+    Returns True only for real query rows.
+    Excludes Quality_Analysis / Summary rows.
+    """
+    return bool(row.get("query"))
+
+
+def build_ui_like_response(session_id: str, request: Request):
+    session_manager = get_session_manager()
+    session_dir = session_manager.get_session_directory(session_id)
+
+    output_file = get_session_latest_file(session_id)
+    if not output_file or not os.path.exists(output_file):
+        return None
+
+    # -------------------------------------------------
+    # Read ALL sheets safely
+    # -------------------------------------------------
+    try:
+        excel = pd.ExcelFile(output_file)
+    except Exception:
+        return None
+
+    dfs = []
+    for sheet in excel.sheet_names:
+        try:
+            sheet_df = pd.read_excel(output_file, sheet_name=sheet)
+            sheet_df["_sheet_name"] = sheet
+            dfs.append(sheet_df)
+        except Exception:
+            continue
+
+    if not dfs:
+        return None
+
+    df = pd.concat(dfs, ignore_index=True)
+
+    # -------------------------------------------------
+    # Detect QUERY & ANSWER columns (UI-aligned)
+    # -------------------------------------------------
+    query_col = next(
+        (c for c in df.columns if c.strip().lower() == "query"),
+        None
+    )
+
+    answer_col = next(
+        (
+            c for c in df.columns
+            if c.strip().lower() in [
+                "answer", "generated_answer", "generated answer", "response"
+            ]
+        ),
+        None
+    )
+
+    # -------------------------------------------------
+    # Processing stats (COUNT ROWS, NOT COLUMNS)
+    # -------------------------------------------------
+    if query_col:
+        valid_query_df = df[df[query_col].notna()]
+        total = valid_query_df.shape[0]
+    else:
+        valid_query_df = pd.DataFrame()
+        total = 0
+
+    if answer_col and not valid_query_df.empty:
+        successful = valid_query_df[
+            valid_query_df[answer_col].astype(str).str.strip() != ""
+        ].shape[0]
+    else:
+        successful = 0
+
+    processing_stats = {
+        "total_processed": total,
+        "successful_queries": successful,
+        "failed_queries": total - successful,
+        "success_rate": round((successful / total) * 100, 2) if total else 0,
+        "output_file": os.path.basename(output_file)
+    }
+
+    # -------------------------------------------------
+    # Metrics (UI aggregation)
+    # -------------------------------------------------
+    metric_columns = [
+        "Response Relevancy", "Faithfulness",
+        "Context Recall", "Context Precision",
+        "Answer Correctness", "Answer Similarity",
+        "LLM Answer Relevancy", "LLM Context Relevancy",
+        "LLM Answer Correctness", "LLM Ground Truth Validity",
+        "LLM Answer Completeness",
+        "Accuracy", "crag_accuracy"
+    ]
+
+    metrics = {}
+    for col in metric_columns:
+        if col in df.columns:
+            values = pd.to_numeric(df[col], errors="coerce").dropna()
+            if not values.empty:
+                metrics[col] = round(values.mean(), 4)
+
+    # -------------------------------------------------
+    # Performance metrics (job_status.json)
+    # -------------------------------------------------
+    performance_metrics = {}
+    status_file = os.path.join(session_dir, "job_status.json")
+
+    if os.path.exists(status_file):
+        with open(status_file) as f:
+            status_data = json.load(f)
+
+        total_time = status_data.get("total_time_sec")
+        peak_memory = status_data.get("peak_memory_mb")
+
+        if total_time and total:
+            performance_metrics["average_response_time"] = (
+                f"{round(total_time / total, 2)}s"
+            )
+
+        if peak_memory:
+            performance_metrics["peak_memory_usage"] = f"{round(peak_memory, 2)}MB"
+
+        if total:
+            efficiency = (successful / total) * 100
+            performance_metrics["processing_efficiency"] = f"{round(efficiency, 2)}%"
+
+    # -------------------------------------------------
+    # Detailed results (row-based, UI-safe)
+    # -------------------------------------------------
+    detailed_results = []
+
+    display_columns = [
+        c for c in df.columns
+        if any(k in c.lower() for k in [
+            "query", "answer", "ground_truth",
+            "relevancy", "correctness", "validity",
+            "completeness", "justification",
+            "context", "chunk"
+        ])
+    ]
+
+    for _, row in valid_query_df.head(200).iterrows():
+        row_data = {"_sheet_name": row.get("_sheet_name", "Sheet1")}
+
+        for col in display_columns:
+            val = row.get(col)
+
+            if pd.isna(val):
+                row_data[col] = "N/A"
+            elif isinstance(val, (int, float)):
+                row_data[col] = float(val)
+            else:
+                sval = str(val)
+                row_data[col] = sval[:500] + "..." if len(sval) > 500 else sval
+
+        detailed_results.append(row_data)
+
+    # -------------------------------------------------
+    # Retrieval Quality (TOTAL BASED ON TOTAL QUERIES)
+    # -------------------------------------------------
+    query_results = [
+        row for row in detailed_results
+        if is_valid_query_row(row)
+    ]
+
+    total_rows = len(query_results)
+    retrieval_quality = {}
+
+    # ---- Percentage-based metrics ----
+    def avg_percentage(key):
+        values = [
+            safe_float(row.get(key))
+            for row in query_results
+            if safe_float(row.get(key)) is not None
+        ]
+        if not values:
+            return None
+        return round((sum(values) / len(values)) * 100, 2)
+
+    retrieval_quality["LLM Ground Truth Validity"] = avg_percentage(
+        "LLM Ground Truth Validity"
+    )
+    retrieval_quality["LLM Answer Completeness"] = avg_percentage(
+        "LLM Answer Completeness"
+    )
+
+    # ---- Count-based metrics ----
+    def sum_metric(key):
+        values = [
+            safe_float(row.get(key))
+            for row in query_results
+            if safe_float(row.get(key)) is not None
+        ]
+        return int(sum(values)) if values else 0
+
+    def avg_per_query(key):
+        total_value = sum_metric(key)
+        return round(total_value / total_rows, 2) if total_rows else 0
+
+    retrieval_quality["Retrieved Chunk Count"] = sum_metric(
+        "Retrieved Chunk Count"
+    )
+    retrieval_quality["Sent to LLM Chunk Count"] = avg_per_query(
+        "Sent to LLM Chunk Count"
+    )
+    retrieval_quality["Used in Answer Chunk Count"] = avg_per_query(
+        "Used in Answer Chunk Count"
+    )
+    retrieval_quality["Total Chunks Used"] = avg_per_query(
+        "Total Chunks Used"
+    )
+    retrieval_quality["Best Support Rank"] = avg_per_query(
+        "Best Support Rank"
+    )
+    from services.recommendations import generate_recommendations
+
+    recommendations = generate_recommendations(detailed_results)
+    # -------------------------------------------------
+    # Download URL
+    # -------------------------------------------------
+    base_url = str(request.base_url).rstrip("/")
+    download_url = f"{base_url}/evaluator/api/download-results/{session_id}"
+
+    # -------------------------------------------------
+    # Final API response
+    # -------------------------------------------------
+    return {
+        "status": "success",  # overridden to "completed" by API-2
+        "job_id": session_id,
+        "processing_stats": processing_stats,
+        "metrics": metrics,
+        "retrieval_quality": retrieval_quality,
+        "performance_metrics": performance_metrics,
+        # "detailed_results": detailed_results,
+        "recommendations":recommendations,
+        "download_url": download_url
+    }
 
 
 # UI Routes
@@ -75,7 +829,7 @@ async def serve_ui():
         )
 
 
-@app.post('/api/get-sheet-names')
+@app.post('/evaluator/api/get-sheet-names')
 async def get_sheet_names(file: UploadFile = File(...)):
     """Extract sheet names from uploaded Excel file"""
     try:
@@ -133,7 +887,7 @@ async def get_sheet_names(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Failed to extract sheet names: {str(e)}")
 
 
-@app.post('/api/create-session')
+@app.post('/evaluator/api/create-session')
 async def create_session(request: Request):
     """Create a new user session for file isolation"""
     try:
@@ -159,9 +913,642 @@ async def create_session(request: Request):
         logger.error(f"Error creating session: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")
 
+import asyncio
+
+# @app.post("/evaluator/api/eval/start")
+# async def start_eval_job(
+#     excel_file: UploadFile = File(...),
+
+#     # REQUIRED KEYS (passed via curl / postman)
+#     llm_api_key: str = Form(...),
+
+#     xo_app_id: str = Form(...),
+#     xo_client_id: str = Form(...),
+#     xo_client_secret: str = Form(...),
+#     xo_domain: str = Form(...),
+
+#     # Optional tuning
+#     batch_size: int = Form(10),
+#     max_concurrent: int = Form(5),
+# ):
+#     """
+#     API-1:
+#     - Accepts inputs
+#     - Starts evaluation asynchronously
+#     - Returns job_id immediately
+#     """
+
+#     try:
+#         # 1️⃣ Create Job ID (session)
+#         job_id = create_user_session()
+#         session_manager = get_session_manager()
+#         session_dir = session_manager.get_session_directory(job_id)
+
+#         # 2️⃣ Save Excel file
+#         input_excel_path = os.path.join(
+#             session_dir, f"input_{job_id}_{excel_file.filename}"
+#         )
+
+#         with open(input_excel_path, "wb") as f:
+#             f.write(await excel_file.read())
+
+#         # 3️⃣ Default PARAMS (your requirement)
+#         params = {
+#             "sheet_name": "",               # all sheets
+#             "evaluate_ragas": False,
+#             "evaluate_crag": False,
+#             "evaluate_llm": True,
+#             "use_search_api": True,
+#             "llm_model": "gpt-4o-mini",
+#             "save_db": False,
+#             "batch_size": batch_size,
+#             "max_concurrent": max_concurrent
+#         }
+
+#         # 4️⃣ Build config (IN-MEMORY ONLY)
+#         config_data = {
+#             "openai_config": {
+#                 "model": "gpt-4o-mini",
+#                 "api_key": llm_api_key
+#             },
+#             "api_config": {
+#                 "type": "UXO",  # XO by default
+#                 "app_id": xo_app_id,
+#                 "client_id": xo_client_id,
+#                 "client_secret": xo_client_secret,
+#                 "domain": xo_domain
+#             }
+#         }
+
+#         # 5️⃣ Start evaluation ASYNC (NON-BLOCKING)
+#         # asyncio.create_task(
+#         #     runeval(
+#         #         input_excel_path,
+#         #         json.dumps(config_data),
+#         #         params,
+#         #         job_id
+#         #     )
+#         # )
+#         # Mark job as submitted
+# write_job_status(session_dir, "submitted")
+# def validate_input_excel_schema(
+#     excel_path: str,
+#     required_columns: list,
+#     sheet_name: str = None
+# ):
+#     """
+#     Validates that the Excel file contains required columns.
+#     Raises HTTPException if validation fails.
+#     """
+#     try:
+#         # Read Excel
+#         if sheet_name:
+#             df = pd.read_excel(excel_path, sheet_name=sheet_name)
+#         else:
+#             df = pd.read_excel(excel_path)
+
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=400,
+#             detail=f"Unable to read Excel file: {str(e)}"
+#         )
+
+#     original_columns = [c.strip() for c in df.columns]
+#     lower_columns = [c.lower() for c in original_columns]
+    
+#     missing_columns = [
+#         col for col in required_columns if col.lower() not in lower_columns
+#         ]
 
 
-@app.post('/api/runeval')
+#     if missing_columns:
+#         raise HTTPException(
+#             status_code=400,
+#             detail={
+#                 "error": "Invalid Excel format",
+#                 "reason": "Missing required columns",
+#                 "required_columns": required_columns,
+#                 "missing_columns": missing_columns,
+#                 "found_columns": list(df.columns)
+#             }
+#         )
+
+#     if df.empty:
+#         raise HTTPException(
+#             status_code=400,
+#             detail="Excel file is empty after removing blank rows"
+#         )
+
+#     return True
+
+def validate_input_excel_schema(
+    excel_path: str,
+    required_columns: list,
+    optional_columns: list = None,
+    sheet_name: str = None
+):
+    """
+    Validates Excel schema:
+    - required_columns → must exist
+    - optional_columns → allowed but not mandatory
+    """
+    try:
+        if sheet_name:
+            df = pd.read_excel(excel_path, sheet_name=sheet_name)
+        else:
+            df = pd.read_excel(excel_path)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unable to read Excel file: {str(e)}"
+        )
+
+    original_columns = [c.strip() for c in df.columns]
+    lower_columns = [c.lower() for c in original_columns]
+
+    # ---- Required column check ----
+    missing_columns = [
+        col for col in required_columns
+        if col.lower() not in lower_columns
+    ]
+
+    if missing_columns:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Invalid Excel format",
+                "reason": "Missing required columns",
+                "required_columns": required_columns,
+                "optional_columns": optional_columns or [],
+                "missing_columns": missing_columns,
+                "found_columns": original_columns
+            }
+        )
+
+    if df.empty:
+        raise HTTPException(
+            status_code=400,
+            detail="Excel file is empty after removing blank rows"
+        )
+
+    # ---- Optional column info (non-blocking) ----
+    present_optional_columns = []
+    missing_optional_columns = []
+
+    if optional_columns:
+        for col in optional_columns:
+            if col.lower() in lower_columns:
+                present_optional_columns.append(col)
+            else:
+                missing_optional_columns.append(col)
+
+    return {
+        "valid": True,
+        "required_columns": required_columns,
+        "optional_columns": optional_columns or [],
+        "present_optional_columns": present_optional_columns,
+        "missing_optional_columns": missing_optional_columns,
+        "found_columns": original_columns
+    }
+
+
+
+@app.post("/evaluator/api/eval/start")
+async def start_eval_job(
+    excel_file: UploadFile = File(...),
+    llm_api_key: str = Form(...),
+    xo_app_id: str = Form(...),
+    xo_client_id: str = Form(...),
+    xo_client_secret: str = Form(...),
+    xo_domain: str = Form(...),
+    batch_size: int = Form(10),
+    max_concurrent: int = Form(5),
+):
+    try:
+        # 1️⃣ Create Job ID
+        job_id = create_user_session()
+        session_manager = get_session_manager()
+        session_dir = session_manager.get_session_directory(job_id)
+
+        # 2️⃣ Save Excel file
+        input_excel_path = os.path.join(
+            session_dir, f"input_{job_id}_{excel_file.filename}"
+        )
+        with open(input_excel_path, "wb") as f:
+            f.write(await excel_file.read())
+            # 1 Validate Excel schema BEFORE starting job
+        validate_input_excel_schema(
+                excel_path=input_excel_path,
+                required_columns=["query", "ground_truth"],
+                optional_columns=["doc_id", "record_title"]
+                )
+
+
+        # 3️⃣ Params
+        params = {
+            "sheet_name": None,
+            "evaluate_ragas": False,
+            "evaluate_crag": False,
+            "evaluate_llm": True,
+            "use_search_api": True,
+            "llm_model": "gpt-4o-mini",
+            "save_db": False,
+            "batch_size": batch_size,
+            "max_concurrent": max_concurrent
+        }
+
+        # 4️⃣ Config
+        config_data = {
+            "openai": {
+                "model": "gpt-4o-mini",
+                "api_key": llm_api_key
+            },
+            "api_config": {
+                "type": "UXO",
+                "app_id": xo_app_id,
+                "client_id": xo_client_id,
+                "client_secret": xo_client_secret,
+                "domain": xo_domain
+            }
+        }
+        api_cfg = config_data.get("api_config")
+
+        if isinstance(api_cfg, dict):
+            api_type = api_cfg.get("type")
+
+        if api_type == "UXO":
+            config_data["UXO"] = api_cfg
+        elif api_type == "SA":
+            config_data["SA"] = api_cfg
+
+
+        # 5️⃣ Mark job submitted
+        write_job_status(session_dir, "submitted")
+        
+        try:
+           import psutil
+           process = psutil.Process(os.getpid())
+        except ImportError:
+           psutil = None
+           process = None
+           
+        async def runeval_safe():
+            try:
+                process = psutil.Process(os.getpid())
+                start_time = time.time()
+                peak_memory = 0
+
+                write_job_status(
+                    session_dir,
+                    "running",
+                    started_at=start_time
+                    )
+                async def monitor_memory():
+                    nonlocal peak_memory
+                    while True:
+                        mem = process.memory_info().rss / (1024 * 1024)  # MB
+                        peak_memory = max(peak_memory, mem)
+                        await asyncio.sleep(0.5)
+
+                monitor_task = asyncio.create_task(monitor_memory())
+                config_data.update(params)
+                api_cfg = config_data.get("api_config")
+                if isinstance(api_cfg, dict):
+                   api_type = api_cfg.get("type")
+                if api_type == "UXO":
+                   config_data["UXO"] = api_cfg
+                elif api_type == "SA":
+                   config_data["SA"] = api_cfg
+                await asyncio.wait_for(
+                    runeval(
+                        input_excel_path,
+                        json.dumps(config_data),
+                        config_data,
+                        job_id
+                        ),
+                    timeout=60 * 60
+                    )
+                # output_file = get_session_latest_file(job_id)
+                # if output_file and os.path.exists(output_file):
+                #     add_session_file(job_id, output_file)
+                session_outputs = [
+                    os.path.join(session_dir, f)
+                    for f in os.listdir(session_dir)
+                    if f.endswith(".xlsx")
+                    ]
+                
+                if session_outputs:
+                   latest_output = max(session_outputs, key=os.path.getmtime)
+                   add_session_file(job_id, latest_output)
+
+                end_time = time.time()
+                monitor_task.cancel()
+                if session_outputs:
+                    write_job_status(
+                    session_dir,
+                    "completed",
+                    started_at=start_time,
+                    completed_at=end_time,
+                    total_time_sec=round(end_time - start_time, 2),
+                    peak_memory_mb=round(peak_memory, 2)
+                    )
+                else:
+                    write_job_status(
+                        session_dir,
+                        "failed",
+                        error="Evaluation finished but output file missing"
+                   )
+   
+
+            except Exception as e:
+                write_job_status(
+                    session_dir,
+                    "failed",
+                    error=str(e)
+                    )
+
+                
+
+        asyncio.create_task(runeval_safe())
+
+        # 7️⃣ Return immediately
+        return {
+            "status": "submitted",
+            "job_id": job_id,
+            "message": "Evaluation started successfully"
+        }
+
+    except Exception as e:
+        logger.error(f"Error starting evaluation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+    # async def runeval_safe():
+    #     try:
+    #         write_job_status(
+    #             session_dir,
+    #             "running",
+    #             started_at=time.time()
+    #         )
+
+    #         await asyncio.wait_for(
+    #             runeval(
+    #                 input_excel_path,
+    #                 json.dumps(config_data),
+    #                 params,
+    #                 job_id
+    #             ),
+    #             timeout=60 * 60  # 1 hour max
+    #         )
+
+    #         write_job_status(session_dir, "completed")
+
+    #     except asyncio.TimeoutError:
+    #         write_job_status(
+    #             session_dir,
+    #             "failed",
+    #             error="Evaluation timed out"
+    #         )
+
+    #     except Exception as e:
+    #         write_job_status(
+    #             session_dir,
+    #             "failed",
+    #             error=str(e)
+    #         )
+    #         asyncio.create_task(runeval_safe())
+
+
+    #         # 6️⃣ Return job_id immediately
+    #         return JSONResponse({
+    #             "status": "submitted",
+    #             "job_id": job_id,
+    #             "message": "Evaluation started successfully"
+    #         })
+
+    #     except Exception as e:
+    #         logger.error(f"Error starting evaluation: {e}")
+    #         raise HTTPException(status_code=500, detail=str(e))
+
+    # @app.get("/evaluator/api/eval/result/{job_id}")
+    # async def get_eval_result(job_id: str):
+    #     """
+    #     API-2:
+    #     - If evaluation is running → returns status=running
+    #     - If completed → returns downloadable URL
+    #     """
+
+    #     if not validate_session(job_id):
+    #         raise HTTPException(status_code=404, detail="Invalid job_id")
+
+    #     output_file = get_session_latest_file(job_id)
+
+    #     if not output_file:
+    #         return JSONResponse({
+    #             "status": "running",
+    #             "job_id": job_id,
+    #             "message": "Evaluation is still in progress"
+    #         })
+
+    #     filename = os.path.basename(output_file)
+
+    #     # 👇 THIS IS THE IMPORTANT PART
+    #     download_url = f"/evaluator/api/download-results/{job_id}"
+
+    #     return JSONResponse({
+    #         "status": "completed",
+    #         "job_id": job_id,
+    #         "file_name": filename,
+    #         "download_url": download_url
+    #     })
+
+
+    # @app.get("/evaluator/api/eval/result/{job_id}")
+    # async def get_eval_result(job_id: str):
+    #     # 1. Validate job/session
+    #     if not validate_session(job_id):
+    #         raise HTTPException(status_code=404, detail="Invalid job_id")
+
+    #     session_manager = get_session_manager()
+    #     session_dir = session_manager.get_session_directory(job_id)
+
+    #     # 2. Read job status file
+    #     status_file = os.path.join(session_dir, "job_status.json")
+
+    #     if not os.path.exists(status_file):
+    #         return {
+    #             "status": "pending",
+    #             "job_id": job_id,
+    #             "message": "Job has not started yet"
+    #         }
+
+    #     with open(status_file, "r") as f:
+    #         status_data = json.load(f)
+
+    #     status = status_data.get("status")
+
+    #     # 3. FAILED CASE
+    #     if status == "failed":
+    #         return {
+    #             "status": "failed",
+    #             "job_id": job_id,
+    #             "error": status_data.get("error", "Unknown error occurred")
+    #         }
+
+    #     # 4. RUNNING CASE
+    #     if status == "running":
+    #         started_at = status_data.get("started_at")
+    #         elapsed_seconds = None
+    #         remaining_seconds = None
+
+    #         if started_at:
+    #             elapsed_seconds = int(time.time() - started_at)
+    #             estimated_total_seconds = 600  # adjust later if needed
+    #             remaining_seconds = max(
+    #                 estimated_total_seconds - elapsed_seconds, 0
+    #             )
+
+    #         return {
+    #             "status": "running",
+    #             "job_id": job_id,
+    #             "elapsed_seconds": elapsed_seconds,
+    #             "estimated_remaining_seconds": remaining_seconds
+    #         }
+
+    #     # 5. COMPLETED CASE
+    #     output_file = get_session_latest_file(job_id)
+
+    #     if not output_file:
+    #         return {
+    #             "status": "completed",
+    #             "job_id": job_id,
+    #             "message": "Evaluation completed but output file not found"
+    #         }
+
+    #     filename = os.path.basename(output_file)
+
+    #     return {
+    #         "status": "completed",
+    #         "job_id": job_id,
+    #         "file_name": filename,
+    #         "download_url": f"/evaluator/api/download-results/{job_id}"
+    #     }
+
+    # @app.get("/evaluator/api/eval/result/{job_id}")
+    # async def get_eval_result(job_id: str, request: Request):
+
+    #     if not validate_session(job_id):
+    #         raise HTTPException(status_code=404, detail="Invalid job_id")
+
+    #     session_manager = get_session_manager()
+    #     session_dir = session_manager.get_session_directory(job_id)
+    #     status_path = os.path.join(session_dir, "job_status.json")
+
+    #     if not os.path.exists(status_path):
+    #         return {"status": "pending", "job_id": job_id}
+
+    #     with open(status_path) as f:
+    #         status_data = json.load(f)
+
+    #     status = status_data.get("status")
+
+    #     if status == "running":
+    #         return {
+    #             "status": "running",
+    #             "job_id": job_id,
+    #             "elapsed_seconds": int(time.time() - status_data.get("started_at", time.time()))
+    #         }
+
+    #     if status == "failed":
+    #         return {
+    #             "status": "failed",
+    #             "job_id": job_id,
+    #             "error": status_data.get("error")
+    #         }
+
+    #     # ✅ COMPLETED CASE
+    #     response = build_ui_like_response(job_id, request)
+    #     if not response:
+    #         return {
+    #             "status": "completed",
+    #             "job_id": job_id,
+    #             "message": "Evaluation completed but results not found"
+    #         }
+
+    #     return response
+
+
+@app.get("/evaluator/api/eval/result/{job_id}")
+async def get_eval_result(job_id: str, request: Request):
+
+    if not validate_session(job_id):
+        raise HTTPException(status_code=404, detail="Invalid job_id")
+
+    session_manager = get_session_manager()
+    session_dir = session_manager.get_session_directory(job_id)
+    status_path = os.path.join(session_dir, "job_status.json")
+
+    # ⏳ Not started
+    if not os.path.exists(status_path):
+        return {
+            "status": "pending",
+            "job_id": job_id
+        }
+
+    with open(status_path) as f:
+        status_data = json.load(f)
+
+    status = status_data.get("status")
+
+    # ❌ FAILED
+    if status == "failed":
+        return {
+            "status": "failed",
+            "job_id": job_id,
+            "error": status_data.get("error", "Unknown error")
+        }
+
+    # ⏳ RUNNING / SUBMITTED
+    if status in ["submitted", "running"]:
+        started_at = status_data.get("started_at")
+        elapsed_seconds = (
+            int(time.time() - started_at)
+            if started_at else None
+        )
+
+        # 🔮 Simple ETA logic (same as your expectation)
+        ESTIMATED_TOTAL_SECONDS = 600  # adjust later if needed
+        estimated_remaining_seconds = (
+            max(ESTIMATED_TOTAL_SECONDS - elapsed_seconds, 0)
+            if elapsed_seconds is not None else None
+        )
+
+        return {
+            "status": "running",
+            "job_id": job_id,
+            "elapsed_seconds": elapsed_seconds,
+            "estimated_remaining_seconds": estimated_remaining_seconds
+        }
+
+    # ✅ COMPLETED → UI RESPONSE + STATUS
+    ui_response = build_ui_like_response(job_id, request)
+
+    if not ui_response:
+        return {
+            "status": "completed",
+            "job_id": job_id,
+            "message": "Evaluation completed but results not found"
+        }
+
+    # 🔹 Enforce required structure
+    ui_response["status"] = "completed"
+    ui_response["job_id"] = job_id
+
+    return ui_response
+
+
+@app.post('/evaluator/api/runeval')
 async def run_evaluation_ui(
     excel_file: UploadFile = File(...),
     config: str = Form(...),
@@ -794,8 +2181,7 @@ async def run_evaluation_ui(
                 
             except Exception as e:
                 logger.error(f"❌ Error in metric extraction: {str(e)}")
-                import traceback
-                logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+                logger.error(f"❌ Full traceback: {tb.format_exc()}")
                 # Continue with empty metrics
             
             # If no actual metrics found, log warning but don't use mock data
@@ -846,7 +2232,7 @@ async def run_evaluation_ui(
                     "peak_memory_usage": "512MB",
                     "processing_efficiency": "94%"
                 },
-                "download_url": f"/api/download-results/{session_id}",
+                "download_url": f"/evaluator/api/download-results/{session_id}",
                 "session_id": session_id
             }
             
@@ -859,11 +2245,15 @@ async def run_evaluation_ui(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in UI evaluation: {e}")
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+        logger.error("❌ Error in UI evaluation")
+        logger.error(tb.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Evaluation failed: {str(e)}"
+            )
 
 
-@app.get('/api/download-results/{session_id}')
+@app.get('/evaluator/api/download-results/{session_id}')
 async def download_results(session_id: str):
     """Download evaluation results for a specific session"""
     try:
@@ -895,7 +2285,7 @@ async def download_results(session_id: str):
         raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
 
 
-@app.get('/api/session-status/{session_id}')
+@app.get('/evaluator/api/session-status/{session_id}')
 async def get_session_status(session_id: str):
     """Get status information for a session"""
     try:
@@ -922,7 +2312,7 @@ async def get_session_status(session_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to get session status: {str(e)}")
 
 
-@app.post('/api/cleanup-old-sessions')
+@app.post('/evaluator/api/cleanup-old-sessions')
 async def cleanup_old_sessions(max_age_hours: int = 24):
     """Clean up old sessions (admin endpoint)"""
     try:
@@ -986,7 +2376,7 @@ async def mail_service(send_mail: bool = False):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-@app.get('/api/health')
+@app.get('/evaluator/api/health')
 async def health_check():
     """Health check endpoint"""
     return JSONResponse(content={
@@ -996,7 +2386,7 @@ async def health_check():
     })
 
 
-@app.get('/api/config')
+@app.get('/evaluator/api/config')
 async def get_config_template():
     """Get configuration template for reference"""
     config_template = {
@@ -1041,5 +2431,5 @@ if __name__ == "__main__":
     import uvicorn
     print("🚀 Starting RAG Evaluator Server...")
     print("📊 UI available at: http://localhost:8001")
-    print("📖 API docs available at: http://localhost:8001/api/docs")
+    print("📖 API docs available at: http://localhost:8001/evaluator/api/docs")
     uvicorn.run(app, host="0.0.0.0", port=8001, reload=True)
