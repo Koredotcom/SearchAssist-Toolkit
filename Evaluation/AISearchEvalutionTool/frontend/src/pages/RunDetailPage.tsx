@@ -205,6 +205,38 @@ export default function RunDetailPage() {
     return ranks.length ? Math.round((ranks.reduce((a, b) => a + b, 0) / ranks.length) * 10) / 10 : null;
   }, [results]);
 
+  // ── Chunk-lifecycle accuracies ───────────────────────────────────────────
+  // Each test case with a reference doc has, at most, one "matched chunk"
+  // (the first chunk whose fields satisfy the test case's match spec).
+  // Kore.ai tags every chunk with three boolean flags telling us how far the
+  // chunk made it through the answer pipeline: was it qualified by retrieval
+  // scoring, was it sent to the LLM, was it used in the final answer.
+  // Compute the run-level percentages from those per-row flags.
+  const lifecycleStats = useMemo(() => {
+    const isBool = (v: unknown): v is boolean => typeof v === "boolean";
+    const rowsWithMatchedChunk = results.filter((r) =>
+      isBool(r.scores?.matched_chunk_qualified) ||
+      isBool(r.scores?.matched_chunk_sent_to_llm) ||
+      isBool(r.scores?.matched_chunk_used_in_answer)
+    );
+    const denom = rowsWithMatchedChunk.length;
+    const countTrue = (key: string) =>
+      rowsWithMatchedChunk.filter((r) => r.scores?.[key] === true).length;
+    const qualified = countTrue("matched_chunk_qualified");
+    const sentToLlm = countTrue("matched_chunk_sent_to_llm");
+    const usedInAnswer = countTrue("matched_chunk_used_in_answer");
+    const rate = (n: number) => (denom > 0 ? n / denom : null);
+    return {
+      denom,
+      qualified,
+      sentToLlm,
+      usedInAnswer,
+      retrievalAccuracy: rate(qualified),
+      sentToLlmAccuracy: rate(sentToLlm),
+      answerGenAccuracy: rate(usedInAnswer),
+    };
+  }, [results]);
+
   const questionTypes = Array.from(new Set(results.map((r) => r.question_type).filter(Boolean)));
 
   const metricAverages = useMemo(() => RUBRIC_METRICS.map((m) => {
@@ -349,6 +381,44 @@ export default function RunDetailPage() {
           color={avgChunkRank != null ? (avgChunkRank <= 10 ? "green" : avgChunkRank <= 30 ? "amber" : "red") : undefined}
         />
       </div>
+
+      {/* ── Chunk pipeline accuracy ────────────────────────────────── */}
+      {lifecycleStats.denom > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900">Chunk Pipeline Accuracy</h3>
+            <span className="text-xs text-gray-400">
+              {lifecycleStats.denom} test case{lifecycleStats.denom === 1 ? "" : "s"} with a matched chunk
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+            How far did the expected document's chunk make it down Kore.ai's pipeline? Each stage is a stricter filter — qualified ⊇ sent to LLM ⊇ used in answer.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <PipelineStatCard
+              stage="Retrieval"
+              description="Chunk passed Kore.ai's retrieval / shortlist threshold (chunkQualified=true)"
+              count={lifecycleStats.qualified}
+              denom={lifecycleStats.denom}
+              rate={lifecycleStats.retrievalAccuracy}
+            />
+            <PipelineStatCard
+              stage="Sent to LLM"
+              description="Chunk was included in the LLM's context for answer generation (sentToLLM=true)"
+              count={lifecycleStats.sentToLlm}
+              denom={lifecycleStats.denom}
+              rate={lifecycleStats.sentToLlmAccuracy}
+            />
+            <PipelineStatCard
+              stage="Answer generation"
+              description="Chunk was actually cited / used in the final answer (usedInAnswer=true)"
+              count={lifecycleStats.usedInAnswer}
+              denom={lifecycleStats.denom}
+              rate={lifecycleStats.answerGenAccuracy}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── Phase 2: Trend strip (vs previous run) ───────────────── */}
       <TrendStrip appId={appId!} runId={runId!} />
@@ -935,9 +1005,13 @@ function ResultRow({
             </div>
           </div>
 
-          {/* Search payload + live test — full width */}
-          {result.search_payload && Object.keys(result.search_payload).length > 0 && (
-            <SearchPayloadBlock payload={result.search_payload} />
+          {/* Search payload + response + live test — full width */}
+          {((result.search_payload && Object.keys(result.search_payload).length > 0) ||
+            (result.search_response && Object.keys(result.search_response).length > 0)) && (
+            <SearchPayloadBlock
+              payload={result.search_payload || undefined}
+              response={result.search_response || undefined}
+            />
           )}
 
           {/* Live test panel */}
@@ -1689,10 +1763,86 @@ function ChunkRankBadge({ chunkRank, hasReference }: { chunkRank: number | null;
   );
 }
 
-function SearchPayloadBlock({ payload }: { payload: Record<string, unknown> }) {
+function SearchPayloadBlock({
+  payload, response,
+}: {
+  payload?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+}) {
   const [open, setOpen] = useState(false);
+  const hasPayload = payload && Object.keys(payload).length > 0;
+  const hasResponse = response && Object.keys(response).length > 0;
+  const [tab, setTab] = useState<"request" | "response">(
+    hasPayload ? "request" : "response"
+  );
+
+  const metaFilters = (payload as { metaFilters?: unknown } | undefined)?.metaFilters;
+  const customData = (payload as { customData?: { userContext?: { userId?: string } } } | undefined)?.customData;
+  const userId = customData?.userContext?.userId;
+  const filterCount = Array.isArray(metaFilters) ? metaFilters.length : 0;
+  const responseBytes = useMemo(
+    () => (response ? JSON.stringify(response).length : 0),
+    [response],
+  );
+
+  return (
+    <div className="mt-4 border-t border-gray-200 pt-3">
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-gray-900"
+        >
+          {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          Search Request &amp; Response
+          <span className="text-gray-400 font-normal ml-1">
+            ({hasPayload && `filters: ${filterCount}`}
+            {userId && hasPayload ? `, racl: ${userId}` : userId ? `racl: ${userId}` : ""}
+            {hasResponse && (hasPayload || userId) ? "; " : ""}
+            {hasResponse && `response: ${(responseBytes / 1024).toFixed(1)} KB`})
+          </span>
+        </button>
+      </div>
+      {open && (
+        <div className="mt-2 space-y-2">
+          {hasPayload && hasResponse && (
+            <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+              {(["request", "response"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={cn(
+                    "px-3 py-1 capitalize transition-colors",
+                    tab === t
+                      ? "bg-violet-600 text-white"
+                      : "bg-white text-gray-600 hover:bg-gray-50"
+                  )}
+                >
+                  {t === "request" ? "Request payload" : "Full response"}
+                </button>
+              ))}
+            </div>
+          )}
+          {tab === "request" && hasPayload && (
+            <JsonPane title="Request body sent to Kore.ai" json={payload!} />
+          )}
+          {tab === "response" && hasResponse && (
+            <JsonPane title="Full raw response from Kore.ai" json={response!} />
+          )}
+          {tab === "response" && !hasResponse && hasPayload && (
+            <p className="text-[11px] text-gray-400 italic">
+              No raw response stored for this row (run was created before raw-response capture was added).
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function JsonPane({ title, json }: { title: string; json: Record<string, unknown> }) {
   const [copied, setCopied] = useState(false);
-  const pretty = useMemo(() => JSON.stringify(payload, null, 2), [payload]);
+  const pretty = useMemo(() => JSON.stringify(json, null, 2), [json]);
+  const sizeKb = (pretty.length / 1024).toFixed(1);
 
   const handleCopy = async () => {
     try {
@@ -1704,39 +1854,24 @@ function SearchPayloadBlock({ payload }: { payload: Record<string, unknown> }) {
     }
   };
 
-  const metaFilters = (payload as { metaFilters?: unknown }).metaFilters;
-  const customData = (payload as { customData?: { userContext?: { userId?: string } } }).customData;
-  const userId = customData?.userContext?.userId;
-  const filterCount = Array.isArray(metaFilters) ? metaFilters.length : 0;
-
   return (
-    <div className="mt-4 border-t border-gray-200 pt-3">
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-gray-900"
-        >
-          {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-          Search Payload
-          <span className="text-gray-400 font-normal ml-1">
-            (filters: {filterCount}{userId ? `, racl: ${userId}` : ""})
-          </span>
-        </button>
-        {open && (
+    <div>
+      <div className="flex items-center justify-between px-2 py-1 text-[11px] text-gray-500 bg-gray-50 border border-gray-200 border-b-0 rounded-t-lg">
+        <span>{title}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-gray-400">{sizeKb} KB</span>
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 px-2 py-0.5 rounded border border-gray-200 bg-white"
+            className="flex items-center gap-1 text-gray-500 hover:text-gray-800 px-2 py-0.5 rounded border border-gray-200 bg-white"
           >
             {copied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
             {copied ? "Copied" : "Copy"}
           </button>
-        )}
+        </div>
       </div>
-      {open && (
-        <pre className="mt-2 p-3 bg-gray-900 text-gray-100 rounded text-[11px] leading-relaxed overflow-x-auto font-mono max-h-96">
-          {pretty}
-        </pre>
-      )}
+      <pre className="p-3 bg-gray-900 text-gray-100 rounded-b-lg text-[11px] leading-relaxed overflow-auto font-mono max-h-[480px]">
+        {pretty}
+      </pre>
     </div>
   );
 }
@@ -1779,6 +1914,35 @@ function StatCard({
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <p className="text-xs font-medium text-gray-500 mb-1">{label}</p>
       <p className={cn("text-2xl font-bold", textColor)}>{value}</p>
+    </div>
+  );
+}
+
+function PipelineStatCard({
+  stage, description, count, denom, rate,
+}: {
+  stage: string;
+  description: string;
+  count: number;
+  denom: number;
+  rate: number | null;
+}) {
+  const pct = rate != null ? rate * 100 : null;
+  const tone =
+    pct == null ? "border-gray-200 bg-gray-50/40 text-gray-600" :
+    pct >= 80 ? "border-green-200 bg-green-50/40 text-green-700" :
+    pct >= 50 ? "border-amber-200 bg-amber-50/40 text-amber-700" :
+    "border-red-200 bg-red-50/40 text-red-700";
+  return (
+    <div className={cn("rounded-lg border p-4 flex flex-col gap-2", tone)}>
+      <div className="flex items-baseline justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{stage}</p>
+        <span className="text-[11px] font-mono text-gray-500">{count}/{denom}</span>
+      </div>
+      <p className="text-3xl font-bold leading-none">
+        {pct != null ? `${pct.toFixed(1)}%` : "—"}
+      </p>
+      <p className="text-[11px] text-gray-500 leading-snug">{description}</p>
     </div>
   );
 }

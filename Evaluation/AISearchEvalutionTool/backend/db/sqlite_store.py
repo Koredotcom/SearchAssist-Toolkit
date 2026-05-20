@@ -95,6 +95,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "ALTER TABLE eval_run ADD COLUMN ai_insights_md TEXT",
         "ALTER TABLE eval_run ADD COLUMN ai_insights_model TEXT",
         "ALTER TABLE eval_run ADD COLUMN ai_insights_generated_at TEXT",
+        # Full raw Kore.ai response per test case (for debugging / UI display)
+        "ALTER TABLE eval_result ADD COLUMN search_response TEXT DEFAULT '{}'",
     ]
     for sql in migrations:
         try:
@@ -118,6 +120,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
     # Phase 2: backfill the new 'insights' agent row + prompt for existing apps
     _backfill_insights_agent(conn)
+    # Backfill the new 'answer_generator' agent row + prompt for existing apps
+    _backfill_agent(conn, "answer_generator")
 
     # One-time bump: any insights row still at the old 2000-token default is too
     # tight for the ~600-word markdown report and outright unusable for reasoning
@@ -135,13 +139,22 @@ def _backfill_insights_agent(conn: sqlite3.Connection) -> None:
     """Seed the new 'insights' agent (LLM config + prompt) for pre-Phase-2 apps.
 
     Skips apps that already have an insights row, so re-running is safe.
+    """
+    _backfill_agent(conn, "insights")
+
+
+def _backfill_agent(conn: sqlite3.Connection, agent_name: str) -> None:
+    """Seed an agent's default LLM config + active prompt for every existing app.
+
+    Idempotent: relies on ``INSERT OR IGNORE`` for the llm_config row and on an
+    existence check for the prompt row, so re-running is safe.
     Imported lazily inside the function to avoid bootstrap-import cycles.
     """
     from agents.prompts import DEFAULT_PROMPTS
-    insights_prompt = DEFAULT_PROMPTS.get("insights")
-    if not insights_prompt:
+    prompt_text = DEFAULT_PROMPTS.get(agent_name)
+    cfg = DEFAULT_LLM.get(agent_name)
+    if not prompt_text or not cfg:
         return
-    cfg = DEFAULT_LLM["insights"]
     rows = conn.execute("SELECT app_id FROM app_config").fetchall()
     for r in rows:
         app_id = r["app_id"]
@@ -149,18 +162,18 @@ def _backfill_insights_agent(conn: sqlite3.Connection) -> None:
             """INSERT OR IGNORE INTO llm_config
                  (id, app_id, agent_name, model, temperature, max_tokens)
                VALUES (?,?,?,?,?,?)""",
-            (str(uuid.uuid4()), app_id, "insights",
+            (str(uuid.uuid4()), app_id, agent_name,
              cfg["model"], cfg["temperature"], cfg["max_tokens"]),
         )
         existing = conn.execute(
             "SELECT id FROM prompt_config WHERE app_id=? AND agent_name=? AND is_active=1",
-            (app_id, "insights"),
+            (app_id, agent_name),
         ).fetchone()
         if not existing:
             conn.execute(
                 """INSERT INTO prompt_config (id, app_id, agent_name, prompt_text, version, is_active)
                    VALUES (?,?,?,?,1,1)""",
-                (str(uuid.uuid4()), app_id, "insights", insights_prompt),
+                (str(uuid.uuid4()), app_id, agent_name, prompt_text),
             )
     conn.commit()
 
@@ -330,6 +343,10 @@ DEFAULT_LLM = {
     # 4000 tokens covers the ~600-word markdown report comfortably and gives
     # reasoning models (o-series, gpt-5) some headroom for internal thinking.
     "insights":         {"model": "gpt-4.1",      "temperature": 0.3, "max_tokens": 4000},
+    # Answer generator — RAG-style "given context + question produce an answer"
+    # prompt. Editable + tunable; the actual answer rendering still goes through
+    # Kore.ai today, this row exists so users can manage / fine-tune the prompt.
+    "answer_generator": {"model": "gpt-4.1",      "temperature": 0.2, "max_tokens": 1200},
 }
 
 
@@ -734,10 +751,10 @@ def upsert_eval_result(result: dict) -> None:
                (run_id, tc_id, rag_response, retrieved_doc_ids, chunk_signals,
                 scores, failure_category, judge_rationale,
                 latency_llm_ms, latency_retrieval_ms, search_request_id,
-                search_payload, attempt_count,
+                search_payload, search_response, attempt_count,
                 case_id, expected_doc_rank, recall_at_k, answer_similarity,
                 verdict, verdict_source)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (result["run_id"], result["tc_id"], result.get("rag_response"),
              json.dumps(result.get("retrieved_doc_ids", [])),
              json.dumps(result.get("chunk_signals", [])),
@@ -746,6 +763,7 @@ def upsert_eval_result(result: dict) -> None:
              result.get("latency_llm_ms"), result.get("latency_retrieval_ms"),
              result.get("search_request_id"),
              json.dumps(result.get("search_payload") or {}),
+             json.dumps(result.get("search_response") or {}),
              result.get("attempt_count", 1),
              result.get("case_id"),
              result.get("expected_doc_rank"),
@@ -819,6 +837,7 @@ def get_eval_results(run_id: str) -> list[dict]:
             d["reference_doc_ids"] = json.loads(d.get("reference_doc_ids") or "[]")
             d["scores"] = json.loads(d.get("scores") or "{}")
             d["search_payload"] = json.loads(d.get("search_payload") or "{}")
+            d["search_response"] = json.loads(d.get("search_response") or "{}")
             d["recall_at_k"] = json.loads(d.get("recall_at_k") or "{}")
             result.append(d)
         return result

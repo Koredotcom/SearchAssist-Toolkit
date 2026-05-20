@@ -282,9 +282,6 @@ class EvalResultResponse(BaseModel):
     doc_retrieved: bool
     search_payload: dict[str, Any] | None = None
     search_response: dict[str, Any] | None = None
-    # docId → {title, url} — built from stored chunk_signals so the UI can show
-    # record titles instead of raw doc IDs without sending full chunk payloads
-    doc_label_map: dict[str, DocLabel] = {}
     # 4-case evaluation fields
     case_id: int | None = None
     expected_doc_rank: int | None = None

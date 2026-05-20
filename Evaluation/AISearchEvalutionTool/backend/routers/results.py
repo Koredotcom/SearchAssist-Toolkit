@@ -95,7 +95,6 @@ def get_run_results(app_id: str, run_id: str):
             "doc_retrieved": scores.get("doc_retrieved", False),
             "search_payload": r.get("search_payload") or {},
             "search_response": r.get("search_response") or {},
-            "doc_label_map": doc_label_map,
             # 4-case fields
             "case_id": r.get("case_id"),
             "expected_doc_rank": r.get("expected_doc_rank"),

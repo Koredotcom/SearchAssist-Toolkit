@@ -3,7 +3,6 @@ import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { goldenSetsApi, evaluationApi, appsApi, appApiKeysApi } from "@/lib/api";
 import type { Job, AnswerMode, FilterMode, JudgeMode } from "@/lib/api";
-
 import { FlaskConical, Loader2, CheckCircle, XCircle, ChevronRight, Filter, UserCircle, Zap, FileText, Square, Info, ChevronDown, ChevronUp, Scale, Sparkles, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -55,15 +54,6 @@ export default function EvaluatePage() {
     queryFn: () => goldenSetsApi.list(appId!),
     enabled: !!appId,
   });
-
-  // Available filter fields for the selected golden set (only fetched when needed)
-  const { data: filterOptions } = useQuery({
-    queryKey: ["filter-options", appId, selectedVersion],
-    queryFn: () => goldenSetsApi.filterOptions(appId!, selectedVersion),
-    enabled: !!appId && !!selectedVersion && filterMode === "field_filters",
-    staleTime: 30_000,
-  });
-  const availableFilterFields = filterOptions?.fields ?? [];
 
   // App-level thresholds (used as the placeholder/default for overrides)
   const { data: apiKeyStatus } = useQuery({

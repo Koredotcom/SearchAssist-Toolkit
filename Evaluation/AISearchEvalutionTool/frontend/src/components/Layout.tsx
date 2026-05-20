@@ -6,7 +6,7 @@ import type { AppConfig } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Database, Zap, FlaskConical, BookOpen,
-  Settings2, BarChart3, ChevronDown, Plus, Bot, KeySquare, Moon, Sun
+  Settings2, BarChart3, ChevronDown, Plus, Bot, KeySquare, Moon, Sun, Wand2
 } from "lucide-react";
 
 const appNavItems = (appId: string) => [
