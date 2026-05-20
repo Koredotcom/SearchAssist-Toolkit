@@ -76,6 +76,9 @@ export default function AppApiKeysPage() {
   const [openaiUrl, setOpenaiUrl] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [geminiUrl, setGeminiUrl] = useState("");
+  const [case1Threshold, setCase1Threshold] = useState(0.5);
+  const [case2Threshold, setCase2Threshold] = useState(0.5);
+
   const [showAnthropic, setShowAnthropic] = useState(false);
   const [showOpenai, setShowOpenai] = useState(false);
   const [showGemini, setShowGemini] = useState(false);
@@ -94,6 +97,8 @@ export default function AppApiKeysPage() {
       setAnthropicUrl(status.anthropic_base_url || "");
       setOpenaiUrl(status.openai_base_url || "");
       setGeminiUrl(status.gemini_base_url || "");
+      setCase1Threshold(status.case1_threshold ?? 0.5);
+      setCase2Threshold(status.case2_threshold ?? 0.5);
     }
   }, [status]);
 
@@ -127,6 +132,11 @@ export default function AppApiKeysPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["app-api-keys", appId] }); setGeminiKey(""); setGeminiSaved(true); setTimeout(() => setGeminiSaved(false), 2000); },
   });
 
+  const saveThresholds = useMutation({
+    mutationFn: () => appApiKeysApi.set(appId!, { case1_threshold: case1Threshold, case2_threshold: case2Threshold }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["app-api-keys", appId] }); setThresholdSaved(true); setTimeout(() => setThresholdSaved(false), 2000); },
+  });
+
   const testAnthropicMutation = useMutation({
     mutationFn: () => appApiKeysApi.testAnthropic(appId!, anthropicKey.trim() || undefined, anthropicUrl.trim() || undefined),
     onSuccess: (d) => setAnthropicTest(d),
@@ -156,6 +166,7 @@ export default function AppApiKeysPage() {
   const anthropicDirty = anthropicKey.trim() || anthropicUrl !== (status?.anthropic_base_url ?? "");
   const openaiDirty = openaiKey.trim() || openaiUrl !== (status?.openai_base_url ?? "");
   const geminiDirty = geminiKey.trim() || geminiUrl !== (status?.gemini_base_url ?? "");
+  const thresholdsDirty = case1Threshold !== (status?.case1_threshold ?? 0.5) || case2Threshold !== (status?.case2_threshold ?? 0.5);
   const canTestAnthropic = !!(anthropicKey.trim() || status?.anthropic_key_set);
   const canTestOpenai = !!(openaiKey.trim() || status?.openai_key_set);
   const canTestGemini = !!(geminiKey.trim() || status?.gemini_key_set);

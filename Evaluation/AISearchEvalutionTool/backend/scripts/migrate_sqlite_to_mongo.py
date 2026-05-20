@@ -32,7 +32,6 @@ JSON_FIELDS = {
         "chunk_signals": [],
         "scores": {},
         "search_payload": {},
-        "search_response": {},
         "recall_at_k": {},
     },
 }

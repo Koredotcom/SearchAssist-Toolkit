@@ -24,7 +24,6 @@ DEFAULT_LLM = {
     "judge":            {"model": "gpt-4.1",      "temperature": 0.0, "max_tokens": 800},
     "filter_generator": {"model": "gpt-4.1-mini", "temperature": 0.0, "max_tokens": 800},
     "insights":         {"model": "gpt-4.1",      "temperature": 0.3, "max_tokens": 4000},
-    "answer_generator": {"model": "gpt-4.1",      "temperature": 0.2, "max_tokens": 1200},
 }
 
 _client: MongoClient | None = None
@@ -419,7 +418,6 @@ def import_uploaded_test_cases(app_id: str, version: str, cases: list[dict]) -> 
             "reference_doc_ids": case.get("reference_doc_ids", []),
             "reference_match_spec": case.get("reference_match_spec", []),
             "generation_metadata": meta,
-            "custom_fields": case.get("custom_fields") or {},
             "human_validated": True,
             "status": "active",
         })
@@ -506,7 +504,6 @@ def upsert_eval_result(result: dict) -> None:
         "chunk_signals": _ensure_list(result.get("chunk_signals")),
         "scores": _ensure_dict(result.get("scores")),
         "search_payload": _ensure_dict(result.get("search_payload")),
-        "search_response": _ensure_dict(result.get("search_response")),
         "recall_at_k": _ensure_dict(result.get("recall_at_k")),
         "attempt_count": result.get("attempt_count", 1),
     }
@@ -558,7 +555,6 @@ def get_eval_results(run_id: str) -> list[dict]:
         d["retrieved_doc_ids"] = _ensure_list(d.get("retrieved_doc_ids"))
         d["scores"] = _ensure_dict(d.get("scores"))
         d["search_payload"] = _ensure_dict(d.get("search_payload"))
-        d["search_response"] = _ensure_dict(d.get("search_response"))
         d["recall_at_k"] = _ensure_dict(d.get("recall_at_k"))
         out.append(d)
     return sorted(out, key=lambda r: str(r.get("question_type") or ""))

@@ -4,7 +4,7 @@ from db.database import get_app, get_llm_configs, upsert_llm_config
 
 router = APIRouter(prefix="/apps/{app_id}/llm-config", tags=["llm-config"])
 
-VALID_AGENTS = {"agent1", "agent2", "agent3", "judge", "filter_generator", "insights", "answer_generator"}
+VALID_AGENTS = {"agent1", "agent2", "agent3", "judge", "filter_generator", "insights"}
 
 
 @router.get("", response_model=list[LLMConfigResponse])
