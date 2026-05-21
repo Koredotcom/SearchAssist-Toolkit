@@ -1,0 +1,22 @@
+Project: RAG Evaluation Agent
+You're building an evaluation framework for your existing RAG application (Code.ai) to measure how well it retrieves and answers questions.
+Pipeline Flow:
+
+Pull documents from your source via API
+Start with a small set — 10 to 50 documents first to validate quality
+Run through three independent agents:
+
+
+Agent 1 – Summarizer: Takes each document and extracts the key concepts, claims, and important content
+Agent 2 – Test Case Generator: Uses those key concepts to generate multiple test case candidates, each with a question, expected answer, and reference document
+Agent 3 – Ranker/Filter: Scores and ranks the generated test cases on clarity, specificity, and meaningfulness, and keeps only the high quality ones
+
+
+Once you have solid test cases, hit your RAG system's search API with those questions
+Collect the RAG system's responses and evaluate them on metrics like answer correctness, completeness, and relevance
+
+Key Design Decisions:
+
+Three agents kept independent so each can be tuned separately
+Start small, validate quality, then scale up
+Optionally apply filters before hitting the RAG API depending on the query
