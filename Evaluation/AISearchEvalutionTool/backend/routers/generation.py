@@ -21,6 +21,7 @@ def start_generation(app_id: str, body: GenerationRequest, bg: BackgroundTasks):
         file_source_ids=body.file_source_ids,
         max_docs_per_source=body.max_docs_per_source,
         max_questions_per_doc=body.max_questions_per_doc,
+        target_language=body.target_language,
         filters=body.filters,
         job_id=job_id,
     )

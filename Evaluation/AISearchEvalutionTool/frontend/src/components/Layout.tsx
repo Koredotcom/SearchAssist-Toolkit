@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, NavLink, useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { appsApi } from "@/lib/api";
@@ -6,17 +6,18 @@ import type { AppConfig } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Database, Zap, FlaskConical, BookOpen,
-  Settings2, BarChart3, ChevronDown, Plus, Bot, KeySquare
+  Settings2, BarChart3, ChevronDown, Plus, Bot, KeySquare, Moon, Sun, Wand2
 } from "lucide-react";
 
 const appNavItems = (appId: string) => [
-  { to: `/apps/${appId}/sources`,     label: "Sources",      icon: Database },
-  { to: `/apps/${appId}/generate`,    label: "Generate",     icon: Zap },
-  { to: `/apps/${appId}/golden-sets`, label: "Golden Sets",  icon: BookOpen },
-  { to: `/apps/${appId}/evaluate`,    label: "Evaluate",     icon: FlaskConical },
-  { to: `/apps/${appId}/results`,     label: "Results",      icon: BarChart3 },
-  { to: `/apps/${appId}/prompts`,     label: "Prompts & Models", icon: Settings2 },
-  { to: `/apps/${appId}/api-keys`,    label: "API Keys",     icon: KeySquare },
+  { to: `/apps/${appId}/sources`,       label: "Sources",      icon: Database },
+  { to: `/apps/${appId}/generate`,      label: "Generate",     icon: Zap },
+  { to: `/apps/${appId}/golden-sets`,   label: "Golden Sets",  icon: BookOpen },
+  { to: `/apps/${appId}/evaluate`,      label: "Evaluate",     icon: FlaskConical },
+  { to: `/apps/${appId}/results`,       label: "Results",      icon: BarChart3 },
+  { to: `/apps/${appId}/prompts`,       label: "Prompts & Models", icon: Settings2 },
+  { to: `/apps/${appId}/prompt-tuner`,  label: "Prompt Tuner", icon: Wand2 },
+  { to: `/apps/${appId}/api-keys`,      label: "API Keys",     icon: KeySquare },
   // TODO: missing QueryPage — add { to: `/apps/${appId}/query`, label: "Query", icon: Search } once QueryPage.tsx is created
 ];
 
@@ -24,6 +25,16 @@ export default function Layout() {
   const { appId } = useParams<{ appId?: string }>();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved) return saved === "dark";
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode);
+    localStorage.setItem("theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
 
   const { data: apps = [] } = useQuery({
     queryKey: ["apps"],
@@ -92,6 +103,18 @@ export default function Layout() {
 
       {/* Main content */}
       <main className="flex-1 overflow-auto">
+        <div className="sticky top-0 z-30 flex justify-end px-6 pt-4 pointer-events-none">
+          <button
+            type="button"
+            onClick={() => setDarkMode((v) => !v)}
+            className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm backdrop-blur transition-colors hover:bg-gray-50 dark:border-neutral-800 dark:bg-black/90 dark:text-neutral-200 dark:hover:bg-neutral-950"
+            title={darkMode ? "Switch to light theme" : "Switch to dark theme"}
+            aria-label={darkMode ? "Switch to light theme" : "Switch to dark theme"}
+          >
+            {darkMode ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            {darkMode ? "Light" : "Dark"}
+          </button>
+        </div>
         <div className="max-w-7xl mx-auto px-6 py-6">
           <Outlet />
         </div>

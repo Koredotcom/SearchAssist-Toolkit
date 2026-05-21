@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 import json
 import logging
@@ -66,6 +68,15 @@ def get_run_results(app_id: str, run_id: str):
             passed = verdict == "pass"
         else:
             passed = _is_pass(scores, expected_behavior)
+        # Build docId → {title, url} from stored chunk_signals (deduped by docId)
+        doc_label_map: dict[str, dict] = {}
+        for chunk in r.get("chunk_signals") or []:
+            doc_id = chunk.get("docId")
+            if doc_id and doc_id not in doc_label_map:
+                doc_label_map[doc_id] = {
+                    "title": chunk.get("recordTitle"),
+                    "url": chunk.get("recordUrl"),
+                }
         result.append({
             "tc_id": r["tc_id"],
             "question": r["question"],
@@ -83,6 +94,8 @@ def get_run_results(app_id: str, run_id: str):
             "latency_retrieval_ms": r.get("latency_retrieval_ms"),
             "doc_retrieved": scores.get("doc_retrieved", False),
             "search_payload": r.get("search_payload") or {},
+            "search_response": r.get("search_response") or {},
+            "doc_label_map": doc_label_map,
             # 4-case fields
             "case_id": r.get("case_id"),
             "expected_doc_rank": r.get("expected_doc_rank"),

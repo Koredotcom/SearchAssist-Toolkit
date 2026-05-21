@@ -13,6 +13,7 @@ def fetch_documents(
     app: dict,
     filters: dict[str, Any] | None = None,
     extraction_type: str | None = None,
+    source_id: str | None = None,
     max_docs: int = 10,
 ) -> Generator[dict[str, Any], None, None]:
     """Yield documents from Content by Condition API with cursor pagination."""
@@ -22,8 +23,8 @@ def fetch_documents(
 
     unlimited = max_docs == 0
     logger.info(
-        "Kore.ai | Fetching documents | app=%s extraction_type=%s max_docs=%s filters=%s",
-        app_id, extraction_type, "unlimited" if unlimited else max_docs, filters,
+        "Kore.ai | Fetching documents | app=%s extraction_type=%s source_id=%s max_docs=%s filters=%s",
+        app_id, extraction_type, source_id, "unlimited" if unlimited else max_docs, filters,
     )
 
     query: dict[str, Any] = dict(filters or {})
@@ -63,18 +64,29 @@ def fetch_documents(
                 if not unlimited and fetched >= max_docs:
                     logger.debug("Kore.ai | Reached max_docs=%d — stopping", max_docs)
                     return
+                item_source_id = item.get("connectorId") or item.get("extractionSourceId")
+                if source_id and item_source_id != source_id:
+                    continue
                 source = item.get("_source", {})
-                content = source.get("content", "") or ""
+                content = (
+                    source.get("content")
+                    or source.get("page_body")
+                    or source.get("text")
+                    or source.get("page_preview")
+                    or source.get("page_html")
+                    or ""
+                )
                 title = (
                     source.get("title")
                     or source.get("file_title")
+                    or source.get("page_title")
+                    or source.get("recordTitle")
                     or item.get("_id", "Untitled")
                 )
-                connector_id = item.get("connectorId") or item.get("extractionSourceId")
 
                 logger.debug(
                     "Kore.ai | Doc #%d: id=%s title='%s' connector=%s content_chars=%d",
-                    fetched + 1, item["_id"], title, connector_id, len(content),
+                    fetched + 1, item["_id"], title, item_source_id, len(content),
                 )
 
                 yield {
@@ -85,8 +97,13 @@ def fetch_documents(
                     "content": content,
                     "metadata": source,
                     "sys_content_type": source.get("sys_content_type"),
-                    "source_url": source.get("url") or source.get("base_url"),
-                    "connector_id": connector_id,
+                    "source_url": (
+                        source.get("url")
+                        or source.get("page_url")
+                        or source.get("base_url")
+                        or source.get("sys_source_url")
+                    ),
+                    "connector_id": item_source_id,
                 }
                 fetched += 1
 

@@ -21,10 +21,15 @@ def start_evaluation(app_id: str, body: EvaluationRequest, bg: BackgroundTasks):
         sample_mode=body.sample_mode,
         filter_mode=body.filter_mode,
         filter_prompt=body.filter_prompt,
+        filter_fields=body.filter_fields,
         enable_racl=body.enable_racl,
         user_email=body.user_email,
         answer_mode_override=body.answer_mode_override,
         question_types=body.question_types,
+        judge_mode=body.judge_mode,
+        case1_threshold=body.case1_threshold,
+        case2_threshold=body.case2_threshold,
+        top_k_pass=body.top_k_pass,
         job_id=job_id,
     )
     return get_job(job_id)
@@ -50,7 +55,7 @@ def test_filter_prompt(app_id: str, body: FilterPromptTestRequest):
     if not app:
         raise HTTPException(404, "App not found")
     try:
-        from agents.llm_client import call_llm
+        from agents.llm_client import call_llm_json
         from agents.prompts import FILTER_GENERATOR_PROMPT
 
         if body.prompt_text is not None:
@@ -59,7 +64,7 @@ def test_filter_prompt(app_id: str, body: FilterPromptTestRequest):
             row = get_active_prompt(app_id, "filter_generator")
             system_prompt = row["prompt_text"] if row else FILTER_GENERATOR_PROMPT
 
-        raw = call_llm(app_id, "filter_generator", system_prompt, f"Question: {body.question}")
+        raw = call_llm_json(app_id, "filter_generator", system_prompt, f"Question: {body.question}")
         return {"raw_response": raw, "error": None}
     except Exception as exc:
         return {"raw_response": None, "error": str(exc)}

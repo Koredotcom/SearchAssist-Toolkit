@@ -2,11 +2,12 @@ import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { resultsApi, queryApi } from "@/lib/api";
-import type { EvalResult, QueryResponse } from "@/lib/api";
+import type { EvalResult, QueryResponse, ChunkSignal } from "@/lib/api";
 import {
   ArrowLeft, ChevronDown, ChevronRight, CheckCircle, XCircle,
   ShieldAlert, AlertTriangle, Activity, Gauge, Copy, Check,
   Play, RotateCcw, Loader2, Download, FileWarning, X, Trash2,
+  Code2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import InsightsPanel from "@/components/InsightsPanel";
@@ -602,6 +603,8 @@ function MetricChip({ label, avg, max, color, info }: {
   );
 }
 
+type DocDisplayMode = "id" | "title" | "url";
+
 function ResultRow({
   result,
   appId,
@@ -616,6 +619,17 @@ function ResultRow({
   const passed = result.passed;
   const hasSafety = result.scores?.toxicity_detected || result.scores?.bias_detected || result.scores?.banned_topic_violation;
   const isExtract = (result.scores?.answer_mode as unknown as string) === "extract_only";
+
+  const [docMode, setDocMode] = useState<DocDisplayMode>("id");
+  const labelMap = result.doc_label_map ?? {};
+  const hasLabels = Object.values(labelMap).some((l) => l.title);
+  const hasUrls = Object.values(labelMap).some((l) => l.url);
+
+  const getDocLabel = (id: string): string => {
+    if (docMode === "title") return labelMap[id]?.title || id;
+    if (docMode === "url") return labelMap[id]?.url || id;
+    return id;
+  };
 
   return (
     <div>
@@ -828,57 +842,96 @@ function ResultRow({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                {result.reference_doc_ids.length > 0 && (
-                  <div>
-                    <p className="font-medium text-gray-600 mb-1.5">Expected Document</p>
-                    <div className="flex flex-wrap gap-1">
-                      {result.reference_doc_ids.map((id) => {
-                        const hit = result.retrieved_doc_ids.includes(id);
-                        return (
-                          <span key={id} className={cn(
-                            "px-2 py-0.5 rounded font-mono text-xs inline-flex items-center gap-1",
-                            hit ? "bg-green-100 text-green-700" : "bg-red-50 text-red-600"
-                          )}>
-                            {hit ? "✓" : "✗"} {id}
-                          </span>
-                        );
-                      })}
+              {/* Document display — with mode toggle */}
+              {(result.reference_doc_ids.length > 0 || result.retrieved_doc_ids.length > 0) && (
+                <div className="space-y-2">
+                  {/* Toggle: only show when labels are available; applies to Retrieved Docs only */}
+                  {hasLabels && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Retrieved docs — show as</span>
+                      <div className="flex rounded border border-gray-200 overflow-hidden text-[11px]">
+                        {(["id", "title", ...(hasUrls ? ["url"] : [])] as DocDisplayMode[]).map((mode) => {
+                          const labels: Record<DocDisplayMode, string> = { id: "Doc ID", title: "Title", url: "URL" };
+                          return (
+                            <button
+                              key={mode}
+                              onClick={() => setDocMode(mode)}
+                              className={cn(
+                                "px-2 py-0.5 transition-colors",
+                                docMode === mode
+                                  ? "bg-violet-600 text-white"
+                                  : "text-gray-500 hover:bg-gray-50"
+                              )}
+                            >
+                              {labels[mode]}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
-                {result.retrieved_doc_ids.length > 0 && (
-                  <div>
-                    <p className="font-medium text-gray-600 mb-1.5">
-                      Retrieved Docs
-                      <span className={cn(
-                        "ml-1.5 text-xs font-normal",
-                        result.doc_retrieved ? "text-green-600" : "text-red-500"
-                      )}>
-                        ({result.doc_retrieved ? "✓ match" : "✗ miss"})
-                      </span>
-                      {result.retrieved_doc_ids.length > 20 && (
-                        <span className="ml-1.5 text-xs text-gray-400">
-                          — top 20 of {result.retrieved_doc_ids.length}
+                  )}
+
+                  {result.reference_doc_ids.length > 0 && (
+                    <div>
+                      <p className="font-medium text-gray-600 mb-1.5">Expected Document</p>
+                      <div className="flex flex-wrap gap-1">
+                        {result.reference_doc_ids.map((id) => {
+                          const hit = result.retrieved_doc_ids.includes(id);
+                          return (
+                            <span
+                              key={id}
+                              className={cn(
+                                "px-2 py-0.5 rounded font-mono text-xs inline-flex items-center gap-1",
+                                hit ? "bg-green-100 text-green-700" : "bg-red-50 text-red-600"
+                              )}
+                            >
+                              {hit ? "✓" : "✗"} {id}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {result.retrieved_doc_ids.length > 0 && (
+                    <div>
+                      <p className="font-medium text-gray-600 mb-1.5">
+                        Retrieved Docs
+                        <span className={cn(
+                          "ml-1.5 text-xs font-normal",
+                          result.doc_retrieved ? "text-green-600" : "text-red-500"
+                        )}>
+                          ({result.doc_retrieved ? "✓ match" : "✗ miss"})
                         </span>
-                      )}
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {result.retrieved_doc_ids.slice(0, 20).map((id) => {
-                        const isExpected = result.reference_doc_ids.includes(id);
-                        return (
-                          <span key={id} className={cn(
-                            "px-2 py-0.5 rounded font-mono text-xs",
-                            isExpected ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-                          )}>
-                            {id}
+                        {result.retrieved_doc_ids.length > 20 && (
+                          <span className="ml-1.5 text-xs text-gray-400">
+                            — top 20 of {result.retrieved_doc_ids.length}
                           </span>
-                        );
-                      })}
+                        )}
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {result.retrieved_doc_ids.slice(0, 20).map((id) => {
+                          const isExpected = result.reference_doc_ids.includes(id);
+                          const label = getDocLabel(id);
+                          return (
+                            <span
+                              key={id}
+                              title={docMode !== "id" ? id : undefined}
+                              className={cn(
+                                "px-2 py-0.5 rounded text-xs max-w-[280px] truncate",
+                                docMode === "id" ? "font-mono" : "font-sans",
+                                isExpected ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                              )}
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -888,7 +941,11 @@ function ResultRow({
           )}
 
           {/* Live test panel */}
-          <LiveTestPanel appId={appId} question={result.question} />
+          <LiveTestPanel
+            appId={appId}
+            question={result.question}
+            defaultPayload={result.search_payload ?? null}
+          />
         </div>
       )}
     </div>
@@ -896,34 +953,145 @@ function ResultRow({
 }
 
 // ── Live Test Panel ────────────────────────────────────────────────────────────
-function LiveTestPanel({ appId, question }: { appId: string; question: string }) {
+type LiveTab = "answer" | "chunks" | "raw";
+
+const DEFAULT_PAYLOAD_KEYS = {
+  answerSearch: true,
+  searchResults: true,
+  includeChunksInResponse: true,
+  maxNumOfChunks: 100,
+};
+
+function buildDefaultPayload(q: string, stored: Record<string, unknown> | null): string {
+  const base = stored
+    ? { ...stored, query: q }
+    : { query: q, ...DEFAULT_PAYLOAD_KEYS };
+  return JSON.stringify(base, null, 2);
+}
+
+function LiveTestPanel({
+  appId,
+  question,
+  defaultPayload,
+}: {
+  appId: string;
+  question: string;
+  defaultPayload: Record<string, unknown> | null;
+}) {
   const [open, setOpen] = useState(false);
   const [editedQuestion, setEditedQuestion] = useState(question);
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<LiveTab>("answer");
+  const [rawCopied, setRawCopied] = useState(false);
+
+  // Payload editor state
+  const [payloadOpen, setPayloadOpen] = useState(false);
+  const [payloadJson, setPayloadJson] = useState(() => buildDefaultPayload(question, defaultPayload));
+  const [payloadError, setPayloadError] = useState<string | null>(null);
+  const [payloadCopied, setPayloadCopied] = useState(false);
+
+  // Keep payload.query in sync with the question textarea
+  const syncPayloadQuestion = (newQ: string) => {
+    setPayloadJson((prev) => {
+      try {
+        const parsed = JSON.parse(prev);
+        return JSON.stringify({ ...parsed, query: newQ }, null, 2);
+      } catch {
+        return prev; // if JSON is invalid, leave it as-is
+      }
+    });
+  };
+
+  const handleQuestionChange = (newQ: string) => {
+    setEditedQuestion(newQ);
+    syncPayloadQuestion(newQ);
+  };
+
+  const handleReset = () => {
+    setEditedQuestion(question);
+    setPayloadJson(buildDefaultPayload(question, defaultPayload));
+    setPayloadError(null);
+    setResult(null);
+    setError(null);
+  };
+
+  const handlePayloadChange = (text: string) => {
+    setPayloadJson(text);
+    setPayloadError(null);
+    // Also sync the question textarea if query field changed and JSON is valid
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed.query === "string" && parsed.query !== editedQuestion) {
+        setEditedQuestion(parsed.query);
+      }
+    } catch { /* wait until valid */ }
+  };
 
   const handleRun = async () => {
     if (!editedQuestion.trim()) return;
+
+    // If payload editor is open, validate and parse the JSON
+    let payloadOverride: Record<string, unknown> | null = null;
+    if (payloadOpen) {
+      try {
+        payloadOverride = JSON.parse(payloadJson);
+        setPayloadError(null);
+      } catch (e) {
+        setPayloadError(`Invalid JSON: ${(e as Error).message}`);
+        return;
+      }
+    }
+
     setIsRunning(true);
     setError(null);
     setResult(null);
     try {
-      const res = await queryApi.run(appId, { question: editedQuestion.trim() });
+      const res = await queryApi.run(appId, {
+        question: editedQuestion.trim(),
+        payload_override: payloadOverride,
+      });
       setResult(res);
+      setActiveTab("answer");
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg || "Query failed. Check backend logs.");
+      const resp = (e as { response?: { status?: number; data?: { detail?: string } } })?.response;
+      const status = resp?.status;
+      const detail = resp?.data?.detail;
+      setError(
+        detail
+          ? `${status ? `[${status}] ` : ""}${detail}`
+          : "Query failed — check backend logs.",
+      );
     } finally {
       setIsRunning(false);
     }
   };
 
-  const handleReset = () => {
-    setEditedQuestion(question);
-    setResult(null);
-    setError(null);
+  const handleCopyRaw = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setRawCopied(true);
+      setTimeout(() => setRawCopied(false), 1500);
+    } catch { /* ignore */ }
   };
+
+  const handleCopyPayload = async () => {
+    try {
+      await navigator.clipboard.writeText(payloadJson);
+      setPayloadCopied(true);
+      setTimeout(() => setPayloadCopied(false), 1500);
+    } catch { /* ignore */ }
+  };
+
+  // Check if payload has been modified from default
+  const isPayloadModified = useMemo(() => {
+    try {
+      return payloadJson !== buildDefaultPayload(editedQuestion, defaultPayload);
+    } catch {
+      return true;
+    }
+  }, [payloadJson, editedQuestion, defaultPayload]);
 
   return (
     <div className="mt-4 border-t border-gray-200 pt-3">
@@ -945,95 +1113,482 @@ function LiveTestPanel({ appId, question }: { appId: string; question: string })
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-medium text-gray-600">Query</label>
-              {editedQuestion !== question && (
+              {(editedQuestion !== question || isPayloadModified) && (
                 <button
                   onClick={handleReset}
                   className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
                 >
-                  <RotateCcw className="w-3 h-3" /> Reset
+                  <RotateCcw className="w-3 h-3" /> Reset all
                 </button>
               )}
             </div>
             <textarea
               value={editedQuestion}
-              onChange={(e) => setEditedQuestion(e.target.value)}
+              onChange={(e) => handleQuestionChange(e.target.value)}
               rows={3}
               className="w-full text-xs p-2.5 border border-gray-200 rounded-lg bg-white resize-none focus:outline-none focus:ring-2 focus:ring-violet-500 font-sans"
             />
           </div>
 
-          <button
-            onClick={handleRun}
-            disabled={isRunning || !editedQuestion.trim()}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isRunning ? (
-              <><Loader2 className="w-3 h-3 animate-spin" /> Running...</>
-            ) : (
-              <><Play className="w-3 h-3" /> Run Query</>
+          {/* ── Payload editor ────────────────────────────────────── */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-50">
+              <button
+                onClick={() => setPayloadOpen((o) => !o)}
+                className="flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-gray-900"
+              >
+                {payloadOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                <Code2 className="w-3.5 h-3.5 text-gray-500" />
+                Request Payload
+                {isPayloadModified && (
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                    modified
+                  </span>
+                )}
+              </button>
+              {payloadOpen && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setPayloadJson(buildDefaultPayload(editedQuestion, defaultPayload));
+                      setPayloadError(null);
+                    }}
+                    className="text-[11px] text-gray-400 hover:text-gray-700"
+                    title="Reset payload to default"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={handleCopyPayload}
+                    className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 px-2 py-0.5 rounded border border-gray-200 bg-white"
+                  >
+                    {payloadCopied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+                    {payloadCopied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {payloadOpen && (
+              <div>
+                <textarea
+                  value={payloadJson}
+                  onChange={(e) => handlePayloadChange(e.target.value)}
+                  rows={14}
+                  spellCheck={false}
+                  className={cn(
+                    "w-full text-[11px] p-3 bg-gray-900 text-gray-100 font-mono resize-y focus:outline-none leading-relaxed",
+                    payloadError ? "border-t-2 border-red-500" : ""
+                  )}
+                />
+                {payloadError && (
+                  <div className="px-3 py-1.5 bg-red-50 border-t border-red-200 text-xs text-red-700 font-mono">
+                    {payloadError}
+                  </div>
+                )}
+                <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-200 text-[11px] text-gray-400">
+                  Edit any field — will be sent as-is to Kore.ai. The <code className="text-gray-600">query</code> field stays in sync with the Query box above.
+                </div>
+              </div>
             )}
-          </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRun}
+              disabled={isRunning || !editedQuestion.trim() || !!payloadError}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isRunning ? (
+                <><Loader2 className="w-3 h-3 animate-spin" /> Running...</>
+              ) : (
+                <><Play className="w-3 h-3" /> Run Query</>
+              )}
+            </button>
+            {payloadOpen && isPayloadModified && !payloadError && (
+              <span className="text-[11px] text-amber-600 flex items-center gap-1">
+                <Code2 className="w-3 h-3" /> Using custom payload
+              </span>
+            )}
+          </div>
 
           {/* Error */}
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-              {error}
+            <div className="rounded-lg border border-red-200 overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border-b border-red-200">
+                <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                <span className="text-xs font-semibold text-red-700">Request Failed</span>
+              </div>
+              <pre className="p-3 bg-white text-xs text-red-800 whitespace-pre-wrap break-all leading-relaxed max-h-40 overflow-y-auto font-mono">
+                {error}
+              </pre>
             </div>
           )}
 
-          {/* Live response */}
+          {/* Live response — Postman-style tabbed viewer */}
           {result && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-600">Live Response</span>
-                <span className={cn(
-                  "text-xs px-1.5 py-0.5 rounded-full font-medium",
-                  result.answer_mode === "extract_only"
-                    ? "bg-amber-50 text-amber-700"
-                    : "bg-blue-50 text-blue-700"
-                )}>
-                  {result.answer_mode === "extract_only" ? "📄 Extract Only" : "⚡ Answer Generation"}
-                </span>
-                <div className="flex gap-3 text-xs text-gray-400 ml-auto">
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              {/* Status bar */}
+              <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    "text-[11px] font-semibold px-2 py-0.5 rounded-full",
+                    result.is_valid_answer ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
+                  )}>
+                    {result.is_valid_answer ? "200 OK" : "200 No Answer"}
+                  </span>
+                  <span className={cn(
+                    "text-[11px] px-1.5 py-0.5 rounded-full font-medium",
+                    result.answer_mode === "extract_only"
+                      ? "bg-amber-50 text-amber-700"
+                      : "bg-blue-50 text-blue-700"
+                  )}>
+                    {result.answer_mode === "extract_only" ? "Extract Only" : "Answer Generation"}
+                  </span>
+                </div>
+                <div className="flex gap-3 text-[11px] text-gray-400">
                   {result.latency_llm_ms != null && (
-                    <span>LLM: {Math.round(result.latency_llm_ms)}ms</span>
+                    <span>LLM <span className="font-mono text-gray-600">{Math.round(result.latency_llm_ms)}ms</span></span>
                   )}
                   {result.latency_retrieval_ms != null && (
-                    <span>Retrieval: {Math.round(result.latency_retrieval_ms)}ms</span>
+                    <span>Retrieval <span className="font-mono text-gray-600">{Math.round(result.latency_retrieval_ms)}ms</span></span>
                   )}
                 </div>
               </div>
 
-              {/* Answer box */}
-              {result.answer ? (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
-                  {result.answer}
-                </div>
-              ) : (
-                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-400 italic">
-                  RAG returned no answer for this query.
-                </div>
-              )}
+              {/* Tabs */}
+              <div className="flex border-b border-gray-200 bg-white">
+                {(["answer", "chunks", "raw"] as LiveTab[]).map((tab) => {
+                  const labels: Record<LiveTab, string> = {
+                    answer: "Answer",
+                    chunks: `Chunks (${result.chunk_signals?.length ?? 0})`,
+                    raw: "Raw Response",
+                  };
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={cn(
+                        "px-4 py-2 text-xs font-medium border-b-2 transition-colors",
+                        activeTab === tab
+                          ? "border-violet-500 text-violet-700 bg-violet-50/50"
+                          : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                      )}
+                    >
+                      {labels[tab]}
+                    </button>
+                  );
+                })}
+              </div>
 
-              {/* Cited docs */}
-              {result.cited_doc_ids.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-gray-600 mb-1">
-                    Cited Documents ({result.cited_doc_ids.length})
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {result.cited_doc_ids.map((id) => (
-                      <span key={id} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-mono text-xs">
-                        {id}
-                      </span>
-                    ))}
+              {/* Tab content */}
+              <div className="bg-white">
+                {/* Answer tab */}
+                {activeTab === "answer" && (
+                  <div className="p-3 space-y-3">
+                    {result.answer ? (
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
+                        {result.answer}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-400 italic">
+                        RAG returned no answer for this query.
+                      </div>
+                    )}
+
+                    {result.cited_doc_ids.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-600 mb-1">
+                          Cited Documents ({result.cited_doc_ids.length})
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {result.cited_doc_ids.map((id) => (
+                            <span key={id} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-mono text-xs">
+                              {id}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {result.result_doc_ids.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-600 mb-1">
+                          All Result Documents ({result.result_doc_ids.length})
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {result.result_doc_ids.map((id) => (
+                            <span key={id} className={cn(
+                              "px-2 py-0.5 rounded font-mono text-xs",
+                              result.cited_doc_ids.includes(id)
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-gray-100 text-gray-500"
+                            )}>
+                              {id}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* Chunks tab */}
+                {activeTab === "chunks" && (
+                  <div className="max-h-96 overflow-y-auto">
+                    {(result.chunk_signals?.length ?? 0) === 0 ? (
+                      <div className="p-4 text-xs text-gray-400 italic text-center">No chunk signals returned.</div>
+                    ) : (
+                      <table className="w-full text-[11px]">
+                        <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-medium text-gray-500">#</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-500">Doc ID</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-500">Title</th>
+                            <th className="text-right px-3 py-2 font-medium text-gray-500">Score</th>
+                            <th className="text-center px-3 py-2 font-medium text-gray-500">Qualified</th>
+                            <th className="text-center px-3 py-2 font-medium text-gray-500">Sent to LLM</th>
+                            <th className="text-center px-3 py-2 font-medium text-gray-500">Used in Answer</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {(result.chunk_signals as ChunkSignal[]).map((c, i) => (
+                            <tr key={i} className={cn(
+                              "hover:bg-gray-50",
+                              c.usedInAnswer ? "bg-green-50/40" : ""
+                            )}>
+                              <td className="px-3 py-1.5 text-gray-400 font-mono">{i + 1}</td>
+                              <td className="px-3 py-1.5 font-mono text-gray-600 max-w-[140px] truncate" title={c.docId ?? ""}>
+                                {c.docId ?? "—"}
+                              </td>
+                              <td className="px-3 py-1.5 text-gray-600 max-w-[180px] truncate" title={c.recordTitle ?? ""}>
+                                {c.recordTitle ?? "—"}
+                              </td>
+                              <td className="px-3 py-1.5 text-right font-mono text-gray-700">
+                                {c.score != null ? c.score.toFixed(4) : "—"}
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                <FlagDot value={c.chunkQualified} />
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                <FlagDot value={c.sentToLLM} />
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                <FlagDot value={c.usedInAnswer} highlight />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+
+                {/* Raw Response tab */}
+                {activeTab === "raw" && (
+                  <CollapsibleJson
+                    data={result.raw_response ?? {}}
+                    copied={rawCopied}
+                    onCopy={() => handleCopyRaw(JSON.stringify(result.raw_response ?? {}, null, 2))}
+                  />
+                )}
+              </div>
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function FlagDot({ value, highlight = false }: { value: boolean | null | undefined; highlight?: boolean }) {
+  if (value === true) {
+    return (
+      <span className={cn(
+        "inline-block w-2 h-2 rounded-full",
+        highlight ? "bg-green-500" : "bg-teal-400"
+      )} title="true" />
+    );
+  }
+  if (value === false) {
+    return <span className="inline-block w-2 h-2 rounded-full bg-gray-200" title="false" />;
+  }
+  return <span className="text-gray-300">—</span>;
+}
+
+// ── Collapsible JSON Tree ──────────────────────────────────────────────────────
+function JsonNode({
+  value,
+  depth,
+  maxInitialDepth,
+  isLast,
+}: {
+  value: unknown;
+  depth: number;
+  maxInitialDepth: number;
+  isLast?: boolean;
+}) {
+  const [collapsed, setCollapsed] = useState(depth > maxInitialDepth);
+  const comma = !isLast ? <span className="text-gray-500">,</span> : null;
+
+  if (value === null) {
+    return <span><span className="text-gray-400">null</span>{comma}</span>;
+  }
+  if (typeof value === "boolean") {
+    return <span><span className="text-blue-300">{String(value)}</span>{comma}</span>;
+  }
+  if (typeof value === "number") {
+    return <span><span className="text-yellow-300">{value}</span>{comma}</span>;
+  }
+  if (typeof value === "string") {
+    return (
+      <span>
+        <span className="text-emerald-300 break-all">"{value}"</span>{comma}
+      </span>
+    );
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span><span className="text-gray-400">[]</span>{comma}</span>;
+    return (
+      <span>
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className="text-gray-500 hover:text-white mr-0.5 select-none leading-none"
+          title={collapsed ? "Expand" : "Collapse"}
+        >
+          {collapsed ? "▶" : "▼"}
+        </button>
+        <span className="text-gray-300">[</span>
+        {collapsed ? (
+          <>
+            <button
+              onClick={() => setCollapsed(false)}
+              className="mx-1 text-[10px] text-gray-400 hover:text-gray-200 italic"
+            >
+              {value.length} {value.length === 1 ? "item" : "items"}
+            </button>
+            <span className="text-gray-300">]</span>{comma}
+          </>
+        ) : (
+          <>
+            <div className="ml-4 border-l border-gray-700 pl-2">
+              {value.map((item, i) => (
+                <div key={i}>
+                  <JsonNode
+                    value={item}
+                    depth={depth + 1}
+                    maxInitialDepth={maxInitialDepth}
+                    isLast={i === value.length - 1}
+                  />
+                </div>
+              ))}
+            </div>
+            <span className="text-gray-300">]</span>{comma}
+          </>
+        )}
+      </span>
+    );
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return <span><span className="text-gray-400">{"{}"}</span>{comma}</span>;
+    return (
+      <span>
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className="text-gray-500 hover:text-white mr-0.5 select-none leading-none"
+          title={collapsed ? "Expand" : "Collapse"}
+        >
+          {collapsed ? "▶" : "▼"}
+        </button>
+        <span className="text-gray-300">{"{"}</span>
+        {collapsed ? (
+          <>
+            <button
+              onClick={() => setCollapsed(false)}
+              className="mx-1 text-[10px] text-gray-400 hover:text-gray-200 italic"
+            >
+              {entries.length} {entries.length === 1 ? "key" : "keys"}
+            </button>
+            <span className="text-gray-300">{"}"}</span>{comma}
+          </>
+        ) : (
+          <>
+            <div className="ml-4 border-l border-gray-700 pl-2">
+              {entries.map(([k, v], i) => (
+                <div key={k} className="flex flex-wrap gap-x-1 items-start">
+                  <span className="text-sky-300 shrink-0">"{k}"</span>
+                  <span className="text-gray-500 shrink-0">:</span>
+                  <span className="min-w-0">
+                    <JsonNode
+                      value={v}
+                      depth={depth + 1}
+                      maxInitialDepth={maxInitialDepth}
+                      isLast={i === entries.length - 1}
+                    />
+                  </span>
+                </div>
+              ))}
+            </div>
+            <span className="text-gray-300">{"}"}</span>{comma}
+          </>
+        )}
+      </span>
+    );
+  }
+
+  return <span className="text-gray-300">{String(value)}</span>;
+}
+
+function CollapsibleJson({
+  data,
+  copied,
+  onCopy,
+}: {
+  data: unknown;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  const [viewKey, setViewKey] = useState(0);
+  const [initDepth, setInitDepth] = useState(1);
+
+  const expandAll  = () => { setInitDepth(999); setViewKey((k) => k + 1); };
+  const collapseAll = () => { setInitDepth(-1);  setViewKey((k) => k + 1); };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-900 border-b border-gray-700">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-gray-400 font-mono mr-1">application/json</span>
+          <button
+            onClick={expandAll}
+            className="text-[11px] text-gray-400 hover:text-gray-100 px-1.5 py-0.5 rounded border border-gray-700 hover:border-gray-500 transition-colors"
+          >
+            Expand all
+          </button>
+          <button
+            onClick={collapseAll}
+            className="text-[11px] text-gray-400 hover:text-gray-100 px-1.5 py-0.5 rounded border border-gray-700 hover:border-gray-500 transition-colors"
+          >
+            Collapse all
+          </button>
+        </div>
+        <button
+          onClick={onCopy}
+          className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-200 px-2 py-0.5 rounded border border-gray-600 bg-gray-800 transition-colors"
+        >
+          {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <div
+        key={viewKey}
+        className="p-3 bg-gray-900 text-[11px] font-mono leading-relaxed overflow-x-auto max-h-[520px] overflow-y-auto"
+      >
+        <JsonNode value={data} depth={0} maxInitialDepth={initDepth} isLast />
+      </div>
     </div>
   );
 }

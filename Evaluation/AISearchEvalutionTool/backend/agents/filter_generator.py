@@ -111,3 +111,28 @@ def build_source_filter(sys_content_type: str) -> list[dict[str, Any]]:
             "operator": "equals",
         }],
     }]
+
+
+def build_field_filters(tc: dict, field_names: list[str]) -> list[dict[str, Any]]:
+    """Build a combined AND metaFilter from user-selected fields on a test case.
+
+    For each field name:
+      - "sys_content_type" is read from generation_metadata
+      - anything else is read from custom_fields
+    Only fields that have a non-empty value for this specific test case are included,
+    so test cases missing a value for a field are not filtered incorrectly.
+    """
+    meta = tc.get("generation_metadata") or {}
+    custom = tc.get("custom_fields") or {}
+    rules: list[dict] = []
+    for field in field_names:
+        val = meta.get(field) if field == "sys_content_type" else custom.get(field)
+        if val and str(val).strip():
+            rules.append({
+                "fieldName": field,
+                "fieldValue": [str(val).strip()],
+                "operator": "equals",
+            })
+    if not rules:
+        return []
+    return [{"condition": "AND", "rules": rules}]

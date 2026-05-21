@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import json
 import logging
 import time
 from typing import Any
 
-from db.database import get_llm_config, get_active_prompt, get_api_key, get_base_url
-from agents.llm_client import _infer_provider, _openai_client_and_model, _openai_call_kwargs, _is_o_series_model
+from db.database import get_llm_config, get_active_prompt
+from agents.llm_client import _infer_provider, call_llm_json, parse_json_loose
 from agents.prompts import JUDGE_PROMPT
 
 # Backoff delays (seconds) between judge retries on rate-limit errors.
@@ -114,6 +113,13 @@ def _call_judge(
     user: str,
     max_tokens_override: int | None = None,
 ) -> dict:
+    """Call the judge LLM and parse its JSON output.
+
+    Delegates to :func:`agents.llm_client.call_llm_json`, which supports
+    Anthropic, OpenAI and Gemini uniformly — historically this helper only
+    handled Anthropic and OpenAI which silently broke Gemini-based judges.
+    Rate-limit / 429 retries are kept here on top of the underlying call.
+    """
     model: str = cfg["model"]
     max_tokens = max_tokens_override if max_tokens_override is not None else cfg["max_tokens"]
     provider = _infer_provider(model)
@@ -128,55 +134,17 @@ def _call_judge(
             )
             time.sleep(sleep_secs)
 
-        logger.debug("Judge | Calling %s via %s | max_tokens=%d attempt=%d", model, provider, max_tokens, attempt)
-        raw = ""
+        logger.debug(
+            "Judge | Calling %s via %s | max_tokens=%d attempt=%d",
+            model, provider, max_tokens, attempt,
+        )
         try:
-            if provider == "anthropic":
-                import anthropic
-                client = anthropic.Anthropic(
-                    api_key=get_api_key(app_id, "anthropic"),
-                    base_url=get_base_url(app_id, "anthropic"),
-                )
-                message = client.messages.create(
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=0,
-                    system=system,
-                    messages=[{"role": "user", "content": user}],
-                )
-                raw = message.content[0].text.strip()
-            else:
-                client, effective_model = _openai_client_and_model(app_id, model)
-                messages = []
-                if system:
-                    messages.append({"role": "system", "content": system})
-                messages.append({"role": "user", "content": user})
-                extra: dict = {}
-                if not _is_o_series_model(effective_model):
-                    extra["response_format"] = {"type": "json_object"}
-                resp = client.chat.completions.create(
-                    model=effective_model,
-                    messages=messages,
-                    **extra,
-                    **_openai_call_kwargs(effective_model, max_tokens, 0.0),
-                )
-                raw = resp.choices[0].message.content
-
-            return json.loads(raw)
-
-        except json.JSONDecodeError as exc:
-            # Try bracket extraction as fallback
-            s, e = raw.find("{"), raw.rfind("}") + 1
-            if s != -1 and e > 0:
-                try:
-                    return json.loads(raw[s:e])
-                except Exception:
-                    pass
-            logger.error("Judge | JSON parse failed | model=%s | raw[:200]=%s | error: %s", model, raw[:200], exc)
-            return {}
-
+            raw = call_llm_json(
+                app_id, "judge", system, user,
+                max_tokens_override=max_tokens,
+            )
         except Exception as exc:
-            # Detect rate-limit errors from both OpenAI and Anthropic
+            # Detect rate-limit errors from any provider so we can sleep+retry.
             exc_str = str(exc).lower()
             is_rate_limit = (
                 "rate limit" in exc_str
@@ -191,11 +159,19 @@ def _call_judge(
                     attempt, len(delays), model, exc,
                 )
                 continue  # sleep handled at top of next iteration
-
             logger.error(
                 "Judge | API call FAILED | model=%s provider=%s attempt=%d | error: %s",
                 model, provider, attempt, exc, exc_info=True,
             )
             return {}
+
+        parsed = parse_json_loose(raw, expect="object", agent_name="judge")
+        if isinstance(parsed, dict):
+            return parsed
+        logger.error(
+            "Judge | JSON parse failed | model=%s | raw[:200]=%s",
+            model, (raw or "")[:200],
+        )
+        return {}
 
     return {}

@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS app_config (
     anthropic_base_url TEXT NOT NULL DEFAULT '',
     openai_key      TEXT NOT NULL DEFAULT '',
     openai_base_url TEXT NOT NULL DEFAULT '',
+    gemini_key      TEXT NOT NULL DEFAULT '',
+    gemini_base_url TEXT NOT NULL DEFAULT '',
     banned_topics   TEXT NOT NULL DEFAULT '[]',  -- JSON array of strings
     answer_mode     TEXT NOT NULL DEFAULT 'answer_generation',  -- 'answer_generation' | 'extract_only'
     case1_threshold REAL NOT NULL DEFAULT 0.5,  -- semantic Q↔Answer similarity pass threshold
@@ -158,7 +160,8 @@ CREATE TABLE IF NOT EXISTS eval_result (
     latency_llm_ms       INTEGER,
     latency_retrieval_ms INTEGER,
     search_request_id    TEXT,
-    search_payload       TEXT DEFAULT '{}',
+    search_payload       TEXT DEFAULT '{}',  -- request body sent to Kore.ai (JSON)
+    search_response      TEXT DEFAULT '{}',  -- full raw Kore.ai response (JSON)
     attempt_count        INTEGER DEFAULT 1,
     case_id              INTEGER,                -- 1..4 derived from test_case columns present
     expected_doc_rank    INTEGER,                -- 1-based rank of expected doc in retrieved (null if none/not found)

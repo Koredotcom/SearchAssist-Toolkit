@@ -78,6 +78,10 @@ def query_rag(
     result = _parse_response(raw, answer_mode=answer_mode)
     # Expose the exact payload that was sent so callers can store/show it for debugging
     result["search_payload"] = payload
+    # Expose the full raw response so the UI / persistence layer can show it
+    # exactly as Kore.ai returned it. Useful for debugging chunk scoring,
+    # answer payload structure, and parameters the parser ignored.
+    result["search_response"] = raw
 
     logger.info(
         "Kore.ai | RAG response | app=%s valid=%s cited_docs=%d result_docs=%d "

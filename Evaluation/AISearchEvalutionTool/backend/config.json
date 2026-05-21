@@ -1,0 +1,8 @@
+{
+  "database": {
+    "backend": "mongodb",
+    "sqlite_db_path": "../data/eval.db",
+    "mongodb_uri": "mongodb://localhost:27017",
+    "mongodb_database": "searchassist_eval"
+  }
+}

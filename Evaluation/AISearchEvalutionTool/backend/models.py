@@ -55,7 +55,7 @@ class AppConfigResponse(BaseModel):
 class LLMConfigUpdate(BaseModel):
     model: str
     temperature: float = Field(ge=0.0, le=2.0)
-    max_tokens: int = Field(gt=0, le=16000)
+    max_tokens: int = Field(gt=0, le=32000)
 
 
 class LLMConfigResponse(BaseModel):
@@ -101,7 +101,7 @@ class ContentSourceResponse(BaseModel):
     Used for Websites (sys_content_type=web) and Documents (sys_content_type=file),
     which Kore.ai's public API does not expose via a dedicated listing endpoint.
     """
-    source_id: str            # extractionSourceId — the parent container
+    source_id: str            # extractionSourceId — top-level source metadata
     name: str                 # sys_source_name (falls back to URL or source_id)
     sys_content_type: str     # echoed for the UI badge ("web" | "file")
     records_count: int        # docs observed in this source
@@ -120,6 +120,7 @@ class GenerationRequest(BaseModel):
     file_source_ids: list[str] = []     # extractionSourceId for sys_content_type=file uploads
     max_docs_per_source: int = Field(default=10, ge=0, description="Max docs per source. 0 = all documents (no cap).")
     max_questions_per_doc: int = Field(default=5, ge=1, le=5)
+    target_language: str = Field(default="English", min_length=1, max_length=80)
     filters: dict[str, Any] = {}
 
 
@@ -134,10 +135,14 @@ class EvaluationRequest(BaseModel):
     # ── Meta-filter / RACL controls ──────────────────────────────────────
     filter_mode: str = Field(
         default="none",
-        pattern="^(none|auto_source|custom_prompt)$",
-        description="'none' = no filters, 'auto_source' = derive sys_content_type from each TC's reference doc, 'custom_prompt' = LLM generates filters per question (mapper script loaded from DB if configured)",
+        pattern="^(none|field_filters|custom_prompt)$",
+        description="'none' = no filters, 'field_filters' = use test-case column values as metaFilters, 'custom_prompt' = LLM generates filters per question",
     )
     filter_prompt: str | None = Field(default=None, description="Unused — prompt is read from DB (Prompts & Models page)")
+    filter_fields: list[str] | None = Field(
+        default=None,
+        description="Field names to use when filter_mode='field_filters'. Values are read from each test case's generation_metadata / custom_fields.",
+    )
     enable_racl: bool = Field(default=False, description="If true, send user_email as customData.userContext.userId")
     user_email: str | None = Field(default=None, description="RACL user identifier (required when enable_racl=true)")
 
@@ -152,6 +157,30 @@ class EvaluationRequest(BaseModel):
         default=None,
         pattern="^(answer_generation|extract_only)$",
         description="Override the app's answer_mode for this run. None = use app default.",
+    )
+
+    # ── Per-run verdict configuration overrides ───────────────────────────
+    judge_mode: str = Field(
+        default="auto",
+        pattern="^(auto|force_on|force_off)$",
+        description=(
+            "'auto' = use the LLM judge if its API key is configured, else "
+            "fall back to semantic similarity. 'force_on' = require the judge "
+            "(fail if not configured). 'force_off' = skip the judge, use "
+            "semantic similarity only."
+        ),
+    )
+    case1_threshold: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Override Q↔Answer relevance pass threshold for Cases 1 & 3 (no-judge fallback). None = use app setting.",
+    )
+    case2_threshold: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Override Answer↔Expected similarity pass threshold for Cases 2 & 4 (no-judge fallback). None = use app setting.",
+    )
+    top_k_pass: int | None = Field(
+        default=None, ge=1, le=100,
+        description="Override the top-K chunk pass threshold used in extract_only retrieval verdicts. None = default (5).",
     )
 
 
@@ -204,6 +233,10 @@ class TestCaseResponse(BaseModel):
     human_validated: bool
     status: str
     decision: str | None
+    primary_concern: str | None = None
+    rationale: str | None = None
+    case_id: int | None = None
+    custom_fields: dict[str, Any] = {}
     scores: dict[str, Any] | None
 
 
@@ -225,6 +258,12 @@ class EvalRunResponse(BaseModel):
     avg_chunk_rank: float | None = None
 
 
+class DocLabel(BaseModel):
+    """Compact per-document label info derived from chunk_signals."""
+    title: str | None = None
+    url: str | None = None
+
+
 class EvalResultResponse(BaseModel):
     tc_id: str
     question: str
@@ -242,6 +281,10 @@ class EvalResultResponse(BaseModel):
     latency_retrieval_ms: float | None
     doc_retrieved: bool
     search_payload: dict[str, Any] | None = None
+    search_response: dict[str, Any] | None = None
+    # docId → {title, url} — built from stored chunk_signals so the UI can show
+    # record titles instead of raw doc IDs without sending full chunk payloads
+    doc_label_map: dict[str, DocLabel] = {}
     # 4-case evaluation fields
     case_id: int | None = None
     expected_doc_rank: int | None = None

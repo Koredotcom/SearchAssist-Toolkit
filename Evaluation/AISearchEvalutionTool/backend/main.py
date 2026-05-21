@@ -19,11 +19,12 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("anthropic").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("pymongo").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
 from db.database import init_db
-from routers import apps, sources, llm_config, prompts, generation, evaluation, golden_sets, results, app_api_keys, query
+from routers import apps, sources, llm_config, prompts, generation, evaluation, golden_sets, results, app_api_keys, query, prompt_tuner
 
 app = FastAPI(title="RAG Evaluator API", version="1.0.1")
 
@@ -63,6 +64,7 @@ app.include_router(golden_sets.router, prefix="/api")
 app.include_router(results.router, prefix="/api")
 app.include_router(app_api_keys.router, prefix="/api")
 app.include_router(query.router, prefix="/api")
+app.include_router(prompt_tuner.router, prefix="/api")
 
 
 @app.get("/api/health")
@@ -72,10 +74,29 @@ def health():
 
 @app.get("/api/debug/db")
 def debug_db():
-    """Shows database location, size, and table row counts."""
+    """Shows configured database backend, location, and row/collection counts."""
+    from config import get_config
+    cfg = get_config().database
+    if cfg.backend == "mongodb":
+        from pymongo import MongoClient
+        client = MongoClient(cfg.mongodb_uri, serverSelectionTimeoutMS=2000)
+        db = client[cfg.mongodb_database]
+        # Force connection errors to surface in this debug endpoint.
+        client.admin.command("ping")
+        collections = {}
+        for name in db.list_collection_names():
+            collections[name] = db[name].count_documents({})
+        client.close()
+        return {
+            "backend": "mongodb",
+            "mongodb_uri": cfg.mongodb_uri,
+            "database": cfg.mongodb_database,
+            "collections": collections,
+        }
+
+    import os
     import sqlite3 as _sq
     from db.database import DB_PATH
-    import os
     path = str(DB_PATH)
     exists = os.path.exists(path)
     size_kb = round(os.path.getsize(path) / 1024, 2) if exists else 0
@@ -88,6 +109,7 @@ def debug_db():
             tables[t] = count
         conn.close()
     return {
+        "backend": "sqlite",
         "db_path": path,
         "exists": exists,
         "size_kb": size_kb,

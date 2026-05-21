@@ -6,6 +6,7 @@ import GeneratePage from "@/pages/GeneratePage";
 import EvaluatePage from "@/pages/EvaluatePage";
 import GoldenSetsPage from "@/pages/GoldenSetsPage";
 import PromptsPage from "@/pages/PromptsPage";
+import PromptTunerPage from "@/pages/PromptTunerPage";
 import LLMConfigPage from "@/pages/LLMConfigPage";
 import ResultsPage from "@/pages/ResultsPage";
 import RunDetailPage from "@/pages/RunDetailPage";
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="apps/:appId/evaluate" element={<EvaluatePage />} />
         <Route path="apps/:appId/golden-sets" element={<GoldenSetsPage />} />
         <Route path="apps/:appId/prompts" element={<PromptsPage />} />
+        <Route path="apps/:appId/prompt-tuner" element={<PromptTunerPage />} />
         <Route path="apps/:appId/llm" element={<LLMConfigPage />} />
         <Route path="apps/:appId/results" element={<ResultsPage />} />
         <Route path="apps/:appId/results/:runId" element={<RunDetailPage />} />

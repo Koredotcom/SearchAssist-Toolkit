@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agents.llm_client import _infer_provider
 from db.database import get_api_key, get_llm_config
 from judge.embeddings import semantic_similarity
 
@@ -118,10 +119,14 @@ def qualified_chunks_count(chunk_signals: list[dict]) -> int:
 
 
 def judge_configured(app: dict) -> bool:
-    """A judge is 'configured' when the API key for its provider is present."""
+    """A judge is 'configured' when the API key for its provider is present.
+
+    Provider is inferred from the judge agent's model name (anthropic / openai /
+    gemini), matching the same logic the LLM client itself uses — that way a
+    Gemini-based judge is correctly detected, not silently rejected.
+    """
     cfg = get_llm_config(app["app_id"], "judge")
-    model = (cfg.get("model") or "").lower()
-    provider = "anthropic" if "claude" in model else "openai"
+    provider = _infer_provider(cfg.get("model") or "")
     key = get_api_key(app["app_id"], provider) or ""
     return bool(key.strip())
 
@@ -184,6 +189,7 @@ def derive_verdict(
     case2_threshold: float = DEFAULT_CASE2_THRESHOLD,
     chunk_rank: int | None = None,
     answer_mode: str = "answer_generation",
+    top_k_pass: int = TOP_K_PASS,
 ) -> tuple[str | None, str]:
     """Return (verdict, verdict_source).
 
@@ -192,7 +198,7 @@ def derive_verdict(
 
     answer_mode='extract_only':
       Pass/fail is purely retrieval-based for all cases that have a reference doc
-      (cases 3 & 4): expected doc chunk must be in top TOP_K_PASS chunks.
+      (cases 3 & 4): expected doc chunk must be in top ``top_k_pass`` chunks.
       Cases 1 & 2 without a reference doc fall back to semantic similarity.
 
     answer_mode='answer_generation':
@@ -203,7 +209,7 @@ def derive_verdict(
     """
     if answer_mode == "extract_only":
         if case_id in (3, 4):
-            return _verdict_retrieval(chunk_rank, judge_scores or {})
+            return _verdict_retrieval(chunk_rank, judge_scores or {}, top_k=top_k_pass)
         # Cases 1 & 2 in extract mode: no generated answer, use semantic if available
         return _verdict_no_judge(
             case_id, expected_doc_rank_val, similarity,
@@ -222,16 +228,17 @@ def derive_verdict(
 def _verdict_retrieval(
     chunk_rank: int | None,
     scores: dict,
+    top_k: int = TOP_K_PASS,
 ) -> tuple[str | None, str]:
-    """Pass if expected document chunk is in top TOP_K_PASS (extract_only mode)."""
+    """Pass if expected document chunk is in top ``top_k`` (extract_only mode)."""
     if scores.get("toxicity_detected") or scores.get("bias_detected") or scores.get("banned_topic_violation"):
-        return "fail", f"Safety violation (top-{TOP_K_PASS} chunk rule)"
+        return "fail", f"Safety violation (top-{top_k} chunk rule)"
     if chunk_rank is None:
-        return "fail", f"Expected doc not found in top {TOP_K_PASS} chunks"
-    ok = chunk_rank <= TOP_K_PASS
+        return "fail", f"Expected doc not found in top {top_k} chunks"
+    ok = chunk_rank <= top_k
     return (
         ("pass" if ok else "fail"),
-        f"Chunk rank {chunk_rank} {'≤' if ok else '>'} top-{TOP_K_PASS} (extract_only)",
+        f"Chunk rank {chunk_rank} {'≤' if ok else '>'} top-{top_k} (extract_only)",
     )
 
 

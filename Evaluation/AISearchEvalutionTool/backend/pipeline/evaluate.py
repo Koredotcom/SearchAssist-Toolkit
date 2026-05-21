@@ -11,7 +11,7 @@ import uuid
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from agents.filter_generator import build_source_filter, generate_meta_filters
+from agents.filter_generator import build_field_filters, build_source_filter, generate_meta_filters
 from db.database import (
     create_eval_run, finish_eval_run, get_active_test_cases,
     get_completed_tc_ids, get_doc_source_type, get_eval_thresholds,
@@ -148,10 +148,15 @@ def run_evaluation(
     sample_mode: str = "first",
     filter_mode: str = "none",
     filter_prompt: str | None = None,
+    filter_fields: list[str] | None = None,
     enable_racl: bool = False,
     user_email: str | None = None,
     answer_mode_override: str | None = None,
     question_types: list[str] | None = None,
+    judge_mode: str = "auto",
+    case1_threshold: float | None = None,
+    case2_threshold: float | None = None,
+    top_k_pass: int | None = None,
 ) -> dict[str, Any]:
     # Apply per-run answer mode override if provided
     if answer_mode_override:
@@ -162,10 +167,24 @@ def run_evaluation(
 
     logger.info(
         "Eval | Starting evaluation | app=%s version=%s rag_version=%s run_id=%s "
-        "max_cases=%s sample_mode=%s filter_mode=%s racl=%s answer_mode=%s",
+        "max_cases=%s sample_mode=%s filter_mode=%s racl=%s answer_mode=%s "
+        "judge_mode=%s c1_threshold=%s c2_threshold=%s top_k_pass=%s",
         app_id, golden_set_version, rag_version, run_id,
         max_cases, sample_mode, filter_mode, enable_racl, app.get("answer_mode"),
+        judge_mode, case1_threshold, case2_threshold, top_k_pass,
     )
+
+    # ── Validate judge_mode against actual configuration ────────────────
+    if judge_mode == "force_on" and not judge_configured(app):
+        msg = (
+            "Verdict configuration requires the LLM judge, but no API key is "
+            "configured for the judge agent's provider. Either set a key on "
+            "the API Keys page, switch the judge agent's model on Prompts & "
+            "Models, or change Judge mode to 'auto' / 'off'."
+        )
+        logger.warning("Eval | %s | run_id=%s", msg, run_id)
+        update_job(job_id, "failed", error=msg)
+        return {}
 
     try:
         test_cases = get_active_test_cases(app_id, golden_set_version)
@@ -226,11 +245,16 @@ def run_evaluation(
                 app_id=app_id,
                 filter_mode=filter_mode,
                 filter_prompt=filter_prompt,
+                filter_fields=filter_fields,
             )
             return _evaluate_one(
                 run_id, tc, app,
                 meta_filters=meta_filters,
                 user_email=racl_user,
+                judge_mode=judge_mode,
+                case1_threshold_override=case1_threshold,
+                case2_threshold_override=case2_threshold,
+                top_k_pass_override=top_k_pass,
             ), tc
 
         with ThreadPoolExecutor(max_workers=MAX_EVAL_WORKERS) as executor:
@@ -345,15 +369,26 @@ def _resolve_meta_filters(
     app_id: str,
     filter_mode: str,
     filter_prompt: str | None,
+    filter_fields: list[str] | None = None,
 ) -> list[dict]:
     """Resolve metaFilters for a single test case based on the configured mode.
 
-    Priority:
-      1. auto_source  — look up sys_content_type from source_document table
-      2. custom_prompt — LLM-generated filters from question
-      3. per-row      — sys_content_type stored in the test case's generation_metadata
-                        (set when the Excel sheet has a sys_content_type column)
+    Modes:
+      field_filters — use values from the test case's own fields (generation_metadata /
+                      custom_fields) for the field names selected by the user.
+                      Only applies filters for fields that have a non-empty value on
+                      this specific test case.
+      custom_prompt — LLM-generated filters per question.
+      none          — no filters.
     """
+    if filter_mode == "field_filters":
+        fields = filter_fields or []
+        if not fields:
+            return []
+        result = build_field_filters(tc, fields)
+        logger.debug("Eval | tc=%s field_filters=%s → %d rules", tc["tc_id"], fields, len(result))
+        return result
+
     if filter_mode == "auto_source":
         ref_docs = tc.get("reference_doc_ids") or []
         if not ref_docs:
@@ -385,6 +420,10 @@ def _evaluate_one(
     app: dict,
     meta_filters: list[dict] | None = None,
     user_email: str | None = None,
+    judge_mode: str = "auto",
+    case1_threshold_override: float | None = None,
+    case2_threshold_override: float | None = None,
+    top_k_pass_override: int | None = None,
 ) -> dict | None:
     expected_behavior = tc.get("expected_behavior", "ANSWER")
     banned_topics = app.get("banned_topics") or []
@@ -397,8 +436,28 @@ def _evaluate_one(
         match_spec = [{"field": "docId", "value": d} for d in legacy_ref_ids]
 
     case_id = detect_case(tc)
-    has_judge = judge_configured(app)
-    thresholds = get_eval_thresholds(app["app_id"])
+
+    # Resolve the effective verdict knobs for this run. judge_mode='auto' falls
+    # back to actual configuration; 'force_off' skips the judge even when keys
+    # are present; 'force_on' is validated upstream and treated as 'auto' here.
+    if judge_mode == "force_off":
+        has_judge = False
+    else:
+        has_judge = judge_configured(app)
+
+    app_thresholds = get_eval_thresholds(app["app_id"])
+    case1_threshold = (
+        case1_threshold_override
+        if case1_threshold_override is not None
+        else app_thresholds["case1_threshold"]
+    )
+    case2_threshold = (
+        case2_threshold_override
+        if case2_threshold_override is not None
+        else app_thresholds["case2_threshold"]
+    )
+    from judge.metrics import TOP_K_PASS as _DEFAULT_TOP_K
+    top_k_pass = top_k_pass_override if top_k_pass_override is not None else _DEFAULT_TOP_K
 
     for attempt, delay in enumerate(RETRY_DELAYS, 1):
         try:
@@ -470,10 +529,11 @@ def _evaluate_one(
                 judge_scores=judge_scores,
                 expected_doc_rank_val=rank, similarity=similarity,
                 qa_relevance=qa_relevance,
-                case1_threshold=thresholds["case1_threshold"],
-                case2_threshold=thresholds["case2_threshold"],
+                case1_threshold=case1_threshold,
+                case2_threshold=case2_threshold,
                 chunk_rank=chunk_rank,
                 answer_mode=_answer_mode,
+                top_k_pass=top_k_pass,
             )
 
             # Compose stored "scores" payload — includes legacy fields the UI uses
@@ -497,13 +557,13 @@ def _evaluate_one(
                     failure_category = "retrieval_miss" if not rank else "none"
                 elif case_id in (1, 3):
                     # Q↔Answer relevance proxy
-                    if qa_relevance is not None and qa_relevance < thresholds["case1_threshold"]:
+                    if qa_relevance is not None and qa_relevance < case1_threshold:
                         failure_category = "off_topic"
                     else:
                         failure_category = "none"
                 elif case_id in (2, 4):
                     # Answer↔Expected similarity
-                    if similarity is not None and similarity < thresholds["case2_threshold"]:
+                    if similarity is not None and similarity < case2_threshold:
                         failure_category = "low_similarity"
                     else:
                         failure_category = "none"
@@ -526,6 +586,7 @@ def _evaluate_one(
                 "latency_retrieval_ms": rag.get("latency_retrieval_ms"),
                 "search_request_id": rag.get("search_request_id"),
                 "search_payload": rag.get("search_payload"),
+                "search_response": rag.get("search_response"),
                 "attempt_count": attempt,
                 # 4-case fields
                 "case_id": case_id,

@@ -1,18 +1,82 @@
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Any
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
+
+import httpx
 
 from db.database import get_llm_config, get_api_key, get_base_url
 
 logger = logging.getLogger(__name__)
 
 
+# ── JSON response helpers ─────────────────────────────────────────────────────
+# Providers occasionally wrap JSON in markdown fences or add short prose even
+# when JSON mode is requested. Keep parsing tolerant, but log enough to debug.
+
+_FENCE_RE = re.compile(r"^\s*```(?:json|JSON)?\s*\n?|\n?```\s*$", re.MULTILINE)
+
+
+def strip_json_fences(text: str) -> str:
+    """Remove optional ``` or ```json markdown fences around JSON output."""
+    if not text:
+        return text
+    out = text.strip()
+    if out.startswith("```"):
+        out = _FENCE_RE.sub("", out).strip()
+    return out
+
+
+def parse_json_loose(raw: str, expect: str = "object", agent_name: str = "?") -> Any:
+    """Parse JSON from an LLM response, tolerating fences and leading prose."""
+    if raw is None:
+        logger.error("[%s] JSON parse | raw response is None", agent_name)
+        return None
+
+    cleaned = strip_json_fences(raw)
+    if not cleaned.strip():
+        logger.error("[%s] JSON parse | raw response is empty after stripping fences", agent_name)
+        return None
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        logger.warning(
+            "[%s] JSON parse | direct json.loads failed (%s) — trying bracket extraction",
+            agent_name, exc,
+        )
+
+    open_ch, close_ch = ("{", "}") if expect == "object" else ("[", "]")
+    start = cleaned.find(open_ch)
+    end = cleaned.rfind(close_ch) + 1
+    if start == -1 or end == 0:
+        logger.error(
+            "[%s] JSON parse | no %s found | raw[:1000]=%s",
+            agent_name, expect, cleaned[:1000],
+        )
+        return None
+
+    snippet = cleaned[start:end]
+    try:
+        return json.loads(snippet)
+    except json.JSONDecodeError as exc:
+        logger.error(
+            "[%s] JSON parse | bracket extraction failed (%s) | raw[:1000]=%s | snippet[:500]=%s",
+            agent_name, exc, cleaned[:1000], snippet[:500],
+        )
+        return None
+
+
 def _infer_provider(model: str) -> str:
     """Infer LLM provider from model name prefix."""
-    if model.startswith("claude"):
+    name = (model or "").lower()
+    if name.startswith("claude"):
         return "anthropic"
+    if name.startswith("gemini") or name.startswith("models/gemini"):
+        return "gemini"
     return "openai"
 
 
@@ -122,6 +186,61 @@ def _openai_client_and_model(app_id: str, model: str, _app_override: dict | None
     return OpenAI(api_key=key, base_url=url), model
 
 
+def _gemini_endpoint(app_id: str, model: str, _app_override: dict | None = None) -> tuple[str, str]:
+    if _app_override:
+        key = (_app_override.get("gemini_key") or "").strip()
+        base_url = (_app_override.get("gemini_base_url") or "").strip()
+    else:
+        key = get_api_key(app_id, "gemini") or ""
+        base_url = get_base_url(app_id, "gemini") or ""
+    if not key:
+        raise ValueError("No Gemini API key configured for this app")
+    base = (base_url or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
+    model_path = model if model.startswith("models/") else f"models/{model}"
+    return f"{base}/{quote(model_path, safe='/')}:generateContent", key
+
+
+def _gemini_payload(
+    system_prompt: str,
+    user_msg: str,
+    max_tokens: int,
+    temperature: float,
+    *,
+    json_output: bool = False,
+    model: str = "",
+) -> dict:
+    generation_config: dict[str, Any] = {
+        "temperature": temperature,
+        "maxOutputTokens": max_tokens,
+    }
+    if json_output:
+        generation_config["responseMimeType"] = "application/json"
+    if "gemini-2.5-flash" in (model or "").lower():
+        # Gemini 2.5 Flash spends output budget on internal thinking by default.
+        # The generation pipeline needs complete structured JSON, not hidden
+        # reasoning, so keep thinking off for these deterministic extraction calls.
+        generation_config["thinkingConfig"] = {"thinkingBudget": 0}
+
+    payload: dict[str, Any] = {
+        "contents": [{"role": "user", "parts": [{"text": user_msg}]}],
+        "generationConfig": generation_config,
+    }
+    if system_prompt:
+        payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+    return payload
+
+
+def _extract_gemini_text(data: dict) -> tuple[str, str | None]:
+    candidates = data.get("candidates") or []
+    if not candidates:
+        prompt_feedback = data.get("promptFeedback") or {}
+        return "", prompt_feedback.get("blockReason")
+    first = candidates[0]
+    parts = ((first.get("content") or {}).get("parts") or [])
+    text = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
+    return text, first.get("finishReason")
+
+
 class EmptyLLMResponseError(RuntimeError):
     """Raised when an LLM call succeeds at the HTTP level but the message body
     is empty / whitespace-only.
@@ -212,6 +331,37 @@ def call_llm(app_id: str, agent_name: str, system_prompt: str, user_msg: str) ->
                 )
             return text
 
+        if provider == "gemini":
+            endpoint, key = _gemini_endpoint(app_id, model)
+            resp = httpx.post(
+                endpoint,
+                params={"key": key},
+                json=_gemini_payload(
+                    system_prompt,
+                    user_msg,
+                    cfg["max_tokens"],
+                    cfg["temperature"],
+                    model=model,
+                ),
+                timeout=120.0,
+            )
+            resp.raise_for_status()
+            text, finish_reason = _extract_gemini_text(resp.json())
+            logger.debug(
+                "[%s] Gemini response received | finish_reason=%s response_chars=%d",
+                agent_name, finish_reason, len(text),
+            )
+            if not text:
+                logger.warning(
+                    "[%s] Gemini returned EMPTY content | model=%s finish_reason=%s max_tokens=%d",
+                    agent_name, model, finish_reason, max_tokens,
+                )
+                raise EmptyLLMResponseError(
+                    agent_name=agent_name, model=model,
+                    finish_reason=finish_reason, max_tokens=max_tokens,
+                )
+            return text
+
         # OpenAI (gpt-*, o1*, o3*, o4*, or any other non-claude model)
         client, effective_model = _openai_client_and_model(app_id, model)
         messages = []
@@ -297,6 +447,34 @@ def call_llm_json(
             )
             text = message.content[0].text.strip()
             logger.debug("[%s/json] Anthropic JSON response | chars=%d", agent_name, len(text))
+            return text
+
+        if provider == "gemini":
+            endpoint, key = _gemini_endpoint(app_id, model)
+            resp = httpx.post(
+                endpoint,
+                params={"key": key},
+                json=_gemini_payload(
+                    system_prompt,
+                    user_msg,
+                    max_tokens,
+                    cfg["temperature"],
+                    json_output=True,
+                    model=model,
+                ),
+                timeout=120.0,
+            )
+            resp.raise_for_status()
+            text, finish_reason = _extract_gemini_text(resp.json())
+            if not text:
+                raise EmptyLLMResponseError(
+                    agent_name=agent_name, model=model,
+                    finish_reason=finish_reason, max_tokens=max_tokens,
+                )
+            logger.debug(
+                "[%s/json] Gemini JSON response | finish_reason=%s chars=%d",
+                agent_name, finish_reason, len(text),
+            )
             return text
 
         client, effective_model = _openai_client_and_model(app_id, model)
