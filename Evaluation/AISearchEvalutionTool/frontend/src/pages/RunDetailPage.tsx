@@ -1928,21 +1928,56 @@ function PipelineStatCard({
   rate: number | null;
 }) {
   const pct = rate != null ? rate * 100 : null;
+
+  // Tone classes are split so light + dark can be tuned independently.
+  //
+  // Light mode uses 100-shade fills with 300-shade borders and 800-shade text
+  // for a punchy-but-soft pastel — solid enough to read at a glance, not
+  // garish. We deliberately avoid the `bg-X-50/40` opacity suffix because the
+  // global dark-theme CSS in index.css already remaps the bare 50-shades, and
+  // using *-100 here keeps light vivid while letting the explicit `dark:`
+  // variants below own the dark surface tone.
+  //
+  // Dark mode uses 500-series colors at low alpha for the surface and bright
+  // 300-series colors for the foreground — keeps the cards readable on the
+  // near-black background while staying in the same hue family.
   const tone =
-    pct == null ? "border-gray-200 bg-gray-50/40 text-gray-600" :
-    pct >= 80 ? "border-green-200 bg-green-50/40 text-green-700" :
-    pct >= 50 ? "border-amber-200 bg-amber-50/40 text-amber-700" :
-    "border-red-200 bg-red-50/40 text-red-700";
+    pct == null
+      ? "border-gray-300 bg-gray-100 text-gray-700 " +
+        "dark:border-neutral-700/70 dark:bg-neutral-900/40 dark:text-neutral-300"
+      : pct >= 80
+      ? "border-emerald-300 bg-emerald-100 text-emerald-800 " +
+        "dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+      : pct >= 50
+      ? "border-amber-300 bg-amber-100 text-amber-800 " +
+        "dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+      : "border-rose-300 bg-rose-100 text-rose-800 " +
+        "dark:border-rose-500/35 dark:bg-rose-500/10 dark:text-rose-300";
+
+  const badgeTone =
+    pct == null
+      ? "text-gray-600 dark:text-neutral-400"
+      : pct >= 80
+      ? "text-emerald-800/70 dark:text-emerald-300/80"
+      : pct >= 50
+      ? "text-amber-800/70 dark:text-amber-300/80"
+      : "text-rose-800/70 dark:text-rose-300/80";
+
   return (
-    <div className={cn("rounded-lg border p-4 flex flex-col gap-2", tone)}>
+    <div className={cn(
+      "rounded-lg border p-4 flex flex-col gap-2 transition-colors",
+      tone,
+    )}>
       <div className="flex items-baseline justify-between">
         <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{stage}</p>
-        <span className="text-[11px] font-mono text-gray-500">{count}/{denom}</span>
+        <span className={cn("text-[11px] font-mono", badgeTone)}>{count}/{denom}</span>
       </div>
       <p className="text-3xl font-bold leading-none">
         {pct != null ? `${pct.toFixed(1)}%` : "—"}
       </p>
-      <p className="text-[11px] text-gray-500 leading-snug">{description}</p>
+      <p className="text-[11px] leading-snug text-gray-500 dark:text-neutral-400">
+        {description}
+      </p>
     </div>
   );
 }
