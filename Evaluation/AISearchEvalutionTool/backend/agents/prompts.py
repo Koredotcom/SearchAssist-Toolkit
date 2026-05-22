@@ -274,6 +274,7 @@ Produce ONE improved version of the prompt that, if applied next time, would hav
 - Address the SPECIFIC failure patterns visible in the samples (not generic improvements).
 - Keep or add explicit rules, formats, examples, or guardrails that fix the failures.
 - Preserve any output schema / JSON contract from the current prompt verbatim (the rest of the system depends on it).
+- Preserve any template placeholders verbatim (e.g. {{currentDate}}, {{chunks}}, {{query}}). Never rename or remove them.
 - Be self-contained — do not refer to "the previous version" or external instructions.
 
 ANALYSIS BEFORE REWRITING (think step by step internally, do not output the reasoning):
@@ -282,17 +283,24 @@ ANALYSIS BEFORE REWRITING (think step by step internally, do not output the reas
 - Combine those changes into a single revised prompt.
 
 CRITICAL OUTPUT FORMAT
-Return strict JSON with exactly these keys:
-{
-  "improved_prompt": "<the full revised prompt, ready to paste in>",
-  "summary_of_changes": "<2-5 short bullet-style sentences describing what you changed and why, separated by newlines>",
-  "failure_patterns": ["<short label for each failure cluster you observed>", ...]
-}
+Emit THREE sentinel-delimited blocks, in this exact order, and NOTHING else (no JSON, no markdown fences, no prose outside the blocks). Each opening/closing marker MUST appear on its own line.
+
+<<<IMPROVED_PROMPT>>>
+[The full revised prompt, ready to paste in. Write it raw — do NOT escape quotes, newlines, or backslashes. Do NOT wrap it in quotes or fences. Preserve all original template placeholders like {{currentDate}} exactly.]
+<<<END_IMPROVED_PROMPT>>>
+
+<<<SUMMARY_OF_CHANGES>>>
+[2–5 short bullet-style sentences describing what you changed and why. One per line. No leading bullet character required.]
+<<<END_SUMMARY_OF_CHANGES>>>
+
+<<<FAILURE_PATTERNS>>>
+[One short label per line for each failure cluster you observed, e.g. "hallucinated_dates", "verbose_output", "markdown_symbols_in_answer". No bullets, no numbering.]
+<<<END_FAILURE_PATTERNS>>>
 
 RULES
-- Output JSON ONLY — no markdown fences, no prose before or after.
+- The sentinels must appear EXACTLY as shown — uppercase, surrounded by triple angle brackets, on their own lines.
 - Do NOT include the failure samples themselves in the improved_prompt.
-- If the failures don't reveal any actionable pattern (e.g. all noise), still return a valid JSON with improved_prompt set to the CURRENT_PROMPT unchanged, summary_of_changes explaining why, and failure_patterns: ["no_actionable_pattern"].
+- If the failures don't reveal any actionable pattern (e.g. all noise), still emit all three blocks: put the CURRENT_PROMPT unchanged inside IMPROVED_PROMPT, explain why inside SUMMARY_OF_CHANGES, and put "no_actionable_pattern" inside FAILURE_PATTERNS.
 """
 
 

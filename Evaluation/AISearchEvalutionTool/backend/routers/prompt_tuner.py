@@ -17,12 +17,13 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from agents.llm_client import call_llm_json, parse_json_loose
+from agents.llm_client import call_llm, parse_json_loose
 from agents.prompts import DEFAULT_PROMPTS, PROMPT_TUNER_PROMPT
 from db.database import (
     get_active_prompt, get_api_key, get_app, get_eval_results, get_eval_run,
@@ -30,6 +31,54 @@ from db.database import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Desired output budget for the tuner. Rewriting a long prompt (5k+ chars)
+# plus summary/patterns plus the reasoning tokens that o-series / gpt-5 /
+# gemini-thinking models silently consume can easily exceed 10k tokens, and
+# truncation mid-output is the #1 cause of unparseable responses. We aim high
+# (64k) and then cap per-model below so we never request more than the provider
+# accepts — most providers 400 if max_tokens exceeds the model's output limit.
+TUNER_DESIRED_OUTPUT_TOKENS = 65_000
+
+
+def _model_output_cap(model: str) -> int:
+    """Conservative per-model upper bound on output tokens.
+
+    Values below the documented maxes so we don't get 400s after a provider
+    bumps a hard limit downward. When unsure, prefer the smaller number.
+    """
+    name = (model or "").lower()
+    # OpenAI reasoning models — huge output windows.
+    if name.startswith("gpt-5") or name.startswith("gpt5"):
+        return 128_000
+    if name.startswith("o1") or name.startswith("o3") or name.startswith("o4"):
+        return 100_000
+    # OpenAI chat models.
+    if name.startswith("gpt-4.1"):
+        return 32_768
+    if name.startswith("gpt-4o") or name.startswith("gpt-4-turbo"):
+        return 16_384
+    if name.startswith("gpt-4"):
+        return 8_192
+    if name.startswith("gpt-3.5"):
+        return 4_096
+    # Anthropic.
+    if "opus-4" in name:
+        return 32_000
+    if "claude-3-7" in name or "claude-3.7" in name:
+        return 64_000
+    if "claude-3-5" in name or "claude-3.5" in name:
+        return 8_192
+    if name.startswith("claude"):
+        return 8_192
+    # Gemini.
+    if "gemini-2.5" in name or "gemini-2-5" in name:
+        return 65_536
+    if "gemini-1.5" in name or "gemini-1-5" in name:
+        return 8_192
+    if name.startswith("gemini") or name.startswith("models/gemini"):
+        return 8_192
+    return 8_192
 
 router = APIRouter(prefix="/apps/{app_id}/prompt-tuner", tags=["prompt-tuner"])
 
@@ -271,6 +320,125 @@ def _humanise_llm_error(exc: Exception, *, model: str, llm_slot: str) -> tuple[s
     return (f"LLM call failed ({model}): {detail}", 502)
 
 
+# ── Tuner response parsing ─────────────────────────────────────────────────
+# The tuner output is a multi-thousand-character prompt full of quotes,
+# newlines, backslashes and {{template}} markers. Forcing the LLM to wrap that
+# into a JSON string was the original design and proved fragile — even small
+# escaping mistakes (a stray unescaped quote, a raw newline, an off-by-one
+# truncation) made json.loads fail and produced the "couldn't parse as JSON"
+# error users hit in the UI. We now accept three formats, in order of
+# preference:
+#   1. Sentinel-delimited blocks (the new default — zero escaping required).
+#   2. Strict JSON object (kept for backward compat / model variance).
+#   3. Regex rescue: pull "improved_prompt" out of a partially-broken JSON
+#      body so a near-miss still produces something useful for the user.
+
+_BLOCK_PATTERNS: dict[str, re.Pattern[str]] = {
+    "improved_prompt": re.compile(
+        r"<<<\s*IMPROVED_PROMPT\s*>>>\s*\n?(.*?)\n?\s*<<<\s*END_IMPROVED_PROMPT\s*>>>",
+        re.DOTALL | re.IGNORECASE,
+    ),
+    "summary_of_changes": re.compile(
+        r"<<<\s*SUMMARY_OF_CHANGES\s*>>>\s*\n?(.*?)\n?\s*<<<\s*END_SUMMARY_OF_CHANGES\s*>>>",
+        re.DOTALL | re.IGNORECASE,
+    ),
+    "failure_patterns": re.compile(
+        r"<<<\s*FAILURE_PATTERNS\s*>>>\s*\n?(.*?)\n?\s*<<<\s*END_FAILURE_PATTERNS\s*>>>",
+        re.DOTALL | re.IGNORECASE,
+    ),
+}
+
+
+def _parse_sentinel_blocks(raw: str) -> dict[str, Any] | None:
+    """Extract the three sentinel blocks from the LLM response.
+
+    Returns ``None`` if no IMPROVED_PROMPT block is present — that's the only
+    field we strictly require; summary/patterns are nice-to-have.
+    """
+    improved_match = _BLOCK_PATTERNS["improved_prompt"].search(raw or "")
+    if not improved_match:
+        return None
+    improved = improved_match.group(1).strip()
+    if not improved:
+        return None
+
+    summary_match = _BLOCK_PATTERNS["summary_of_changes"].search(raw)
+    summary = summary_match.group(1).strip() if summary_match else ""
+
+    patterns_match = _BLOCK_PATTERNS["failure_patterns"].search(raw)
+    patterns: list[str] = []
+    if patterns_match:
+        for line in patterns_match.group(1).splitlines():
+            label = line.strip().lstrip("-*•").strip().strip("\"',")
+            if label:
+                patterns.append(label)
+    return {
+        "improved_prompt": improved,
+        "summary_of_changes": summary,
+        "failure_patterns": patterns,
+    }
+
+
+# Last-ditch rescue for malformed JSON: pull the improved_prompt value even when
+# the surrounding object is broken (e.g. unterminated due to truncation, or has
+# an unescaped quote later in the body). Captures everything between the
+# opening quote of the value and the closing quote that comes before either the
+# next top-level key or end-of-string.
+_JSON_RESCUE_RE = re.compile(
+    r'"improved_prompt"\s*:\s*"(.*?)"\s*(?:,\s*"(?:summary_of_changes|failure_patterns)"|\}|\Z)',
+    re.DOTALL,
+)
+
+
+def _rescue_from_broken_json(raw: str) -> dict[str, Any] | None:
+    """Best-effort recovery when the LLM emits almost-valid JSON.
+
+    Only used when both the sentinel parser and json.loads have failed. The
+    rescued prompt will have JSON escape sequences (\\n, \\", \\\\) decoded
+    back to their literal characters.
+    """
+    if not raw:
+        return None
+    m = _JSON_RESCUE_RE.search(raw)
+    if not m:
+        return None
+    payload = m.group(1)
+    try:
+        improved = json.loads(f'"{payload}"')
+    except json.JSONDecodeError:
+        improved = (
+            payload.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
+        )
+    improved = improved.strip()
+    if not improved:
+        return None
+    return {
+        "improved_prompt": improved,
+        "summary_of_changes": "(Recovered from a partially-malformed model response — review carefully.)",
+        "failure_patterns": ["recovered_from_broken_json"],
+    }
+
+
+def parse_tuner_response(raw: str) -> dict[str, Any] | None:
+    """Try every supported tuner output format, returning the first that yields a usable prompt."""
+    sentinel = _parse_sentinel_blocks(raw)
+    if sentinel:
+        return sentinel
+
+    parsed = parse_json_loose(raw, expect="object", agent_name="prompt_tuner")
+    if isinstance(parsed, dict) and (parsed.get("improved_prompt") or "").strip():
+        patterns = parsed.get("failure_patterns") or []
+        if not isinstance(patterns, list):
+            patterns = [str(patterns)]
+        return {
+            "improved_prompt": str(parsed["improved_prompt"]).strip(),
+            "summary_of_changes": str(parsed.get("summary_of_changes") or "").strip(),
+            "failure_patterns": [str(p) for p in patterns],
+        }
+
+    return _rescue_from_broken_json(raw)
+
+
 def _rank_failures(rows: list[dict]) -> list[dict]:
     """Order failures so the LLM sees the most informative ones first.
 
@@ -438,16 +606,40 @@ def finetune_prompt(app_id: str, body: FineTuneRequest) -> FineTuneResponse:
         user_notes=body.user_notes,
     )
 
+    # Headroom for a full rewrite + summary + patterns. Without this floor, a
+    # 5k-char input prompt routinely truncates the output mid-block and the
+    # parser sees an incomplete IMPROVED_PROMPT sentinel. We aim for 65k but
+    # cap at the model's documented output limit so providers like OpenAI
+    # don't 400 the request for asking for more than the model can produce.
+    stored_max = int((cfg or {}).get("max_tokens") or 0)
+    model_cap = _model_output_cap(model)
+    effective_max = min(max(stored_max, TUNER_DESIRED_OUTPUT_TOKENS), model_cap)
+    if effective_max != stored_max:
+        logger.info(
+            "Prompt tuner | output budget | stored=%d desired=%d model_cap=%d "
+            "-> effective=%d (slot=%s model=%s)",
+            stored_max, TUNER_DESIRED_OUTPUT_TOKENS, model_cap, effective_max,
+            llm_slot, model,
+        )
+
     logger.info(
-        "Prompt tuner | starting | app=%s target=%s llm_slot=%s model=%s samples=%d",
+        "Prompt tuner | starting | app=%s target=%s llm_slot=%s model=%s "
+        "samples=%d max_tokens=%d prompt_chars=%d",
         app_id, body.agent_name, llm_slot, model, len(samples),
+        effective_max, len(current_prompt),
     )
 
-    # Route the call through the picked agent slot so call_llm_json reads its
-    # model / temp / max_tokens. The system_prompt stays the meta-prompt — the
-    # LLM is rewriting another prompt, not playing whatever role the slot is for.
+    # Route through the picked slot so call_llm reads its model / temp config,
+    # but pass the meta tuner prompt as the system message. We don't use
+    # call_llm_json anymore: forcing JSON mode for a multi-thousand-char string
+    # value made every escaping mistake fatal. The tuner now emits
+    # sentinel-delimited blocks (no escaping needed); parse_tuner_response
+    # still falls back to JSON / regex rescue for older / divergent responses.
     try:
-        raw = call_llm_json(app_id, llm_slot, PROMPT_TUNER_PROMPT, user_msg)
+        raw = call_llm(
+            app_id, llm_slot, PROMPT_TUNER_PROMPT, user_msg,
+            max_tokens_override=effective_max,
+        )
     except Exception as exc:
         msg, status = _humanise_llm_error(exc, model=model, llm_slot=llm_slot)
         logger.error(
@@ -456,24 +648,27 @@ def finetune_prompt(app_id: str, body: FineTuneRequest) -> FineTuneResponse:
         )
         raise HTTPException(status, msg)
 
-    parsed = parse_json_loose(raw, expect="object", agent_name="prompt_tuner")
-    if not isinstance(parsed, dict):
+    parsed = parse_tuner_response(raw)
+    if not parsed:
+        snippet = (raw or "").strip()
+        head = snippet[:300]
+        tail = snippet[-300:] if len(snippet) > 600 else ""
         logger.error(
-            "Prompt tuner | could not parse JSON | raw[:500]=%s",
-            (raw or "")[:500],
+            "Prompt tuner | could not parse response | model=%s slot=%s "
+            "raw_chars=%d | head=%r | tail=%r",
+            model, llm_slot, len(snippet), head, tail,
         )
         raise HTTPException(
             502,
-            "The LLM returned a response we couldn't parse as JSON. Try again, "
-            "or simplify the failures list.",
+            "The model returned a response the tuner couldn't parse. This "
+            "usually means the output was truncated or the model ignored the "
+            "format instructions. Try again, lower the sample count, or pick "
+            f"a different model. (Model: {model}, response start: {head[:120]!r})",
         )
 
-    improved = (parsed.get("improved_prompt") or "").strip()
-    summary = (parsed.get("summary_of_changes") or "").strip()
-    patterns = parsed.get("failure_patterns") or []
-    if not isinstance(patterns, list):
-        patterns = [str(patterns)]
-    patterns = [str(p) for p in patterns]
+    improved = parsed["improved_prompt"]
+    summary = parsed["summary_of_changes"]
+    patterns = parsed["failure_patterns"]
 
     if not improved:
         improved = current_prompt

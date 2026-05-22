@@ -270,7 +270,7 @@ export default function PromptTunerPage() {
           <div>
             <p className="text-sm font-semibold text-gray-900">Ready to fine-tune?</p>
             <p className="text-xs text-gray-600 mt-0.5">
-              The tuner LLM (uses the <strong>insights</strong> model config) will rewrite the prompt based on {failuresData?.returned ?? 0} failure{(failuresData?.returned ?? 0) === 1 ? "" : "s"}.
+              The tuner will reuse this agent's LLM config (falling back to <strong>insights</strong> if its provider key isn't set) to rewrite the prompt based on {failuresData?.returned ?? 0} failure{(failuresData?.returned ?? 0) === 1 ? "" : "s"}.
             </p>
           </div>
           <button
