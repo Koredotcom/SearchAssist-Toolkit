@@ -1024,3 +1024,156 @@ def set_run_ai_insights(run_id: str, markdown: str, model: str) -> None:
                 WHERE run_id=?""",
             (markdown, model, run_id),
         )
+
+
+# ── Evaluate-page settings (auto-saved per app) ─────────────────────────────
+
+def get_evaluate_settings(app_id: str) -> dict | None:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT settings_json, updated_at FROM evaluate_settings WHERE app_id=?",
+            (app_id,),
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            return {"settings": json.loads(row["settings_json"]), "updated_at": row["updated_at"]}
+        except (TypeError, ValueError):
+            return None
+
+
+def upsert_evaluate_settings(app_id: str, settings: dict) -> None:
+    payload = json.dumps(settings)
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO evaluate_settings (app_id, settings_json, updated_at)
+                 VALUES (?,?,datetime('now'))
+               ON CONFLICT(app_id) DO UPDATE SET
+                 settings_json=excluded.settings_json,
+                 updated_at=excluded.updated_at""",
+            (app_id, payload),
+        )
+
+
+# ── Performance test runs ───────────────────────────────────────────────────
+
+def create_perf_run(run: dict) -> None:
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO perf_run
+                 (run_id, app_id, golden_set_version, concurrency,
+                  stop_mode, iterations, duration_s, ramp_up_s, status)
+               VALUES (?,?,?,?,?,?,?,?, 'running')""",
+            (
+                run["run_id"], run["app_id"], run["golden_set_version"],
+                run["concurrency"], run["stop_mode"],
+                run.get("iterations"), run.get("duration_s"),
+                run.get("ramp_up_s", 0),
+            ),
+        )
+
+
+def insert_perf_result(result: dict) -> None:
+    with get_db() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO perf_result
+                 (run_id, seq, tc_id, status_code, latency_ms, error, started_at)
+               VALUES (?,?,?,?,?,?, datetime('now'))""",
+            (
+                result["run_id"], result["seq"], result.get("tc_id"),
+                result.get("status_code"), result["latency_ms"], result.get("error"),
+            ),
+        )
+
+
+def finalize_perf_run(
+    run_id: str,
+    status: str,
+    total_requests: int,
+    success_count: int,
+    error_count: int,
+    aggregates: dict,
+    error_message: str | None = None,
+) -> None:
+    with get_db() as conn:
+        conn.execute(
+            """UPDATE perf_run
+                 SET status=?, finished_at=datetime('now'),
+                     total_requests=?, success_count=?, error_count=?,
+                     p50_ms=?, p95_ms=?, p99_ms=?, avg_ms=?, max_ms=?,
+                     error_message=?
+               WHERE run_id=?""",
+            (
+                status, total_requests, success_count, error_count,
+                aggregates.get("p50"), aggregates.get("p95"),
+                aggregates.get("p99"), aggregates.get("avg"),
+                aggregates.get("max"), error_message, run_id,
+            ),
+        )
+
+
+def update_perf_run_counters(
+    run_id: str, total_requests: int, success_count: int, error_count: int,
+    aggregates: dict | None = None,
+) -> None:
+    with get_db() as conn:
+        if aggregates is None:
+            conn.execute(
+                """UPDATE perf_run
+                     SET total_requests=?, success_count=?, error_count=?
+                   WHERE run_id=?""",
+                (total_requests, success_count, error_count, run_id),
+            )
+        else:
+            conn.execute(
+                """UPDATE perf_run
+                     SET total_requests=?, success_count=?, error_count=?,
+                         p50_ms=?, p95_ms=?, p99_ms=?, avg_ms=?, max_ms=?
+                   WHERE run_id=?""",
+                (
+                    total_requests, success_count, error_count,
+                    aggregates.get("p50"), aggregates.get("p95"),
+                    aggregates.get("p99"), aggregates.get("avg"),
+                    aggregates.get("max"), run_id,
+                ),
+            )
+
+
+def get_perf_run(run_id: str) -> dict | None:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM perf_run WHERE run_id=?", (run_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def list_perf_runs(app_id: str, limit: int = 50) -> list[dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT * FROM perf_run
+                WHERE app_id=?
+                ORDER BY started_at DESC
+                LIMIT ?""",
+            (app_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_perf_results(run_id: str, limit: int = 500, offset: int = 0) -> list[dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT * FROM perf_result
+                WHERE run_id=?
+                ORDER BY seq
+                LIMIT ? OFFSET ?""",
+            (run_id, limit, offset),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def delete_perf_run(app_id: str, run_id: str) -> bool:
+    with get_db() as conn:
+        cur = conn.execute(
+            "DELETE FROM perf_run WHERE run_id=? AND app_id=?", (run_id, app_id),
+        )
+        return cur.rowcount > 0

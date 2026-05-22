@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
+import platform
 import re
+import shutil
+import subprocess
+import time
 import uuid
 from datetime import datetime
 from typing import Any
@@ -11,10 +16,13 @@ from agents.prompts import DEFAULT_PROMPTS
 
 try:
     from pymongo import ASCENDING, DESCENDING, MongoClient
+    from pymongo.errors import ServerSelectionTimeoutError
 except ImportError as exc:  # pragma: no cover - dependency guard
     raise RuntimeError(
         "pymongo is required when DB_BACKEND=mongodb. Install backend requirements first."
     ) from exc
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_LLM = {
@@ -88,7 +96,67 @@ def _decode_app(doc: dict | None) -> dict | None:
     return app
 
 
+def _is_mongo_reachable(uri: str, timeout_ms: int = 1500) -> bool:
+    try:
+        client = MongoClient(uri, serverSelectionTimeoutMS=timeout_ms)
+        client.admin.command("ping")
+        client.close()
+        return True
+    except ServerSelectionTimeoutError:
+        return False
+    except Exception:
+        return False
+
+
+def _try_start_local_mongo(uri: str) -> bool:
+    """Attempt to bring up a local MongoDB if the configured URI points at localhost.
+
+    Returns True if the service is reachable after the attempt. macOS / brew only:
+    on other platforms (or if mongod is remote) this is a no-op and returns False.
+    """
+    if "localhost" not in uri and "127.0.0.1" not in uri:
+        return False
+    if platform.system() != "Darwin":
+        return False
+    brew = shutil.which("brew")
+    if not brew:
+        return False
+    for label in ("mongodb-community@6.0", "mongodb-community", "mongodb-community@7.0"):
+        try:
+            proc = subprocess.run(
+                [brew, "services", "start", label],
+                capture_output=True, text=True, timeout=15,
+            )
+        except subprocess.SubprocessError:
+            continue
+        if proc.returncode != 0:
+            continue
+        logger.info("Mongo | Attempted brew services start %s — waiting for socket…", label)
+        for _ in range(15):  # poll up to ~15s
+            time.sleep(1)
+            if _is_mongo_reachable(uri):
+                logger.info("Mongo | Local mongod is now reachable via %s", uri)
+                return True
+    return False
+
+
+def _ensure_mongo_running() -> None:
+    """Bring up mongod if it's configured to be local and isn't reachable."""
+    uri = get_config().database.mongodb_uri
+    if _is_mongo_reachable(uri):
+        return
+    logger.warning("Mongo | %s is not reachable — attempting to start local service", uri)
+    if _try_start_local_mongo(uri):
+        return
+    raise RuntimeError(
+        f"MongoDB at {uri} is not reachable and could not be auto-started. "
+        "Start it manually (macOS: `brew services start mongodb-community@6.0`) "
+        "or set DB_BACKEND=sqlite."
+    )
+
+
 def init_db() -> None:
+    _ensure_mongo_running()
     db = _db()
     db.app_config.create_index([("app_id", ASCENDING)], unique=True)
     db.llm_config.create_index([("app_id", ASCENDING), ("agent_name", ASCENDING)], unique=True)
@@ -103,6 +171,10 @@ def init_db() -> None:
     db.eval_run.create_index([("run_id", ASCENDING)], unique=True)
     db.eval_run.create_index([("app_id", ASCENDING), ("started_at", DESCENDING)])
     db.eval_result.create_index([("run_id", ASCENDING), ("tc_id", ASCENDING)], unique=True)
+    db.evaluate_settings.create_index([("app_id", ASCENDING)], unique=True)
+    db.perf_run.create_index([("run_id", ASCENDING)], unique=True)
+    db.perf_run.create_index([("app_id", ASCENDING), ("started_at", DESCENDING)])
+    db.perf_result.create_index([("run_id", ASCENDING), ("seq", ASCENDING)], unique=True)
 
     for app in db.app_config.find({}, {"app_id": 1}):
         _seed_default_llm_configs(app["app_id"])
@@ -645,3 +717,135 @@ def set_run_ai_insights(run_id: str, markdown: str, model: str) -> None:
         {"run_id": run_id},
         {"$set": {"ai_insights_md": markdown, "ai_insights_model": model, "ai_insights_generated_at": _now()}},
     )
+
+
+# ── Evaluate-page settings (auto-saved per app) ─────────────────────────────
+
+def get_evaluate_settings(app_id: str) -> dict | None:
+    row = _c("evaluate_settings").find_one({"app_id": app_id})
+    if not row:
+        return None
+    return {"settings": row.get("settings") or {}, "updated_at": row.get("updated_at")}
+
+
+def upsert_evaluate_settings(app_id: str, settings: dict) -> None:
+    _c("evaluate_settings").update_one(
+        {"app_id": app_id},
+        {"$set": {"settings": settings, "updated_at": _now()}},
+        upsert=True,
+    )
+
+
+# ── Performance test runs ───────────────────────────────────────────────────
+
+def create_perf_run(run: dict) -> None:
+    _c("perf_run").insert_one({
+        "run_id": run["run_id"],
+        "app_id": run["app_id"],
+        "golden_set_version": run["golden_set_version"],
+        "concurrency": run["concurrency"],
+        "stop_mode": run["stop_mode"],
+        "iterations": run.get("iterations"),
+        "duration_s": run.get("duration_s"),
+        "ramp_up_s": run.get("ramp_up_s", 0),
+        "status": "running",
+        "started_at": _now(),
+        "finished_at": None,
+        "total_requests": 0,
+        "success_count": 0,
+        "error_count": 0,
+        "p50_ms": None, "p95_ms": None, "p99_ms": None,
+        "avg_ms": None, "max_ms": None,
+        "error_message": None,
+    })
+
+
+def insert_perf_result(result: dict) -> None:
+    _c("perf_result").update_one(
+        {"run_id": result["run_id"], "seq": result["seq"]},
+        {"$set": {
+            "tc_id": result.get("tc_id"),
+            "status_code": result.get("status_code"),
+            "latency_ms": result["latency_ms"],
+            "error": result.get("error"),
+            "started_at": _now(),
+        }},
+        upsert=True,
+    )
+
+
+def finalize_perf_run(
+    run_id: str,
+    status: str,
+    total_requests: int,
+    success_count: int,
+    error_count: int,
+    aggregates: dict,
+    error_message: str | None = None,
+) -> None:
+    _c("perf_run").update_one(
+        {"run_id": run_id},
+        {"$set": {
+            "status": status,
+            "finished_at": _now(),
+            "total_requests": total_requests,
+            "success_count": success_count,
+            "error_count": error_count,
+            "p50_ms": aggregates.get("p50"),
+            "p95_ms": aggregates.get("p95"),
+            "p99_ms": aggregates.get("p99"),
+            "avg_ms": aggregates.get("avg"),
+            "max_ms": aggregates.get("max"),
+            "error_message": error_message,
+        }},
+    )
+
+
+def update_perf_run_counters(
+    run_id: str, total_requests: int, success_count: int, error_count: int,
+    aggregates: dict | None = None,
+) -> None:
+    update: dict[str, Any] = {
+        "total_requests": total_requests,
+        "success_count": success_count,
+        "error_count": error_count,
+    }
+    if aggregates is not None:
+        update.update({
+            "p50_ms": aggregates.get("p50"),
+            "p95_ms": aggregates.get("p95"),
+            "p99_ms": aggregates.get("p99"),
+            "avg_ms": aggregates.get("avg"),
+            "max_ms": aggregates.get("max"),
+        })
+    _c("perf_run").update_one({"run_id": run_id}, {"$set": update})
+
+
+def get_perf_run(run_id: str) -> dict | None:
+    return _clean(_c("perf_run").find_one({"run_id": run_id}))
+
+
+def list_perf_runs(app_id: str, limit: int = 50) -> list[dict]:
+    return [
+        _clean(r)
+        for r in _c("perf_run").find({"app_id": app_id}).sort("started_at", DESCENDING).limit(limit)
+    ]
+
+
+def get_perf_results(run_id: str, limit: int = 500, offset: int = 0) -> list[dict]:
+    cursor = (
+        _c("perf_result")
+        .find({"run_id": run_id})
+        .sort("seq", ASCENDING)
+        .skip(offset)
+        .limit(limit)
+    )
+    return [_clean(r) for r in cursor]
+
+
+def delete_perf_run(app_id: str, run_id: str) -> bool:
+    result = _c("perf_run").delete_one({"run_id": run_id, "app_id": app_id})
+    if not result.deleted_count:
+        return False
+    _c("perf_result").delete_many({"run_id": run_id})
+    return True

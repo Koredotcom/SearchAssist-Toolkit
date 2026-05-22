@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { goldenSetsApi, evaluationApi, appsApi, appApiKeysApi } from "@/lib/api";
-import type { Job, AnswerMode, FilterMode, JudgeMode } from "@/lib/api";
-import { FlaskConical, Loader2, CheckCircle, XCircle, ChevronRight, Filter, UserCircle, Zap, FileText, Square, Info, ChevronDown, ChevronUp, Scale, Sparkles, SlidersHorizontal } from "lucide-react";
+import type { Job, AnswerMode, FilterMode, JudgeMode, SavedEvaluateSettings } from "@/lib/api";
+import { FlaskConical, Loader2, CheckCircle, XCircle, ChevronRight, Filter, UserCircle, Zap, FileText, Square, Info, ChevronDown, ChevronUp, Scale, Sparkles, SlidersHorizontal, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function EvaluatePage() {
@@ -55,6 +55,15 @@ export default function EvaluatePage() {
     enabled: !!appId,
   });
 
+  // Filter field options for the selected golden set (only needed in field_filters mode)
+  const { data: filterOptions } = useQuery({
+    queryKey: ["filter-options", appId, selectedVersion],
+    queryFn: () => goldenSetsApi.filterOptions(appId!, selectedVersion),
+    enabled: !!appId && !!selectedVersion && filterMode === "field_filters",
+    staleTime: 30_000,
+  });
+  const availableFilterFields = filterOptions?.fields ?? [];
+
   // App-level thresholds (used as the placeholder/default for overrides)
   const { data: apiKeyStatus } = useQuery({
     queryKey: ["app-api-keys", appId],
@@ -79,6 +88,73 @@ export default function EvaluatePage() {
     queryFn: () => evaluationApi.listJobs(appId!),
     enabled: !!appId,
   });
+
+  // ── Auto-saved settings ────────────────────────────────────────────
+  // Hydrate on first load, then debounce-save the full state on any change.
+  const hydratedRef = useRef(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { data: savedSettings } = useQuery({
+    queryKey: ["evaluate-settings", appId],
+    queryFn: () => evaluationApi.getSettings(appId!),
+    enabled: !!appId,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (hydratedRef.current || !savedSettings) return;
+    const s = savedSettings.settings;
+    if (!s) {
+      hydratedRef.current = true;
+      return;
+    }
+    setSelectedVersion(s.selectedVersion ?? "");
+    setRagVersion(s.ragVersion ?? "latest");
+    setLimitCases(!!s.limitCases);
+    setMaxCases(typeof s.maxCases === "number" ? s.maxCases : 10);
+    setSampleMode(s.sampleMode ?? "first");
+    setFilterMode(s.filterMode ?? "none");
+    setFilterFields(Array.isArray(s.filterFields) ? s.filterFields : []);
+    setEnableRacl(!!s.enableRacl);
+    setUserEmail(s.userEmail ?? "");
+    setAnswerModeOverride(s.answerModeOverride ?? null);
+    setSelectedQTypes(Array.isArray(s.selectedQTypes) ? s.selectedQTypes : []);
+    setJudgeMode(s.judgeMode ?? "auto");
+    setCase1Threshold(s.case1Threshold ?? null);
+    setCase2Threshold(s.case2Threshold ?? null);
+    setTopKPass(s.topKPass ?? null);
+    hydratedRef.current = true;
+  }, [savedSettings]);
+
+  const saveSettingsMutation = useMutation({
+    mutationFn: (s: SavedEvaluateSettings) => evaluationApi.saveSettings(appId!, s),
+    onMutate: () => setSaveStatus("saving"),
+    onSuccess: () => {
+      setSaveStatus("saved");
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), 1500);
+    },
+    onError: () => setSaveStatus("idle"),
+  });
+
+  useEffect(() => {
+    if (!appId || !hydratedRef.current) return;
+    const snapshot: SavedEvaluateSettings = {
+      selectedVersion, ragVersion, limitCases, maxCases, sampleMode,
+      filterMode, filterFields, enableRacl, userEmail,
+      answerModeOverride, selectedQTypes,
+      judgeMode, case1Threshold, case2Threshold, topKPass,
+    };
+    const handle = setTimeout(() => saveSettingsMutation.mutate(snapshot), 500);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    appId, selectedVersion, ragVersion, limitCases, maxCases, sampleMode,
+    filterMode, filterFields, enableRacl, userEmail,
+    answerModeOverride, selectedQTypes,
+    judgeMode, case1Threshold, case2Threshold, topKPass,
+  ]);
 
   const { data: activeJob } = useQuery({
     queryKey: ["eval-job", appId, activeJobId],
@@ -131,11 +207,21 @@ export default function EvaluatePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Evaluate</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Run evaluation against a frozen golden set
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Evaluate</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Run evaluation against a frozen golden set
+          </p>
+        </div>
+        <div className="text-xs text-gray-400 pt-1.5 min-w-[80px] text-right">
+          {saveStatus === "saving" && (
+            <span className="inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Saving…</span>
+          )}
+          {saveStatus === "saved" && (
+            <span className="inline-flex items-center gap-1 text-green-600"><Check className="w-3 h-3" />Saved</span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

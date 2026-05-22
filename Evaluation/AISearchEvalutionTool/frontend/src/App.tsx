@@ -11,6 +11,8 @@ import LLMConfigPage from "@/pages/LLMConfigPage";
 import ResultsPage from "@/pages/ResultsPage";
 import RunDetailPage from "@/pages/RunDetailPage";
 import AppApiKeysPage from "@/pages/AppApiKeysPage";
+import PerfTestPage from "@/pages/PerfTestPage";
+import PerfRunDetailPage from "@/pages/PerfRunDetailPage";
 
 export default function App() {
   return (
@@ -28,6 +30,8 @@ export default function App() {
         <Route path="apps/:appId/results" element={<ResultsPage />} />
         <Route path="apps/:appId/results/:runId" element={<RunDetailPage />} />
         <Route path="apps/:appId/api-keys" element={<AppApiKeysPage />} />
+        <Route path="apps/:appId/perf-test" element={<PerfTestPage />} />
+        <Route path="apps/:appId/perf-test/:runId" element={<PerfRunDetailPage />} />
         {/* TODO: missing QueryPage — backend router (routers/query.py) and queryApi (lib/api.ts) are ready; need frontend/src/pages/QueryPage.tsx + route apps/:appId/query */}
       </Route>
     </Routes>

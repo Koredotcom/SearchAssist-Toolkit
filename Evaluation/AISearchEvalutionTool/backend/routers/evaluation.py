@@ -1,9 +1,37 @@
+from typing import Any
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel
 from models import EvaluationRequest, FilterPromptTestRequest, MapperTestRequest, JobResponse
-from db.database import create_job, get_app, get_job, list_jobs, request_stop_job, get_active_prompt
+from db.database import (
+    create_job, get_app, get_job, list_jobs, request_stop_job, get_active_prompt,
+    get_evaluate_settings, upsert_evaluate_settings,
+)
 from pipeline.evaluate import exec_filter_script, run_evaluation
 
 router = APIRouter(prefix="/apps/{app_id}/evaluation", tags=["evaluation"])
+
+
+class EvaluateSettingsBody(BaseModel):
+    settings: dict[str, Any]
+
+
+@router.get("/settings")
+def get_settings(app_id: str):
+    if not get_app(app_id):
+        raise HTTPException(404, "App not found")
+    row = get_evaluate_settings(app_id)
+    if not row:
+        return {"settings": None, "updated_at": None}
+    return row
+
+
+@router.put("/settings")
+def put_settings(app_id: str, body: EvaluateSettingsBody):
+    if not get_app(app_id):
+        raise HTTPException(404, "App not found")
+    upsert_evaluate_settings(app_id, body.settings)
+    return {"ok": True}
 
 
 @router.post("/start", response_model=JobResponse, status_code=202)

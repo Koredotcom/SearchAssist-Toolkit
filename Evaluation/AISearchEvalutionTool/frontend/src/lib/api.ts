@@ -230,6 +230,29 @@ export type ScriptLang = "python" | "js";
 
 export type JudgeMode = "auto" | "force_on" | "force_off";
 
+export interface SavedEvaluateSettings {
+  selectedVersion: string;
+  ragVersion: string;
+  limitCases: boolean;
+  maxCases: number;
+  sampleMode: "first" | "random";
+  filterMode: FilterMode;
+  filterFields: string[];
+  enableRacl: boolean;
+  userEmail: string;
+  answerModeOverride: AnswerMode | null;
+  selectedQTypes: string[];
+  judgeMode: JudgeMode;
+  case1Threshold: number | null;
+  case2Threshold: number | null;
+  topKPass: number | null;
+}
+
+export interface SavedEvaluateSettingsResponse {
+  settings: SavedEvaluateSettings | null;
+  updated_at: string | null;
+}
+
 export const evaluationApi = {
   start: (appId: string, data: {
     golden_set_version: string;
@@ -258,6 +281,82 @@ export const evaluationApi = {
     api.post<{ output: unknown; error: string | null }>(`/apps/${appId}/evaluation/test-mapper`, data).then((r) => r.data),
   testFilterPrompt: (appId: string, data: { question: string; prompt_text?: string | null }) =>
     api.post<{ raw_response: string | null; error: string | null }>(`/apps/${appId}/evaluation/test-filter-prompt`, data).then((r) => r.data),
+  getSettings: (appId: string) =>
+    api.get<SavedEvaluateSettingsResponse>(`/apps/${appId}/evaluation/settings`).then((r) => r.data),
+  saveSettings: (appId: string, settings: SavedEvaluateSettings) =>
+    api.put<{ ok: boolean }>(`/apps/${appId}/evaluation/settings`, { settings }).then((r) => r.data),
+};
+
+// ── Performance test ────────────────────────────────────────────────────────
+
+export type PerfStopMode = "iterations" | "duration";
+
+export interface PerfRun {
+  run_id: string;
+  app_id: string;
+  golden_set_version: string;
+  concurrency: number;
+  stop_mode: PerfStopMode;
+  iterations: number | null;
+  duration_s: number | null;
+  ramp_up_s: number;
+  status: "running" | "complete" | "failed" | "stopped";
+  started_at: string;
+  finished_at: string | null;
+  total_requests: number;
+  success_count: number;
+  error_count: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
+  avg_ms: number | null;
+  max_ms: number | null;
+  error_message: string | null;
+}
+
+export interface PerfResult {
+  run_id: string;
+  seq: number;
+  tc_id: string | null;
+  status_code: number | null;
+  latency_ms: number;
+  error: string | null;
+  started_at: string;
+}
+
+export interface PerfTestStartRequest {
+  golden_set_version: string;
+  concurrency: number;
+  stop_mode: PerfStopMode;
+  iterations?: number | null;
+  duration_s?: number | null;
+  ramp_up_s: number;
+}
+
+export interface PerfStartResponse extends Job {
+  run_id: string;
+}
+
+export const perfTestApi = {
+  start: (appId: string, body: PerfTestStartRequest) =>
+    api.post<PerfStartResponse>(`/apps/${appId}/perf-test/start`, body).then((r) => r.data),
+  listJobs: (appId: string) =>
+    api.get<Job[]>(`/apps/${appId}/perf-test/jobs`).then((r) => r.data),
+  getJob: (appId: string, jobId: string) =>
+    api.get<Job>(`/apps/${appId}/perf-test/jobs/${jobId}`).then((r) => r.data),
+  stop: (appId: string, jobId: string) =>
+    api.post<{ ok: boolean }>(`/apps/${appId}/perf-test/jobs/${jobId}/stop`).then((r) => r.data),
+  listRuns: (appId: string) =>
+    api.get<PerfRun[]>(`/apps/${appId}/perf-test/runs`).then((r) => r.data),
+  getRun: (appId: string, runId: string) =>
+    api.get<PerfRun>(`/apps/${appId}/perf-test/runs/${runId}`).then((r) => r.data),
+  getResults: (appId: string, runId: string, limit = 500, offset = 0) =>
+    api.get<{ run_id: string; results: PerfResult[]; limit: number; offset: number }>(
+      `/apps/${appId}/perf-test/runs/${runId}/results`,
+      { params: { limit, offset } },
+    ).then((r) => r.data),
+  delete: (appId: string, runId: string) =>
+    api.delete<{ ok: boolean; run_id: string }>(`/apps/${appId}/perf-test/runs/${runId}`).then((r) => r.data),
 };
 
 export interface QueryRequest {
