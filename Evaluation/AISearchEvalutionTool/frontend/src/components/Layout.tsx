@@ -6,7 +6,7 @@ import type { AppConfig } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Database, Zap, FlaskConical, BookOpen,
-  Settings2, BarChart3, ChevronDown, Plus, Bot, KeySquare, Moon, Sun, Wand2
+  Settings2, BarChart3, ChevronDown, Plus, Bot, KeySquare, Moon, Sun, Wand2, Gauge
 } from "lucide-react";
 
 const appNavItems = (appId: string) => [
@@ -14,6 +14,7 @@ const appNavItems = (appId: string) => [
   { to: `/apps/${appId}/generate`,      label: "Generate",     icon: Zap },
   { to: `/apps/${appId}/golden-sets`,   label: "Golden Sets",  icon: BookOpen },
   { to: `/apps/${appId}/evaluate`,      label: "Evaluate",     icon: FlaskConical },
+  { to: `/apps/${appId}/perf-test`,     label: "Perf Test",    icon: Gauge },
   { to: `/apps/${appId}/results`,       label: "Results",      icon: BarChart3 },
   { to: `/apps/${appId}/prompts`,       label: "Prompts & Models", icon: Settings2 },
   { to: `/apps/${appId}/prompt-tuner`,  label: "Prompt Tuner", icon: Wand2 },

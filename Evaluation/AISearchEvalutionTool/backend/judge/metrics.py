@@ -8,6 +8,7 @@ Cases:
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from agents.llm_client import _infer_provider
@@ -21,8 +22,12 @@ DEFAULT_CASE2_THRESHOLD = 0.5
 # Recall@K levels reported on every Case-3 / Case-4 row
 RECALL_K_LEVELS = (1, 3, 5, 10)
 
-# Pass criterion for Cases 3 & 4: expected doc chunk must be in top-K chunks
+# Pass criterion for Cases 3 & 4 (extract_only): expected doc chunk must be in top-K
+# of the scoring list (qualified-only or raw — see CHUNK_SCORING_*).
 TOP_K_PASS = 5
+
+CHUNK_SCORING_QUALIFIED = "qualified_only"
+CHUNK_SCORING_RAW = "raw"
 
 
 def detect_case(tc: dict) -> int:
@@ -38,6 +43,11 @@ def detect_case(tc: dict) -> int:
     return 1
 
 
+def qualified_chunk_signals(chunk_signals: list[dict]) -> list[dict]:
+    """Chunks with chunkQualified=True, preserving Kore.ai chunk_result order."""
+    return [c for c in chunk_signals if c.get("chunkQualified") is True]
+
+
 def chunks_matched_by_spec(
     chunk_signals: list[dict],
     match_spec: list[dict],
@@ -46,6 +56,8 @@ def chunks_matched_by_spec(
 
     A spec is [{"field": "recordUrl", "value": "..."}]. Priority-OR semantics:
     a chunk matches if any (field, value) pair equals chunk[field].
+
+    For extract scoring, pass ``qualified_chunk_signals(...)`` so only qualified rows count.
     """
     if not chunk_signals or not match_spec:
         return []
@@ -73,7 +85,7 @@ def first_matched_chunk_rank(
     chunk_signals: list[dict],
     match_spec: list[dict],
 ) -> int | None:
-    """1-indexed rank of the first chunk that satisfies the match spec, else None."""
+    """1-indexed rank of the first matching chunk in ``chunk_signals`` (caller filters qualified list for extract)."""
     if not chunk_signals or not match_spec:
         return None
     for i, chunk in enumerate(chunk_signals):
@@ -142,12 +154,89 @@ def expected_doc_rank(retrieved_doc_ids: list[str], reference_doc_ids: list[str]
     return None
 
 
+def expects_reference_document(
+    match_spec: list[dict] | None,
+    effective_ref_ids: list[str],
+) -> bool:
+    """Whether this test case defines an expected document to check against search results."""
+    return bool(match_spec) or bool(effective_ref_ids)
+
+
+def doc_retrieved_from_search(rank: int | None, expects_reference: bool) -> bool:
+    """Derived from Advance Search cited_doc_ids — not from the LLM judge."""
+    if not expects_reference:
+        return False
+    return rank is not None
+
+
+def retrieval_pass_top_k_chunks(chunk_rank: int | None, top_k: int = TOP_K_PASS) -> bool:
+    """True when the first matching expected chunk is within the top ``top_k`` of the scoring list."""
+    return chunk_rank is not None and chunk_rank <= top_k
+
+
+def doc_retrieved_for_mode(
+    *,
+    answer_mode: str,
+    doc_rank: int | None,
+    chunk_rank: int | None,
+    expects_reference: bool,
+    top_k: int = TOP_K_PASS,
+) -> bool:
+    """Extract mode: expected chunk in top-K of chunk_result. Generation: doc anywhere in list."""
+    if not expects_reference:
+        return False
+    if answer_mode == "extract_only":
+        return retrieval_pass_top_k_chunks(chunk_rank, top_k)
+    return doc_rank is not None
+
+
+def extract_scoring_chunks(
+    chunk_signals: list[dict],
+    mode: str = CHUNK_SCORING_QUALIFIED,
+) -> list[dict]:
+    """Chunk list used for extract pass/fail, Recall@K, and extract LLM scoring."""
+    if mode == CHUNK_SCORING_RAW:
+        return list(chunk_signals)
+    return qualified_chunk_signals(chunk_signals)
+
+
+def merge_retrieval_failure_category(
+    category: str | None,
+    *,
+    doc_retrieved: bool,
+    expects_reference: bool,
+) -> str:
+    """Apply API-derived retrieval rules on top of judge / heuristic categories.
+
+    - Missing expected doc → always ``retrieval_miss``.
+    - Doc present → never keep ``retrieval_miss`` (judge must not own this label).
+    """
+    cat = (category or "none").strip() or "none"
+    if expects_reference and not doc_retrieved:
+        return "retrieval_miss"
+    if cat == "retrieval_miss":
+        return "none"
+    return cat
+
+
+def format_expected_document(
+    match_spec: list[dict] | None,
+    reference_doc_ids: list[str] | None = None,
+) -> str:
+    """Human-readable expected document for exports."""
+    if match_spec:
+        return json.dumps(match_spec, ensure_ascii=False)
+    if reference_doc_ids:
+        return ", ".join(reference_doc_ids)
+    return ""
+
+
 def recall_at_k(
     retrieved_doc_ids: list[str],
     reference_doc_ids: list[str],
     levels: tuple[int, ...] = RECALL_K_LEVELS,
 ) -> dict[str, int]:
-    """For each K in levels, return 1 if any expected doc is in top K, else 0."""
+    """For each K in levels, return 1 if any expected doc is in top K cited docs, else 0."""
     if not reference_doc_ids:
         return {}
     ref = set(reference_doc_ids)
@@ -155,6 +244,27 @@ def recall_at_k(
     for k in levels:
         top_k = set(retrieved_doc_ids[:k])
         out[str(k)] = 1 if (top_k & ref) else 0
+    return out
+
+
+def recall_at_k_from_chunks(
+    chunk_signals: list[dict],
+    reference_doc_ids: list[str],
+    match_spec: list[dict] | None,
+    levels: tuple[int, ...] = RECALL_K_LEVELS,
+) -> dict[str, int]:
+    """Recall@K using the first K rows of the scoring chunk list (qualified-only for extract)."""
+    if not chunk_signals or (not reference_doc_ids and not match_spec):
+        return {}
+    ref = set(reference_doc_ids)
+    out: dict[str, int] = {}
+    for k in levels:
+        top_chunks = chunk_signals[:k]
+        if match_spec:
+            out[str(k)] = 1 if first_matched_chunk_rank(top_chunks, match_spec) else 0
+        else:
+            doc_ids = {c.get("docId") for c in top_chunks if c.get("docId")}
+            out[str(k)] = 1 if (doc_ids & ref) else 0
     return out
 
 
@@ -197,9 +307,10 @@ def derive_verdict(
     verdict_source describes how the verdict was derived.
 
     answer_mode='extract_only':
-      Pass/fail is purely retrieval-based for all cases that have a reference doc
-      (cases 3 & 4): expected doc chunk must be in top ``top_k_pass`` chunks.
-      Cases 1 & 2 without a reference doc fall back to semantic similarity.
+      Pass/fail is chunk-level: first matching expected chunk must be in the top
+      ``top_k_pass`` rows of the scoring list. Scoring list is either
+      chunkQualified-only (default) or full chunk_result (raw), per run setting.
+      No LLM judge for verdict.
 
     answer_mode='answer_generation':
       Verdict is derived from answer quality.
@@ -209,12 +320,8 @@ def derive_verdict(
     """
     if answer_mode == "extract_only":
         if case_id in (3, 4):
-            return _verdict_retrieval(chunk_rank, judge_scores or {}, top_k=top_k_pass)
-        # Cases 1 & 2 in extract mode: no generated answer, use semantic if available
-        return _verdict_no_judge(
-            case_id, expected_doc_rank_val, similarity,
-            qa_relevance, case1_threshold, case2_threshold,
-        )
+            return _verdict_retrieval(chunk_rank, {}, top_k=top_k_pass)
+        return None, "extract_only — no reference document on test case"
 
     # answer_generation ───────────────────────────────────────────────────────
     if has_judge:
@@ -225,20 +332,40 @@ def derive_verdict(
     )
 
 
+def _verdict_doc_top_k(
+    doc_rank: int | None,
+    scores: dict,
+    top_k: int = TOP_K_PASS,
+) -> tuple[str | None, str]:
+    """Pass if expected document is in top ``top_k`` cited docIds (extract_only mode)."""
+    if scores.get("toxicity_detected") or scores.get("bias_detected") or scores.get("banned_topic_violation"):
+        return "fail", f"Safety violation (top-{top_k} doc rule)"
+    if doc_rank is None:
+        return "fail", f"Expected document not in cited results (top-{top_k})"
+    ok = doc_rank <= top_k
+    return (
+        ("pass" if ok else "fail"),
+        f"Doc rank {doc_rank} {'≤' if ok else '>'} top-{top_k} (extract_only, Recall@5 aligned)",
+    )
+
+
 def _verdict_retrieval(
     chunk_rank: int | None,
     scores: dict,
     top_k: int = TOP_K_PASS,
 ) -> tuple[str | None, str]:
-    """Pass if expected document chunk is in top ``top_k`` (extract_only mode)."""
+    """Pass if expected chunk is in top ``top_k`` of the extract scoring list."""
+    qualified_only = scores.get("chunk_scoring_mode", CHUNK_SCORING_QUALIFIED) != CHUNK_SCORING_RAW
+    pool = "qualified" if qualified_only else "raw"
     if scores.get("toxicity_detected") or scores.get("bias_detected") or scores.get("banned_topic_violation"):
-        return "fail", f"Safety violation (top-{top_k} chunk rule)"
+        return "fail", f"Safety violation (top-{top_k} {pool} chunk rule)"
     if chunk_rank is None:
-        return "fail", f"Expected doc not found in top {top_k} chunks"
+        return "fail", f"Expected doc not in top {top_k} {pool} chunks"
     ok = chunk_rank <= top_k
+    rank_label = "Qualified chunk rank" if qualified_only else "Chunk rank"
     return (
         ("pass" if ok else "fail"),
-        f"Chunk rank {chunk_rank} {'≤' if ok else '>'} top-{top_k} (extract_only)",
+        f"{rank_label} {chunk_rank} {'≤' if ok else '>'} top-{top_k} ({pool}, extract_only)",
     )
 
 

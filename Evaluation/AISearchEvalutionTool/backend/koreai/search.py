@@ -8,50 +8,81 @@ from koreai.client import get_client
 logger = logging.getLogger(__name__)
 
 
+def _build_search_payload(
+    app: dict,
+    question: str,
+    *,
+    meta_filters: list[dict[str, Any]] | None = None,
+    user_email: str | None = None,
+    payload_override: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build Advance Search POST body, merging UI overrides with app defaults."""
+    answer_mode = app.get("answer_mode", "answer_generation")
+    answer_search = answer_mode != "extract_only"
+    defaults: dict[str, Any] = {
+        "query": question,
+        "answerSearch": answer_search,
+        "searchResults": True,
+        "includeChunksInResponse": True,
+        "maxNumOfChunks": 100,
+    }
+
+    if payload_override:
+        override = dict(payload_override)
+        # User pasted a single metaFilter group {condition, rules} instead of full body
+        if "metaFilters" not in override and "rules" in override:
+            group = {
+                "condition": override.pop("condition", "AND"),
+                "rules": override.pop("rules", []),
+            }
+            override["metaFilters"] = [group]
+        payload = {**defaults, **override}
+    else:
+        payload = dict(defaults)
+        if meta_filters:
+            payload["metaFilters"] = meta_filters
+
+    payload["query"] = question
+    if user_email:
+        payload.setdefault("customData", {}).setdefault("userContext", {})["userId"] = user_email
+    if app.get("racl_entity_ids"):
+        payload["raclEntityIds"] = app["racl_entity_ids"]
+    return payload
+
+
 def query_rag(
     app: dict,
     question: str,
     meta_filters: list[dict[str, Any]] | None = None,
     user_email: str | None = None,
+    payload_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Query Advance Search V2 and return structured result.
 
     Args:
         meta_filters: Optional list of filter groups to attach as ``metaFilters``.
         user_email:   Optional RACL user identifier; sent as ``customData.userContext.userId``.
+        payload_override: Optional full or partial POST body from the live-query UI.
     """
     app_id = app.get("app_id", "?")
     bot_id = app.get("bot_id", "?")
     url = f"{app['host_url']}/api/public/bot/{bot_id}/search/v2/advanced-search"
 
+    payload = _build_search_payload(
+        app, question,
+        meta_filters=meta_filters,
+        user_email=user_email,
+        payload_override=payload_override,
+    )
+
     logger.info(
-        "Kore.ai | RAG query | app=%s question='%s...' filters=%d racl_user=%s",
-        app_id, question[:80], len(meta_filters or []), "yes" if user_email else "no",
+        "Kore.ai | RAG query | app=%s question='%s...' filters=%d racl_user=%s override=%s",
+        app_id, question[:80], len(payload.get("metaFilters") or []),
+        "yes" if user_email else "no", "yes" if payload_override else "no",
     )
 
     answer_mode = app.get("answer_mode", "answer_generation")
-
-    logger.debug("Kore.ai | answer_mode=%s", answer_mode)
-
-    payload: dict[str, Any] = {
-        "query": question,
-        "answerSearch": True,
-        "searchResults": True,
-        "includeChunksInResponse": True,
-        "maxNumOfChunks": 100,
-    }
-
-    if meta_filters:
-        payload["metaFilters"] = meta_filters
-        logger.debug("Kore.ai | metaFilters: %s", meta_filters)
-
-    if user_email:
-        payload.setdefault("customData", {}).setdefault("userContext", {})["userId"] = user_email
-        logger.debug("Kore.ai | userContext.userId=%s", user_email)
-
-    if app.get("racl_entity_ids"):
-        payload["raclEntityIds"] = app["racl_entity_ids"]
-        logger.debug("Kore.ai | Using RACL entity IDs: %s", app["racl_entity_ids"])
+    logger.debug("Kore.ai | answer_mode=%s payload_keys=%s", answer_mode, list(payload.keys()))
 
     try:
         with get_client(app, timeout=60.0) as client:
@@ -257,9 +288,18 @@ def _parse_response(raw: dict[str, Any], answer_mode: str = "answer_generation")
         if not isinstance(chunk, dict):
             continue
         src = _safe_dict(chunk.get("_source"))
+        chunk_text = (
+            src.get("chunkText")
+            or src.get("chunkContent")
+            or src.get("chunk_content")
+            or src.get("content")
+            or src.get("text")
+            or ""
+        )
         chunk_signals.append({
             "chunkId": src.get("chunkId"),
             "docId": src.get("docId") or src.get("doc_id"),
+            "chunkText": chunk_text,
             "score": chunk.get("_score"),
             "vector_score": chunk.get("vector_search_score"),
             "keyword_score": chunk.get("keyword_search_score"),

@@ -24,7 +24,7 @@ logging.getLogger("pymongo").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 from db.database import init_db
-from routers import apps, sources, llm_config, prompts, generation, evaluation, golden_sets, results, app_api_keys, query, prompt_tuner
+from routers import apps, sources, llm_config, prompts, generation, evaluation, golden_sets, results, app_api_keys, query, prompt_tuner, perf_test
 
 app = FastAPI(title="RAG Evaluator API", version="1.0.1")
 
@@ -65,6 +65,7 @@ app.include_router(results.router, prefix="/api")
 app.include_router(app_api_keys.router, prefix="/api")
 app.include_router(query.router, prefix="/api")
 app.include_router(prompt_tuner.router, prefix="/api")
+app.include_router(perf_test.router, prefix="/api")
 
 
 @app.get("/api/health")

@@ -279,9 +279,19 @@ class EmptyLLMResponseError(RuntimeError):
         )
 
 
-def call_llm(app_id: str, agent_name: str, system_prompt: str, user_msg: str) -> str:
+def call_llm(
+    app_id: str,
+    agent_name: str,
+    system_prompt: str,
+    user_msg: str,
+    max_tokens_override: int | None = None,
+) -> str:
     """Call the LLM configured for *agent_name*, routing to Anthropic or OpenAI
     based on the model string stored in llm_config.
+
+    ``max_tokens_override`` lets callers raise the output budget for this call
+    only — useful when the stored config is right for the agent's normal job
+    but a one-off task (e.g. prompt rewriting) needs more headroom.
 
     Raises :class:`EmptyLLMResponseError` if the call succeeds but the body is
     empty / whitespace — the error carries finish_reason and a remediation hint.
@@ -289,11 +299,12 @@ def call_llm(app_id: str, agent_name: str, system_prompt: str, user_msg: str) ->
     cfg = get_llm_config(app_id, agent_name)
     model: str = cfg["model"]
     provider = _infer_provider(model)
-    max_tokens = int(cfg.get("max_tokens") or 0)
+    stored_max = int(cfg.get("max_tokens") or 0)
+    max_tokens = int(max_tokens_override) if max_tokens_override is not None else stored_max
 
     logger.debug(
         "[%s] Calling %s via %s | max_tokens=%s temperature=%s | prompt_chars=%d",
-        agent_name, model, provider, cfg["max_tokens"], cfg["temperature"], len(user_msg),
+        agent_name, model, provider, max_tokens, cfg["temperature"], len(user_msg),
     )
 
     try:
@@ -305,7 +316,7 @@ def call_llm(app_id: str, agent_name: str, system_prompt: str, user_msg: str) ->
             )
             message = client.messages.create(
                 model=model,
-                max_tokens=cfg["max_tokens"],
+                max_tokens=max_tokens,
                 temperature=cfg["temperature"],
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_msg}],
@@ -339,7 +350,7 @@ def call_llm(app_id: str, agent_name: str, system_prompt: str, user_msg: str) ->
                 json=_gemini_payload(
                     system_prompt,
                     user_msg,
-                    cfg["max_tokens"],
+                    max_tokens,
                     cfg["temperature"],
                     model=model,
                 ),
@@ -368,7 +379,7 @@ def call_llm(app_id: str, agent_name: str, system_prompt: str, user_msg: str) ->
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_msg})
-        call_kwargs = _openai_call_kwargs(effective_model, cfg["max_tokens"], cfg["temperature"])
+        call_kwargs = _openai_call_kwargs(effective_model, max_tokens, cfg["temperature"])
         # The post-bump value we actually sent, for accurate error reporting.
         effective_max = int(
             call_kwargs.get("max_completion_tokens") or call_kwargs.get("max_tokens") or max_tokens

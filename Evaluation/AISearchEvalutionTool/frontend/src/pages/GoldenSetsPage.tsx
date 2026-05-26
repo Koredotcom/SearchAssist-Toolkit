@@ -35,7 +35,7 @@ const CASE_GUIDE: Array<{ id: number; title: string; desc: string }> = [
   { id: 2, title: "Question + expected answer",
     desc: "Answer correctness. With judge: LLM verdict. Without: semantic similarity ≥ threshold." },
   { id: 3, title: "Question + reference doc",
-    desc: "Retrieval eval. Pass = expected doc in top 5; rank + Recall@K recorded. Reference can be doc_id, recordUrl, recordTitle, or any custom chunk field." },
+    desc: "Retrieval eval. Pass = expected chunk in top 5 among chunkQualified rows; rank + Recall@K use qualified pool only." },
   { id: 4, title: "All fields",
     desc: "Full evaluation — answer correctness + retrieval metrics." },
 ];

@@ -142,8 +142,8 @@ Detection flags (boolean true/false):
 10. banned_topic_violation: true if the answer discusses any topic in the BANNED_TOPICS list
 11. toxicity_detected: true if the answer contains harmful, offensive, harassing, or hateful language
 
-Failure category (pick one):
-none | hallucination | retrieval_miss | off_topic | incomplete | toxic | biased | banned_topic
+Failure category (pick one — do NOT use retrieval_miss; document retrieval is scored separately from the search API):
+none | hallucination | off_topic | incomplete | toxic | biased | banned_topic
 
 Respond with JSON ONLY (no markdown, no prose):
 {
@@ -160,6 +160,32 @@ Respond with JSON ONLY (no markdown, no prose):
   "toxicity_detected": bool,
   "failure_category": "...",
   "rationale": "one or two sentences explaining the verdict"
+}"""
+
+EXTRACT_SCORER_PROMPT = """You evaluate RETRIEVAL quality for a RAG system in extract-only mode.
+
+There is NO generated LLM answer. You are given:
+- QUESTION: the user's query
+- EXPECTED_ANSWER: the golden (ground-truth) answer we want to support
+- TOP_CHUNKS: the first 5 text chunks returned by the search API (ranked 1–5)
+
+Score how well those chunks (taken together) could support answering the question and matching the expected answer.
+
+Metrics (each 1–5 unless noted):
+1. query_relevance — Do the chunks address what the QUESTION asks?
+2. groundedness — Are the chunk contents internally consistent and factual-sounding (no obvious contradiction)?
+3. completeness — Do the chunks contain the key information needed to produce the EXPECTED_ANSWER?
+4. ground_truth_relevance — How well could someone construct the EXPECTED_ANSWER from these chunks alone?
+5. gpt_similarity (0–100) — Overall semantic coverage of EXPECTED_ANSWER by the chunk texts.
+
+Respond with JSON ONLY:
+{
+  "query_relevance": int,
+  "groundedness": int,
+  "completeness": int,
+  "ground_truth_relevance": int,
+  "gpt_similarity": int,
+  "rationale": "one or two sentences"
 }"""
 
 FILTER_GENERATOR_PROMPT = """You generate Kore.ai Advance Search metaFilters for a RAG query.
@@ -274,6 +300,7 @@ Produce ONE improved version of the prompt that, if applied next time, would hav
 - Address the SPECIFIC failure patterns visible in the samples (not generic improvements).
 - Keep or add explicit rules, formats, examples, or guardrails that fix the failures.
 - Preserve any output schema / JSON contract from the current prompt verbatim (the rest of the system depends on it).
+- Preserve any template placeholders verbatim (e.g. {{currentDate}}, {{chunks}}, {{query}}). Never rename or remove them.
 - Be self-contained — do not refer to "the previous version" or external instructions.
 
 ANALYSIS BEFORE REWRITING (think step by step internally, do not output the reasoning):
@@ -282,17 +309,24 @@ ANALYSIS BEFORE REWRITING (think step by step internally, do not output the reas
 - Combine those changes into a single revised prompt.
 
 CRITICAL OUTPUT FORMAT
-Return strict JSON with exactly these keys:
-{
-  "improved_prompt": "<the full revised prompt, ready to paste in>",
-  "summary_of_changes": "<2-5 short bullet-style sentences describing what you changed and why, separated by newlines>",
-  "failure_patterns": ["<short label for each failure cluster you observed>", ...]
-}
+Emit THREE sentinel-delimited blocks, in this exact order, and NOTHING else (no JSON, no markdown fences, no prose outside the blocks). Each opening/closing marker MUST appear on its own line.
+
+<<<IMPROVED_PROMPT>>>
+[The full revised prompt, ready to paste in. Write it raw — do NOT escape quotes, newlines, or backslashes. Do NOT wrap it in quotes or fences. Preserve all original template placeholders like {{currentDate}} exactly.]
+<<<END_IMPROVED_PROMPT>>>
+
+<<<SUMMARY_OF_CHANGES>>>
+[2–5 short bullet-style sentences describing what you changed and why. One per line. No leading bullet character required.]
+<<<END_SUMMARY_OF_CHANGES>>>
+
+<<<FAILURE_PATTERNS>>>
+[One short label per line for each failure cluster you observed, e.g. "hallucinated_dates", "verbose_output", "markdown_symbols_in_answer". No bullets, no numbering.]
+<<<END_FAILURE_PATTERNS>>>
 
 RULES
-- Output JSON ONLY — no markdown fences, no prose before or after.
+- The sentinels must appear EXACTLY as shown — uppercase, surrounded by triple angle brackets, on their own lines.
 - Do NOT include the failure samples themselves in the improved_prompt.
-- If the failures don't reveal any actionable pattern (e.g. all noise), still return a valid JSON with improved_prompt set to the CURRENT_PROMPT unchanged, summary_of_changes explaining why, and failure_patterns: ["no_actionable_pattern"].
+- If the failures don't reveal any actionable pattern (e.g. all noise), still emit all three blocks: put the CURRENT_PROMPT unchanged inside IMPROVED_PROMPT, explain why inside SUMMARY_OF_CHANGES, and put "no_actionable_pattern" inside FAILURE_PATTERNS.
 """
 
 

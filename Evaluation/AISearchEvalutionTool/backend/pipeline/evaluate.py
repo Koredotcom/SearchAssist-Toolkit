@@ -17,12 +17,17 @@ from db.database import (
     get_completed_tc_ids, get_doc_source_type, get_eval_thresholds,
     is_stop_requested, update_job, upsert_eval_result,
 )
+from judge.extract_scorer import score_extract_chunks, top_k_chunks_payload
 from judge.judge import judge_result
 from judge.metrics import (
     answer_similarity, chunks_matched_by_spec, derive_verdict, detect_case,
-    expected_doc_rank, first_matched_chunk, first_matched_chunk_rank,
-    judge_configured, qualified_chunks_count, question_answer_relevance,
-    recall_at_k,
+    doc_retrieved_for_mode, expected_doc_rank, expects_reference_document,
+    CHUNK_SCORING_QUALIFIED,
+    extract_scoring_chunks,
+    first_matched_chunk, first_matched_chunk_rank,
+    judge_configured, merge_retrieval_failure_category,
+    qualified_chunks_count, question_answer_relevance,
+    recall_at_k, recall_at_k_from_chunks,
 )
 from koreai.search import query_rag
 
@@ -157,6 +162,7 @@ def run_evaluation(
     case1_threshold: float | None = None,
     case2_threshold: float | None = None,
     top_k_pass: int | None = None,
+    chunk_scoring_mode: str | None = None,
 ) -> dict[str, Any]:
     # Apply per-run answer mode override if provided
     if answer_mode_override:
@@ -168,10 +174,10 @@ def run_evaluation(
     logger.info(
         "Eval | Starting evaluation | app=%s version=%s rag_version=%s run_id=%s "
         "max_cases=%s sample_mode=%s filter_mode=%s racl=%s answer_mode=%s "
-        "judge_mode=%s c1_threshold=%s c2_threshold=%s top_k_pass=%s",
+        "judge_mode=%s c1_threshold=%s c2_threshold=%s top_k_pass=%s chunk_scoring=%s",
         app_id, golden_set_version, rag_version, run_id,
         max_cases, sample_mode, filter_mode, enable_racl, app.get("answer_mode"),
-        judge_mode, case1_threshold, case2_threshold, top_k_pass,
+        judge_mode, case1_threshold, case2_threshold, top_k_pass, chunk_scoring_mode,
     )
 
     # ── Validate judge_mode against actual configuration ────────────────
@@ -255,6 +261,7 @@ def run_evaluation(
                 case1_threshold_override=case1_threshold,
                 case2_threshold_override=case2_threshold,
                 top_k_pass_override=top_k_pass,
+                chunk_scoring_mode_override=chunk_scoring_mode,
             ), tc
 
         with ThreadPoolExecutor(max_workers=MAX_EVAL_WORKERS) as executor:
@@ -424,6 +431,7 @@ def _evaluate_one(
     case1_threshold_override: float | None = None,
     case2_threshold_override: float | None = None,
     top_k_pass_override: int | None = None,
+    chunk_scoring_mode_override: str | None = None,
 ) -> dict | None:
     expected_behavior = tc.get("expected_behavior", "ANSWER")
     banned_topics = app.get("banned_topics") or []
@@ -468,11 +476,23 @@ def _evaluate_one(
             retrieved_ids = rag.get("cited_doc_ids") or []
             rag_answer = rag.get("answer") or ""
             chunks = rag.get("chunk_signals", []) or []
+            _answer_mode = app.get("answer_mode", "answer_generation")
+            is_extract = _answer_mode == "extract_only"
+            chunk_scoring_mode = (
+                chunk_scoring_mode_override
+                if chunk_scoring_mode_override in ("qualified_only", "raw")
+                else CHUNK_SCORING_QUALIFIED
+            )
+            scoring_chunks = (
+                extract_scoring_chunks(chunks, chunk_scoring_mode) if is_extract else chunks
+            )
 
             # Resolve which retrieved docs satisfy the match spec. For pure-docId
             # specs the result equals the spec values that appear in retrieved_ids;
             # for recordUrl / recordTitle / custom specs, this expands via chunks.
-            effective_ref_ids = chunks_matched_by_spec(chunks, match_spec) if match_spec else []
+            effective_ref_ids = (
+                chunks_matched_by_spec(scoring_chunks, match_spec) if match_spec else []
+            )
             # Fallback if there are no chunks (just cited_doc_ids): use direct docId
             # values from the spec
             if not effective_ref_ids and match_spec:
@@ -480,35 +500,63 @@ def _evaluate_one(
 
             # ── Non-LLM metrics — always computed ───────────────────────────
             rank = expected_doc_rank(retrieved_ids, effective_ref_ids)
-            chunk_rank = first_matched_chunk_rank(chunks, match_spec) if match_spec else None
-            recall = recall_at_k(retrieved_ids, effective_ref_ids) if effective_ref_ids else {}
+            chunk_rank = (
+                first_matched_chunk_rank(scoring_chunks, match_spec) if match_spec else None
+            )
+            if not chunk_rank and is_extract and effective_ref_ids and not match_spec:
+                # Doc-only golden rows: first qualified chunk with expected docId
+                ref = set(effective_ref_ids)
+                for i, ch in enumerate(scoring_chunks):
+                    if ch.get("docId") in ref:
+                        chunk_rank = i + 1
+                        break
+            if is_extract and effective_ref_ids:
+                recall = recall_at_k_from_chunks(
+                    scoring_chunks, effective_ref_ids, match_spec or None,
+                )
+            else:
+                recall = recall_at_k(retrieved_ids, effective_ref_ids) if effective_ref_ids else {}
             # Retrieval scoring signals (per-chunk)
             qualified_count = qualified_chunks_count(chunks)
-            matched_chunk = first_matched_chunk(chunks, match_spec) if match_spec else None
+            matched_chunk = (
+                first_matched_chunk(scoring_chunks, match_spec) if match_spec else None
+            )
             matched_scores = {
                 "vector":     (matched_chunk or {}).get("vector_score"),
                 "keyword":    (matched_chunk or {}).get("keyword_score"),
                 "positional": (matched_chunk or {}).get("positional_score"),
                 "combined":   (matched_chunk or {}).get("score"),
             } if matched_chunk else {}
+
             similarity = (
                 answer_similarity(rag_answer, tc.get("expected_answer"))
-                if tc.get("expected_answer") else None
+                if (tc.get("expected_answer") and not is_extract) else None
             )
-            # Q↔Answer relevance — used for Cases 1 & 3 in answer_generation mode
-            # without a judge (Case 3 maps to case-1 semantics: no ground-truth answer).
-            _answer_mode = app.get("answer_mode", "answer_generation")
             qa_relevance = (
                 question_answer_relevance(tc.get("question"), rag_answer)
-                if (not has_judge and _answer_mode == "answer_generation" and case_id in (1, 3))
+                if (not has_judge and not is_extract and case_id in (1, 3))
                 else None
             )
 
-            # ── Optional LLM judge ──────────────────────────────────────────
+            # ── LLM scoring ─────────────────────────────────────────────────
             judge_scores: dict | None = None
             failure_category: str | None = None
             judge_rationale: str | None = None
-            if has_judge:
+            extract_rationale: str | None = None
+
+            if is_extract and judge_configured(app):
+                logger.debug("Eval | Extract scorer | tc_id=%s attempt=%d", tc_id, attempt)
+                extract_obj = score_extract_chunks(
+                    question=tc["question"],
+                    expected_answer=tc.get("expected_answer") or "",
+                    chunk_signals=scoring_chunks,
+                    app_id=app["app_id"],
+                    top_k=top_k_pass,
+                )
+                judge_scores = extract_obj["scores"]
+                extract_rationale = extract_obj["rationale"]
+                judge_rationale = extract_rationale
+            elif has_judge and not is_extract:
                 logger.debug("Eval | Running judge | tc_id=%s attempt=%d", tc_id, attempt)
                 verdict_obj = judge_result(
                     question=tc["question"],
@@ -524,9 +572,15 @@ def _evaluate_one(
                 failure_category = verdict_obj["failure_category"]
                 judge_rationale  = verdict_obj["judge_rationale"]
 
+            # Extract mode: pass/fail is top-K chunk rank only — never LLM judge verdict.
+            has_judge_for_verdict = has_judge and not is_extract
+            verdict_scores = dict(judge_scores or {})
+            if is_extract:
+                verdict_scores["chunk_scoring_mode"] = chunk_scoring_mode
+
             verdict, verdict_source = derive_verdict(
-                case_id=case_id, has_judge=has_judge,
-                judge_scores=judge_scores,
+                case_id=case_id, has_judge=has_judge_for_verdict,
+                judge_scores=verdict_scores,
                 expected_doc_rank_val=rank, similarity=similarity,
                 qa_relevance=qa_relevance,
                 case1_threshold=case1_threshold,
@@ -538,10 +592,24 @@ def _evaluate_one(
 
             # Compose stored "scores" payload — includes legacy fields the UI uses
             scores: dict = dict(judge_scores or {})
-            scores.setdefault("doc_retrieved", bool(rank))
+            scores.pop("doc_retrieved", None)  # never trust judge for retrieval
+            expects_ref = expects_reference_document(match_spec, effective_ref_ids)
+            doc_retrieved = doc_retrieved_for_mode(
+                answer_mode=_answer_mode,
+                doc_rank=rank,
+                chunk_rank=chunk_rank,
+                expects_reference=expects_ref,
+                top_k=top_k_pass,
+            )
+            scores["doc_retrieved"] = doc_retrieved
+            scores["top_k_pass"] = top_k_pass
+            if is_extract:
+                scores["top_chunks"] = top_k_chunks_payload(scoring_chunks, k=top_k_pass)
             scores["answer_mode"] = rag.get("answer_mode", app.get("answer_mode", "answer_generation"))
             scores["chunk_rank"]  = chunk_rank
             scores["qualified_chunks_count"] = qualified_count
+            if is_extract:
+                scores["chunk_scoring_mode"] = chunk_scoring_mode
             if matched_chunk:
                 scores["matched_vector_score"]     = matched_scores.get("vector")
                 scores["matched_keyword_score"]    = matched_scores.get("keyword")
@@ -552,10 +620,10 @@ def _evaluate_one(
                 scores["matched_chunk_sent_to_llm"]    = matched_chunk.get("sentToLLM")
                 scores["matched_chunk_used_in_answer"] = matched_chunk.get("usedInAnswer")
 
-            if not has_judge and failure_category is None:
-                if _answer_mode == "extract_only" and case_id in (3, 4):
-                    failure_category = "retrieval_miss" if not rank else "none"
-                elif case_id in (1, 3):
+            if is_extract and failure_category is None:
+                failure_category = "none"
+            elif not has_judge and not is_extract and failure_category is None:
+                if case_id in (1, 3):
                     # Q↔Answer relevance proxy
                     if qa_relevance is not None and qa_relevance < case1_threshold:
                         failure_category = "off_topic"
@@ -569,6 +637,12 @@ def _evaluate_one(
                         failure_category = "none"
                 else:
                     failure_category = "none"
+
+            failure_category = merge_retrieval_failure_category(
+                failure_category,
+                doc_retrieved=doc_retrieved,
+                expects_reference=expects_ref,
+            )
 
             # For Case 1 (no expected answer) the "similarity" field carries
             # the Q↔Answer relevance score instead.

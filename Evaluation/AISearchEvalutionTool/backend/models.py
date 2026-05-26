@@ -182,6 +182,14 @@ class EvaluationRequest(BaseModel):
         default=None, ge=1, le=100,
         description="Override the top-K chunk pass threshold used in extract_only retrieval verdicts. None = default (5).",
     )
+    chunk_scoring_mode: str | None = Field(
+        default=None,
+        pattern="^(qualified_only|raw)$",
+        description=(
+            "Extract_only: 'qualified_only' = rank/pass using chunkQualified=True rows only; "
+            "'raw' = use full chunk_result order. None = qualified_only."
+        ),
+    )
 
 
 class MapperTestRequest(BaseModel):
@@ -282,8 +290,7 @@ class EvalResultResponse(BaseModel):
     doc_retrieved: bool
     search_payload: dict[str, Any] | None = None
     search_response: dict[str, Any] | None = None
-    # docId → {title, url} — built from stored chunk_signals so the UI can show
-    # record titles instead of raw doc IDs without sending full chunk payloads
+    chunk_signals: list[dict[str, Any]] = []
     doc_label_map: dict[str, DocLabel] = {}
     # 4-case evaluation fields
     case_id: int | None = None

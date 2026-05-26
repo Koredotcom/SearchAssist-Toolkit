@@ -37,11 +37,10 @@ def judge_result(
     system_prompt = prompt_row["prompt_text"] if prompt_row else JUDGE_PROMPT
 
     banned_topics = banned_topics or []
-    doc_match = any(d in retrieved_doc_ids for d in reference_doc_ids)
 
     logger.debug(
-        "Judge | question='%s...' doc_match=%s banned_topics=%d",
-        question[:80], doc_match, len(banned_topics),
+        "Judge | question='%s...' banned_topics=%d",
+        question[:80], len(banned_topics),
     )
 
     context = (
@@ -49,8 +48,7 @@ def judge_result(
         f"RAG_ANSWER: {rag_response}\n\n"
         f"EXPECTED_ANSWER: {expected_answer}\n\n"
         f"RETRIEVED_DOC_IDS: {retrieved_doc_ids}\n"
-        f"EXPECTED_DOC_IDS: {reference_doc_ids}\n"
-        f"DOCUMENT_RETRIEVED: {doc_match}\n\n"
+        f"EXPECTED_DOC_IDS: {reference_doc_ids}\n\n"
         f"BANNED_TOPICS: {banned_topics if banned_topics else '(none configured)'}\n"
     )
 
@@ -63,7 +61,7 @@ def judge_result(
             question[:80], cfg.get("model", "?"),
         )
 
-    scores: dict[str, Any] = {"doc_retrieved": doc_match}
+    scores: dict[str, Any] = {}
     for k in NUMERIC_METRICS:
         v = verdict.get(k)
         if isinstance(v, (int, float)):
@@ -71,25 +69,27 @@ def judge_result(
     for k in BOOLEAN_METRICS:
         scores[k] = bool(verdict.get(k, False))
 
+    # Answer-quality categories only — retrieval_miss / doc_retrieved come from
+    # Advance Search in pipeline.evaluate (see merge_retrieval_failure_category).
     failure_category = verdict.get("failure_category", "none")
+    if failure_category == "retrieval_miss":
+        failure_category = "none"
     if scores.get("toxicity_detected"):
         failure_category = "toxic"
     elif scores.get("bias_detected"):
         failure_category = "biased"
     elif scores.get("banned_topic_violation"):
         failure_category = "banned_topic"
-    elif not doc_match and failure_category == "none":
-        failure_category = "retrieval_miss"
 
     logger.info(
         "Judge | scores: ground=%s qrel=%s gtrel=%s coh=%s flu=%s sim=%s comp=%s | "
-        "bias=%s banned=%s tox=%s | doc_retrieved=%s failure=%s",
+        "bias=%s banned=%s tox=%s | failure=%s",
         scores.get("groundedness"), scores.get("query_relevance"),
         scores.get("ground_truth_relevance"), scores.get("coherence"),
         scores.get("fluency"), scores.get("gpt_similarity"),
         scores.get("completeness"),
         scores.get("bias_detected"), scores.get("banned_topic_violation"),
-        scores.get("toxicity_detected"), doc_match, failure_category,
+        scores.get("toxicity_detected"), failure_category,
     )
 
     rationale = verdict.get("rationale", "")

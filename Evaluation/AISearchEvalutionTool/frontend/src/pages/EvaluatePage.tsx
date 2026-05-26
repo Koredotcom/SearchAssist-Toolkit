@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { goldenSetsApi, evaluationApi, appsApi, appApiKeysApi } from "@/lib/api";
-import type { Job, AnswerMode, FilterMode, JudgeMode } from "@/lib/api";
-
-import { FlaskConical, Loader2, CheckCircle, XCircle, ChevronRight, Filter, UserCircle, Zap, FileText, Square, Info, ChevronDown, ChevronUp, Scale, Sparkles, SlidersHorizontal } from "lucide-react";
+import type {
+  Job, AnswerMode, FilterMode, JudgeMode, ChunkScoringMode, SavedEvaluateSettings,
+} from "@/lib/api";
+import { FlaskConical, Loader2, CheckCircle, XCircle, ChevronRight, Filter, UserCircle, Zap, FileText, Square, Info, ChevronDown, ChevronUp, Scale, Sparkles, SlidersHorizontal, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function EvaluatePage() {
@@ -30,6 +31,7 @@ export default function EvaluatePage() {
   const [case1Threshold, setCase1Threshold] = useState<number | null>(null);
   const [case2Threshold, setCase2Threshold] = useState<number | null>(null);
   const [topKPass, setTopKPass] = useState<number | null>(null);
+  const [chunkScoringMode, setChunkScoringMode] = useState<ChunkScoringMode>("qualified_only");
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -56,7 +58,7 @@ export default function EvaluatePage() {
     enabled: !!appId,
   });
 
-  // Available filter fields for the selected golden set (only fetched when needed)
+  // Filter field options for the selected golden set (only needed in field_filters mode)
   const { data: filterOptions } = useQuery({
     queryKey: ["filter-options", appId, selectedVersion],
     queryFn: () => goldenSetsApi.filterOptions(appId!, selectedVersion),
@@ -82,13 +84,82 @@ export default function EvaluatePage() {
     (judgeMode !== "auto" ? 1 : 0) +
     (case1Threshold !== null ? 1 : 0) +
     (case2Threshold !== null ? 1 : 0) +
-    (topKPass !== null ? 1 : 0);
+    (topKPass !== null ? 1 : 0) +
+    (effectiveAnswerMode === "extract_only" && chunkScoringMode !== "qualified_only" ? 1 : 0);
 
   const { data: jobs = [] } = useQuery({
     queryKey: ["eval-jobs", appId],
     queryFn: () => evaluationApi.listJobs(appId!),
     enabled: !!appId,
   });
+
+  // ── Auto-saved settings ────────────────────────────────────────────
+  // Hydrate on first load, then debounce-save the full state on any change.
+  const hydratedRef = useRef(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { data: savedSettings } = useQuery({
+    queryKey: ["evaluate-settings", appId],
+    queryFn: () => evaluationApi.getSettings(appId!),
+    enabled: !!appId,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (hydratedRef.current || !savedSettings) return;
+    const s = savedSettings.settings;
+    if (!s) {
+      hydratedRef.current = true;
+      return;
+    }
+    setSelectedVersion(s.selectedVersion ?? "");
+    setRagVersion(s.ragVersion ?? "latest");
+    setLimitCases(!!s.limitCases);
+    setMaxCases(typeof s.maxCases === "number" ? s.maxCases : 10);
+    setSampleMode(s.sampleMode ?? "first");
+    setFilterMode(s.filterMode ?? "none");
+    setFilterFields(Array.isArray(s.filterFields) ? s.filterFields : []);
+    setEnableRacl(!!s.enableRacl);
+    setUserEmail(s.userEmail ?? "");
+    setAnswerModeOverride(s.answerModeOverride ?? null);
+    setSelectedQTypes(Array.isArray(s.selectedQTypes) ? s.selectedQTypes : []);
+    setJudgeMode(s.judgeMode ?? "auto");
+    setCase1Threshold(s.case1Threshold ?? null);
+    setCase2Threshold(s.case2Threshold ?? null);
+    setTopKPass(s.topKPass ?? null);
+    setChunkScoringMode(s.chunkScoringMode ?? "qualified_only");
+    hydratedRef.current = true;
+  }, [savedSettings]);
+
+  const saveSettingsMutation = useMutation({
+    mutationFn: (s: SavedEvaluateSettings) => evaluationApi.saveSettings(appId!, s),
+    onMutate: () => setSaveStatus("saving"),
+    onSuccess: () => {
+      setSaveStatus("saved");
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), 1500);
+    },
+    onError: () => setSaveStatus("idle"),
+  });
+
+  useEffect(() => {
+    if (!appId || !hydratedRef.current) return;
+    const snapshot: SavedEvaluateSettings = {
+      selectedVersion, ragVersion, limitCases, maxCases, sampleMode,
+      filterMode, filterFields, enableRacl, userEmail,
+      answerModeOverride, selectedQTypes,
+      judgeMode, case1Threshold, case2Threshold, topKPass, chunkScoringMode,
+    };
+    const handle = setTimeout(() => saveSettingsMutation.mutate(snapshot), 500);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    appId, selectedVersion, ragVersion, limitCases, maxCases, sampleMode,
+    filterMode, filterFields, enableRacl, userEmail,
+    answerModeOverride, selectedQTypes,
+    judgeMode, case1Threshold, case2Threshold, topKPass, chunkScoringMode,
+  ]);
 
   const { data: activeJob } = useQuery({
     queryKey: ["eval-job", appId, activeJobId],
@@ -130,6 +201,8 @@ export default function EvaluatePage() {
         case1_threshold: case1Threshold,
         case2_threshold: case2Threshold,
         top_k_pass: topKPass,
+        chunk_scoring_mode:
+          effectiveAnswerMode === "extract_only" ? chunkScoringMode : null,
       }),
     onSuccess: (job: Job) => setActiveJobId(job.job_id),
   });
@@ -141,11 +214,21 @@ export default function EvaluatePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Evaluate</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Run evaluation against a frozen golden set
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Evaluate</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Run evaluation against a frozen golden set
+          </p>
+        </div>
+        <div className="text-xs text-gray-400 pt-1.5 min-w-[80px] text-right">
+          {saveStatus === "saving" && (
+            <span className="inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Saving…</span>
+          )}
+          {saveStatus === "saved" && (
+            <span className="inline-flex items-center gap-1 text-green-600"><Check className="w-3 h-3" />Saved</span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -208,8 +291,8 @@ export default function EvaluatePage() {
                       noJudge: "Q↔Answer relevance ≥ threshold (semantic)",
                     },
                     eo: {
-                      rule: "Expected doc chunk found in top-5 retrieved chunks",
-                      note: "Pure retrieval check — chunk rank ≤ 5 = pass",
+                      rule: "Expected chunk in top-K scoring pool (see Verdict Configuration)",
+                      note: "Qualified-only or raw chunk list — pass if match rank ≤ top-K",
                     },
                   },
                   {
@@ -221,8 +304,8 @@ export default function EvaluatePage() {
                       noJudge: "Answer↔Expected similarity ≥ threshold (semantic)",
                     },
                     eo: {
-                      rule: "Expected doc chunk found in top-5 retrieved chunks",
-                      note: "Pure retrieval check — chunk rank ≤ 5 = pass",
+                      rule: "Expected chunk in top-K scoring pool (see Verdict Configuration)",
+                      note: "Qualified-only or raw chunk list — pass if match rank ≤ top-K",
                     },
                   },
                 ] as const).map(({ id, label, inputs, ag, eo }) => {
@@ -495,7 +578,7 @@ export default function EvaluatePage() {
                   mode: "extract_only" as AnswerMode,
                   icon: FileText,
                   title: "Extraction",
-                  desc: "Returns top extracted text snippets — no LLM answer generation",
+                  desc: "answerSearch=false — retrieval only; pass = expected chunk in top-K; chunk LLM scores optional",
                   color: "amber",
                 },
               ]).map(({ mode, icon: Icon, title, desc, color }) => {
@@ -663,7 +746,8 @@ export default function EvaluatePage() {
                     )}
                   </div>
                   <p className="text-[11px] text-gray-400 mb-2">
-                    For <strong>extract_only</strong> answer mode (Cases 3 &amp; 4): pass if the expected document's chunk is in the top {effectiveTopK} retrieved chunks.
+                    For <strong>extract_only</strong> (Cases 3 &amp; 4): pass if the expected match is in the top {effectiveTopK}{" "}
+                    {chunkScoringMode === "qualified_only" ? "qualified" : "raw"} chunks — same rule as Recall@{effectiveTopK}.
                   </p>
                   <div className="flex items-center gap-3">
                     <input
@@ -685,6 +769,49 @@ export default function EvaluatePage() {
                   </div>
                 </div>
 
+                {effectiveAnswerMode === "extract_only" && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700 mb-2">Chunk scoring pool</p>
+                    <p className="text-[11px] text-gray-400 mb-2">
+                      Choose which rows from Advance Search count for rank, pass/fail, and Recall@K.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {([
+                        {
+                          id: "qualified_only" as const,
+                          label: "Qualified only",
+                          desc: "Only chunkQualified=true rows (Kore.ai retrieval pool). Default.",
+                        },
+                        {
+                          id: "raw" as const,
+                          label: "Raw chunk list",
+                          desc: "All chunk_result rows in API order (positions 1…N).",
+                        },
+                      ]).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setChunkScoringMode(opt.id)}
+                          className={cn(
+                            "text-left p-3 rounded-lg border transition-colors",
+                            chunkScoringMode === opt.id
+                              ? "border-violet-400 bg-violet-50"
+                              : "border-gray-100 hover:border-gray-200 bg-white",
+                          )}
+                        >
+                          <p className={cn(
+                            "text-xs font-semibold",
+                            chunkScoringMode === opt.id ? "text-violet-700" : "text-gray-600",
+                          )}>
+                            {opt.label}
+                          </p>
+                          <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">{opt.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {verdictOverrideCount > 0 && (
                   <button
                     onClick={() => {
@@ -692,6 +819,7 @@ export default function EvaluatePage() {
                       setCase1Threshold(null);
                       setCase2Threshold(null);
                       setTopKPass(null);
+                      setChunkScoringMode("qualified_only");
                     }}
                     className="text-xs text-gray-500 hover:text-gray-700 underline"
                   >
