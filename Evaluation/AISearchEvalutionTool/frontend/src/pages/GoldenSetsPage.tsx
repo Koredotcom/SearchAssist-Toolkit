@@ -645,6 +645,12 @@ function TestCaseRow({ tc }: { tc: TestCase }) {
                     {tc.expected_answer || <span className="italic text-gray-400">— (not provided)</span>}
                   </p>
                 </div>
+                {tc.record_title && (
+                  <div>
+                    <p className="font-medium text-gray-600 mb-1">Record Title</p>
+                    <p className="text-gray-500">{tc.record_title}</p>
+                  </div>
+                )}
                 {tc.reference_doc_ids.length > 0 && (
                   <div>
                     <p className="font-medium text-gray-600 mb-1">Reference Docs</p>

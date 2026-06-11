@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS app_config (
     openai_base_url TEXT NOT NULL DEFAULT '',
     gemini_key      TEXT NOT NULL DEFAULT '',
     gemini_base_url TEXT NOT NULL DEFAULT '',
+    azure_key         TEXT NOT NULL DEFAULT '',  -- Azure OpenAI API key
+    azure_endpoint    TEXT NOT NULL DEFAULT '',  -- Azure resource endpoint, e.g. https://<res>.openai.azure.com
+    azure_deployment  TEXT NOT NULL DEFAULT '',  -- Azure deployment name (the "model")
+    azure_api_version TEXT NOT NULL DEFAULT '',  -- Azure API version, e.g. 2024-02-01
+    default_model   TEXT NOT NULL DEFAULT '',  -- app-wide LLM (model / Azure deployment) agents inherit
     banned_topics   TEXT NOT NULL DEFAULT '[]',  -- JSON array of strings
     answer_mode     TEXT NOT NULL DEFAULT 'answer_generation',  -- 'answer_generation' | 'extract_only'
     case1_threshold REAL NOT NULL DEFAULT 0.5,  -- semantic Q↔Answer similarity pass threshold
@@ -87,6 +92,7 @@ CREATE TABLE IF NOT EXISTS test_case (
     question_type       TEXT,
     difficulty          INTEGER CHECK(difficulty IN (1,2,3)),
     answer_type         TEXT,
+    record_title        TEXT DEFAULT '',    -- source document/record title this case was generated from
     reference_doc_ids   TEXT DEFAULT '[]',  -- JSON array (legacy + populated when match field is docId)
     reference_match_spec TEXT DEFAULT '[]', -- JSON: [{"field": "recordUrl", "value": "..."}, ...]
     generation_metadata TEXT DEFAULT '{}',  -- JSON

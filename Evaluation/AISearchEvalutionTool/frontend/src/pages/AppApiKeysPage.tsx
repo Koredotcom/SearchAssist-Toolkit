@@ -9,6 +9,10 @@ import {
   AlertCircle, ArrowRight, Check, Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  CLAUDE_MODELS, OPENAI_MODELS, GEMINI_MODELS,
+  CUSTOM_VALUE, AZURE_MODEL, isKnownModel, isAzureModel, providerLabel,
+} from "@/lib/models";
 
 // ── cURL parser ──────────────────────────────────────────────────────────────
 
@@ -90,13 +94,43 @@ export default function AppApiKeysPage() {
   const [openaiSaved, setOpenaiSaved] = useState(false);
   const [geminiSaved, setGeminiSaved] = useState(false);
 
+  const [azureKey, setAzureKey] = useState("");
+  const [azureEndpoint, setAzureEndpoint] = useState("");
+  const [azureDeployment, setAzureDeployment] = useState("");
+  const [azureApiVersion, setAzureApiVersion] = useState("");
+  const [showAzure, setShowAzure] = useState(false);
+  const [azureTest, setAzureTest] = useState<{ ok: boolean; response: string } | null>(null);
+  const [azureSaved, setAzureSaved] = useState(false);
+
+  const [defaultModel, setDefaultModel] = useState("");
+  const [customDefault, setCustomDefault] = useState("");
+  const [defaultKind, setDefaultKind] = useState<"" | "custom">("");
+  const [defaultSaved, setDefaultSaved] = useState(false);
+
   useEffect(() => {
     if (status) {
       setAnthropicUrl(status.anthropic_base_url || "");
       setOpenaiUrl(status.openai_base_url || "");
       setGeminiUrl(status.gemini_base_url || "");
+      setAzureEndpoint(status.azure_endpoint || "");
+      setAzureDeployment(status.azure_deployment || "");
+      setAzureApiVersion(status.azure_api_version || "");
+      setDefaultModel(status.default_model || "");
+      setCustomDefault("");
+      setDefaultKind("");
     }
   }, [status]);
+
+  const effDefault = customDefault.trim() || defaultModel;
+  const defaultKnown = isKnownModel(effDefault) || isAzureModel(effDefault);
+  const defaultSelectValue = defaultKind ? CUSTOM_VALUE : defaultKnown ? defaultModel : effDefault ? CUSTOM_VALUE : "";
+  const showDefaultInput = defaultKind === "custom" || (!defaultKnown && !!effDefault);
+  const defaultDirty = effDefault !== (status?.default_model ?? "");
+
+  const saveDefaultModel = useMutation({
+    mutationFn: () => appApiKeysApi.set(appId!, { default_model: effDefault }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["app-api-keys", appId] }); setDefaultSaved(true); setTimeout(() => setDefaultSaved(false), 2000); },
+  });
 
   const saveAnthropic = useMutation({
     mutationFn: () => {
@@ -146,6 +180,29 @@ export default function AppApiKeysPage() {
     onError: (e: { response?: { data?: { detail?: string } } }) => setGeminiTest({ ok: false, response: e.response?.data?.detail ?? "Test failed" }),
   });
 
+  const saveAzure = useMutation({
+    mutationFn: () => {
+      const body: AppApiKeysUpdate = {};
+      if (azureKey.trim()) body.azure_key = azureKey.trim();
+      if (azureEndpoint !== (status?.azure_endpoint ?? "")) body.azure_endpoint = azureEndpoint.trim();
+      if (azureDeployment !== (status?.azure_deployment ?? "")) body.azure_deployment = azureDeployment.trim();
+      if (azureApiVersion !== (status?.azure_api_version ?? "")) body.azure_api_version = azureApiVersion.trim();
+      return appApiKeysApi.set(appId!, body);
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["app-api-keys", appId] }); setAzureKey(""); setAzureSaved(true); setTimeout(() => setAzureSaved(false), 2000); },
+  });
+
+  const testAzureMutation = useMutation({
+    mutationFn: () => appApiKeysApi.testAzure(appId!, {
+      key: azureKey.trim() || undefined,
+      endpoint: azureEndpoint.trim(),
+      deployment: azureDeployment.trim(),
+      api_version: azureApiVersion.trim(),
+    }),
+    onSuccess: (d) => setAzureTest(d),
+    onError: (e: { response?: { data?: { detail?: string } } }) => setAzureTest({ ok: false, response: e.response?.data?.detail ?? "Test failed" }),
+  });
+
   function applyCurl(r: CurlResult) {
     if (r.error) return;
     if (r.provider === "anthropic") { setAnthropicKey(r.apiKey); if (r.baseUrl) setAnthropicUrl(r.baseUrl); setAnthropicTest(null); }
@@ -157,9 +214,14 @@ export default function AppApiKeysPage() {
   const anthropicDirty = anthropicKey.trim() || anthropicUrl !== (status?.anthropic_base_url ?? "");
   const openaiDirty = openaiKey.trim() || openaiUrl !== (status?.openai_base_url ?? "");
   const geminiDirty = geminiKey.trim() || geminiUrl !== (status?.gemini_base_url ?? "");
+  const azureDirty = azureKey.trim()
+    || azureEndpoint !== (status?.azure_endpoint ?? "")
+    || azureDeployment !== (status?.azure_deployment ?? "")
+    || azureApiVersion !== (status?.azure_api_version ?? "");
   const canTestAnthropic = !!(anthropicKey.trim() || status?.anthropic_key_set);
   const canTestOpenai = !!(openaiKey.trim() || status?.openai_key_set);
   const canTestGemini = !!(geminiKey.trim() || status?.gemini_key_set);
+  const canTestAzure = !!((azureKey.trim() || status?.azure_key_set) && azureEndpoint.trim() && azureDeployment.trim());
 
   if (isLoading) return <div className="text-center py-16 text-gray-400">Loading...</div>;
 
@@ -167,7 +229,76 @@ export default function AppApiKeysPage() {
     <div className="space-y-5 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">API Keys</h1>
-        <p className="text-sm text-gray-500 mt-1">Set keys for Anthropic, OpenAI, and Gemini. You can test before saving.</p>
+        <p className="text-sm text-gray-500 mt-1">Set keys for Anthropic, OpenAI, Gemini, and Azure OpenAI. You can test before saving.</p>
+      </div>
+
+      {/* Default model — the LLM every agent inherits unless overridden */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Default model</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              The LLM every agent uses unless overridden on the LLM Config / Prompts pages.
+              For Azure, enter the deployment name here and set the Azure endpoint on the OpenAI row below.
+            </p>
+          </div>
+          {effDefault && <span className="text-xs text-gray-400 shrink-0 mt-0.5">{providerLabel(effDefault)}</span>}
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative">
+            <select
+              value={defaultSelectValue}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === CUSTOM_VALUE) {
+                  setDefaultKind("custom");
+                  setCustomDefault(customDefault || (defaultKnown ? "" : defaultModel));
+                } else {
+                  setDefaultKind("");
+                  setDefaultModel(v);
+                  setCustomDefault("");
+                }
+              }}
+              className="appearance-none pl-3 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white min-w-[220px]"
+            >
+              <option value="">None — built-in per-agent defaults</option>
+              <option value={AZURE_MODEL}>Azure OpenAI (configured below)</option>
+              <optgroup label="Anthropic Claude">
+                {CLAUDE_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </optgroup>
+              <optgroup label="OpenAI">
+                {OPENAI_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </optgroup>
+              <optgroup label="Google Gemini">
+                {GEMINI_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </optgroup>
+              <option value={CUSTOM_VALUE}>Custom…</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+          {showDefaultInput && (
+            <input
+              type="text"
+              value={customDefault || (!defaultKnown ? defaultModel : "")}
+              onChange={(e) => setCustomDefault(e.target.value)}
+              placeholder="model ID or Azure deployment name"
+              className="px-3 py-2 text-sm border border-violet-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono placeholder:text-gray-300 min-w-[220px]"
+            />
+          )}
+          <button
+            onClick={() => saveDefaultModel.mutate()}
+            disabled={!defaultDirty || saveDefaultModel.isPending}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
+              defaultSaved ? "bg-green-500 text-white"
+                : defaultDirty ? "bg-violet-600 text-white hover:bg-violet-700"
+                : "bg-gray-100 text-gray-400 cursor-not-allowed"
+            )}
+          >
+            {defaultSaved ? <Check className="w-3.5 h-3.5" /> : saveDefaultModel.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            {saveDefaultModel.isPending ? "Saving…" : defaultSaved ? "Saved!" : "Save"}
+          </button>
+        </div>
       </div>
 
       {/* cURL import */}
@@ -287,6 +418,28 @@ export default function AppApiKeysPage() {
           onTest={() => { setGeminiTest(null); testGeminiMutation.mutate(); }}
           testResult={geminiTest}
         />
+        <AzureRow
+          isSet={status?.azure_key_set ?? false}
+          preview={status?.azure_key_preview ?? ""}
+          keyValue={azureKey}
+          endpoint={azureEndpoint}
+          deployment={azureDeployment}
+          apiVersion={azureApiVersion}
+          show={showAzure}
+          onToggleShow={() => setShowAzure((v) => !v)}
+          onKeyChange={(v) => { setAzureKey(v); setAzureTest(null); }}
+          onEndpointChange={(v) => { setAzureEndpoint(v); setAzureTest(null); }}
+          onDeploymentChange={(v) => { setAzureDeployment(v); setAzureTest(null); }}
+          onApiVersionChange={(v) => { setAzureApiVersion(v); setAzureTest(null); }}
+          isDirty={!!azureDirty}
+          isSaving={saveAzure.isPending}
+          saved={azureSaved}
+          onSave={() => saveAzure.mutate()}
+          canTest={canTestAzure}
+          isTesting={testAzureMutation.isPending}
+          onTest={() => { setAzureTest(null); testAzureMutation.mutate(); }}
+          testResult={azureTest}
+        />
       </div>
 
     </div>
@@ -350,6 +503,100 @@ function ProviderRow({
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={onTest} disabled={isTesting || !canTest}
           title={!canTest ? "Enter a key first" : "Test the current key (uses typed value if present)"}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors",
+            canTest ? "border-gray-200 text-gray-600 hover:bg-gray-50" : "border-gray-100 text-gray-300 cursor-not-allowed"
+          )}
+        >
+          {isTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+          {isTesting ? "Testing…" : "Test"}
+        </button>
+
+        <button onClick={onSave} disabled={!isDirty || isSaving}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
+            saved ? "bg-green-500 text-white"
+              : isDirty ? "bg-violet-600 text-white hover:bg-violet-700"
+              : "bg-gray-100 text-gray-400 cursor-not-allowed"
+          )}
+        >
+          {saved ? <Check className="w-3.5 h-3.5" /> : isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          {isSaving ? "Saving…" : saved ? "Saved!" : "Save"}
+        </button>
+
+        {testResult && (
+          <div className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg", testResult.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600")}>
+            {testResult.ok ? <CheckCircle className="w-3.5 h-3.5 shrink-0" /> : <XCircle className="w-3.5 h-3.5 shrink-0" />}
+            <span className="font-mono">{testResult.response}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Azure OpenAI row (key + endpoint + deployment + api version) ───────────────
+
+function AzureRow({
+  isSet, preview, keyValue, endpoint, deployment, apiVersion,
+  show, onToggleShow, onKeyChange, onEndpointChange, onDeploymentChange, onApiVersionChange,
+  isDirty, isSaving, saved, onSave, canTest, isTesting, onTest, testResult,
+}: {
+  isSet: boolean; preview: string;
+  keyValue: string; endpoint: string; deployment: string; apiVersion: string;
+  show: boolean; onToggleShow: () => void;
+  onKeyChange: (v: string) => void; onEndpointChange: (v: string) => void;
+  onDeploymentChange: (v: string) => void; onApiVersionChange: (v: string) => void;
+  isDirty: boolean; isSaving: boolean; saved: boolean; onSave: () => void;
+  canTest: boolean; isTesting: boolean; onTest: () => void;
+  testResult: { ok: boolean; response: string } | null;
+}) {
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold text-gray-900">Azure OpenAI</span>
+        <span className="text-xs text-gray-400">Agents set to “Azure OpenAI”</span>
+        {isSet
+          ? <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full"><CheckCircle className="w-3 h-3" />Set</span>
+          : <span className="flex items-center gap-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full"><XCircle className="w-3 h-3" />Not set</span>
+        }
+        {isSet && preview && <span className="text-xs font-mono text-gray-400">{preview}</span>}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* API key */}
+        <div className="relative">
+          <input type={show ? "text" : "password"} value={keyValue} onChange={(e) => onKeyChange(e.target.value)}
+            placeholder={isSet ? "Enter new key to replace" : "Azure API key"}
+            className="w-full px-3 py-2 pr-9 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 placeholder:text-gray-300 font-mono"
+          />
+          <button type="button" onClick={onToggleShow} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+        {/* Endpoint */}
+        <div className="relative">
+          <input type="url" value={endpoint} onChange={(e) => onEndpointChange(e.target.value)}
+            placeholder="https://<resource>.openai.azure.com"
+            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 placeholder:text-gray-300 font-mono"
+          />
+          <LinkIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+        </div>
+        {/* Deployment */}
+        <input type="text" value={deployment} onChange={(e) => onDeploymentChange(e.target.value)}
+          placeholder="deployment name (e.g. gpt-4o)"
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 placeholder:text-gray-300 font-mono"
+        />
+        {/* API version */}
+        <input type="text" value={apiVersion} onChange={(e) => onApiVersionChange(e.target.value)}
+          placeholder="api version (default 2024-02-01)"
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 placeholder:text-gray-300 font-mono"
+        />
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={onTest} disabled={isTesting || !canTest}
+          title={!canTest ? "Enter key, endpoint, and deployment first" : "Test the Azure deployment"}
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors",
             canTest ? "border-gray-200 text-gray-600 hover:bg-gray-50" : "border-gray-100 text-gray-300 cursor-not-allowed"

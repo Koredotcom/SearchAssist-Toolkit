@@ -315,8 +315,22 @@ def get_llm_configs(app_id: str) -> list[dict]:
 def get_llm_config(app_id: str, agent_name: str) -> dict:
     row = _c("llm_config").find_one({"app_id": app_id, "agent_name": agent_name})
     if row:
-        return _clean(row)
-    return {**DEFAULT_LLM.get(agent_name, DEFAULT_LLM["agent1"]), "app_id": app_id, "agent_name": agent_name}
+        cfg = _clean(row)
+    else:
+        cfg = {**DEFAULT_LLM.get(agent_name, DEFAULT_LLM["agent1"]), "app_id": app_id, "agent_name": agent_name}
+    return _apply_default_model(app_id, agent_name, cfg)
+
+
+def _apply_default_model(app_id: str, agent_name: str, cfg: dict) -> dict:
+    """Resolve an empty per-agent model by inheriting the app's default_model
+    (configured on the API Keys page), then the built-in DEFAULT_LLM model."""
+    if (cfg.get("model") or "").strip():
+        cfg["inherited"] = False
+        return cfg
+    default_model = ((get_app(app_id) or {}).get("default_model") or "").strip()
+    cfg["model"] = default_model or DEFAULT_LLM.get(agent_name, DEFAULT_LLM["agent1"])["model"]
+    cfg["inherited"] = bool(default_model)
+    return cfg
 
 
 def upsert_llm_config(app_id: str, agent_name: str, data: dict) -> dict:

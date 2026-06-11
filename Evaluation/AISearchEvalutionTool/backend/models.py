@@ -229,6 +229,7 @@ class TestCaseResponse(BaseModel):
     expected_behavior: str
     question_type: str | None
     difficulty: int | None
+    record_title: str | None = None
     reference_doc_ids: list[str]
     human_validated: bool
     status: str

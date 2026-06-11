@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { llmApi, appsApi } from "@/lib/api";
+import { llmApi, appsApi, appApiKeysApi } from "@/lib/api";
 import type { LLMConfig } from "@/lib/api";
 import { Save, ShieldAlert, X, Plus, Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FEATURE_AI_DEEP_DIVE } from "@/lib/featureFlags";
+import {
+  CLAUDE_MODELS, OPENAI_MODELS, GEMINI_MODELS,
+  INHERIT_VALUE, CUSTOM_VALUE, AZURE_MODEL, isKnownModel, isAzureModel, providerLabel,
+} from "@/lib/models";
 
 const GENERATION_AGENTS = [
   { key: "agent1", tag: "A1", label: "Summarizer", description: "Extracts facts from documents" },
@@ -25,32 +29,6 @@ const INSIGHTS_AGENTS = [
     label: "AI Deep Dive",
     description: "Writes the markdown root-cause narrative for an evaluation run",
   },
-];
-
-const CLAUDE_MODELS = [
-  "claude-opus-4-7",
-  "claude-sonnet-4-6",
-  "claude-haiku-4-5-20251001",
-];
-
-const OPENAI_MODELS = [
-  "gpt-4.1",
-  "gpt-4.1-mini",
-  "gpt-4o",
-  "gpt-4o-mini",
-  "gpt-5",
-  "gpt-5-mini",
-  "o3",
-  "o3-mini",
-  "o4-mini",
-];
-
-const GEMINI_MODELS = [
-  "gemini-2.5-pro",
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-1.5-pro",
-  "gemini-1.5-flash",
 ];
 
 export default function LLMConfigPage() {
@@ -173,14 +151,23 @@ function AgentRow({
   const qc = useQueryClient();
   const [model, setModel] = useState(config?.model ?? "claude-sonnet-4-6");
   const [customModel, setCustomModel] = useState("");
+  const [customKind, setCustomKind] = useState<"" | "custom">("");
   const [temperature, setTemperature] = useState(config?.temperature ?? 0);
   const [maxTokens, setMaxTokens] = useState(config?.max_tokens ?? 4096);
   const [saved, setSaved] = useState(false);
 
+  const { data: apiKeys } = useQuery({
+    queryKey: ["app-api-keys", appId],
+    queryFn: () => appApiKeysApi.get(appId),
+    enabled: !!appId,
+  });
+  const apiDefaultModel = apiKeys?.default_model || "";
+
   const effectiveModel = customModel.trim() || model;
-  const isKnownModel = CLAUDE_MODELS.includes(effectiveModel) || OPENAI_MODELS.includes(effectiveModel) || GEMINI_MODELS.includes(effectiveModel);
-  const isClaudeModel = CLAUDE_MODELS.includes(effectiveModel);
-  const isGeminiModel = GEMINI_MODELS.includes(effectiveModel) || effectiveModel.startsWith("gemini-") || effectiveModel.startsWith("models/gemini-");
+  const known = isKnownModel(effectiveModel) || isAzureModel(effectiveModel);
+  const inheriting = effectiveModel.trim() === "";
+  const selectValue = inheriting ? INHERIT_VALUE : customKind ? CUSTOM_VALUE : known ? model : CUSTOM_VALUE;
+  const showModelInput = customKind === "custom" || (!known && !inheriting);
 
   useEffect(() => {
     if (config) {
@@ -188,6 +175,7 @@ function AgentRow({
       setTemperature(config.temperature);
       setMaxTokens(config.max_tokens);
       setCustomModel("");
+      setCustomKind("");
     }
   }, [config]);
 
@@ -202,6 +190,7 @@ function AgentRow({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["llm-config", appId] });
       setCustomModel("");
+      setCustomKind("");
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
@@ -212,7 +201,10 @@ function AgentRow({
     tagColor === "amber"  ? "bg-amber-100 text-amber-700" :
                             "bg-teal-100 text-teal-700";
 
-  const displayModel = config?.model ?? "—";
+  const rowInherits = config !== undefined && !(config.model || "").trim();
+  const displayModel = rowInherits
+    ? `Inherit${apiDefaultModel ? ` · ${apiDefaultModel}` : ""}`
+    : config?.model ?? "—";
   const shortModel = displayModel.length > 28 ? displayModel.slice(0, 26) + "…" : displayModel;
 
   return (
@@ -232,7 +224,7 @@ function AgentRow({
         </div>
 
         <div className="flex items-center gap-4 text-right shrink-0">
-          {config?.model ? (
+          {config ? (
             <span className="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
               {shortModel}
             </span>
@@ -257,40 +249,55 @@ function AgentRow({
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Model</label>
               <div className="relative">
                 <select
-                  value={isKnownModel ? model : "__custom__"}
+                  value={selectValue}
                   onChange={(e) => {
-                    if (e.target.value !== "__custom__") {
-                      setModel(e.target.value);
+                    const v = e.target.value;
+                    if (v === INHERIT_VALUE) {
+                      setCustomKind("");
+                      setModel("");
                       setCustomModel("");
+                    } else if (v === CUSTOM_VALUE) {
+                      setCustomKind("custom");
+                      setCustomModel(customModel || (known ? "" : model));
                     } else {
-                      setCustomModel(model);
+                      setCustomKind("");
+                      setModel(v);
+                      setCustomModel("");
                     }
                   }}
                   className="w-full appearance-none px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white pr-8"
                 >
+                  <option value={INHERIT_VALUE}>
+                    Inherit — API Keys default{apiDefaultModel ? ` (${apiDefaultModel})` : ""}
+                  </option>
                   <optgroup label="Anthropic Claude">
                     {CLAUDE_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
                   </optgroup>
-                  <optgroup label="OpenAI">
+                  <optgroup label="OpenAI / Azure">
                     {OPENAI_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
                   </optgroup>
                   <optgroup label="Google Gemini">
                     {GEMINI_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
                   </optgroup>
-                  <option value="__custom__">Custom / Azure…</option>
+                  <option value={AZURE_MODEL}>Azure OpenAI (configured in API Keys)</option>
+                  <option value={CUSTOM_VALUE}>Custom…</option>
                 </select>
                 <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
-              {(!isKnownModel || customModel) && (
+              {showModelInput && (
                 <input
                   type="text"
-                  value={customModel || (!isKnownModel ? model : "")}
+                  value={customModel || (!known ? model : "")}
                   onChange={(e) => setCustomModel(e.target.value)}
                   placeholder="deployment name or model ID"
                   className="mt-1.5 w-full px-3 py-1.5 text-sm border border-violet-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono placeholder:text-gray-300"
                 />
               )}
-              <p className="text-xs text-gray-400 mt-1">{isClaudeModel ? "Anthropic" : isGeminiModel ? "Gemini" : "OpenAI / Azure"}</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {inheriting
+                  ? `Inheriting API Keys default${apiDefaultModel ? ` — ${apiDefaultModel}` : " (none set yet)"}`
+                  : providerLabel(effectiveModel)}
+              </p>
             </div>
 
             {/* Temperature */}

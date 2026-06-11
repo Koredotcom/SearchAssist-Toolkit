@@ -8,7 +8,7 @@ from urllib.parse import urlparse, parse_qs, quote
 
 import httpx
 
-from db.database import get_llm_config, get_api_key, get_base_url
+from db.database import get_llm_config, get_api_key, get_base_url, get_app
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,8 @@ def parse_json_loose(raw: str, expect: str = "object", agent_name: str = "?") ->
 def _infer_provider(model: str) -> str:
     """Infer LLM provider from model name prefix."""
     name = (model or "").lower()
+    if name == "azure" or name.startswith("azure/"):
+        return "azure"
     if name.startswith("claude"):
         return "anthropic"
     if name.startswith("gemini") or name.startswith("models/gemini"):
@@ -170,8 +172,11 @@ def _openai_client_and_model(app_id: str, model: str, _app_override: dict | None
         key = get_api_key(app_id, "openai") or ""
         url = get_base_url(app_id, "openai")
     azure = _parse_azure_endpoint(url)
-    if azure and azure["deployment"]:
+    if azure:
         from openai import AzureOpenAI
+        # Deployment from the URL wins; otherwise the configured model name IS the
+        # Azure deployment (the "Azure OpenAI…" picker stores the deployment here).
+        deployment = azure["deployment"] or model
         client = AzureOpenAI(
             api_key=key,
             azure_endpoint=azure["azure_endpoint"],
@@ -179,11 +184,35 @@ def _openai_client_and_model(app_id: str, model: str, _app_override: dict | None
         )
         logger.debug(
             "OpenAI | Using Azure | endpoint=%s api_version=%s deployment=%s",
-            azure["azure_endpoint"], azure["api_version"], azure["deployment"],
+            azure["azure_endpoint"], azure["api_version"], deployment,
         )
-        return client, azure["deployment"]
+        return client, deployment
     from openai import OpenAI
     return OpenAI(api_key=key, base_url=url), model
+
+
+def _azure_client_and_model(app_id: str, _app_override: dict | None = None) -> tuple[Any, str]:
+    """Build an AzureOpenAI client from the app's dedicated Azure fields.
+
+    Returns (client, deployment). The deployment name is the "model" passed to
+    chat.completions.create. Configured on the API Keys page (Azure row).
+    """
+    app = _app_override or get_app(app_id) or {}
+    key = (app.get("azure_key") or "").strip()
+    endpoint = (app.get("azure_endpoint") or "").strip()
+    deployment = (app.get("azure_deployment") or "").strip()
+    api_version = (app.get("azure_api_version") or "").strip() or "2024-02-01"
+    if not endpoint or not deployment:
+        raise ValueError(
+            "Azure OpenAI is not fully configured — set the endpoint and deployment "
+            "name on the API Keys page (Azure row)."
+        )
+    from openai import AzureOpenAI
+    client = AzureOpenAI(api_key=key, azure_endpoint=endpoint, api_version=api_version)
+    logger.debug(
+        "Azure | endpoint=%s api_version=%s deployment=%s", endpoint, api_version, deployment,
+    )
+    return client, deployment
 
 
 def _gemini_endpoint(app_id: str, model: str, _app_override: dict | None = None) -> tuple[str, str]:
@@ -373,8 +402,11 @@ def call_llm(
                 )
             return text
 
-        # OpenAI (gpt-*, o1*, o3*, o4*, or any other non-claude model)
-        client, effective_model = _openai_client_and_model(app_id, model)
+        # OpenAI / Azure (gpt-*, o-series, or the "azure" sentinel)
+        if provider == "azure":
+            client, effective_model = _azure_client_and_model(app_id)
+        else:
+            client, effective_model = _openai_client_and_model(app_id, model)
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -488,7 +520,10 @@ def call_llm_json(
             )
             return text
 
-        client, effective_model = _openai_client_and_model(app_id, model)
+        if provider == "azure":
+            client, effective_model = _azure_client_and_model(app_id)
+        else:
+            client, effective_model = _openai_client_and_model(app_id, model)
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})

@@ -69,6 +69,25 @@ export default function GeneratePage() {
   const totalSelected =
     selectedConnectorIds.length + selectedWebIds.length + selectedFileIds.length;
   const totalAvailable = sources.length + webCrawls.length + uploadedDocs.length;
+
+  // Upper bound for "Max documents per source". The param is per-source, so the
+  // ceiling is the largest record count among the selected sources (anything
+  // higher has no effect). Before any selection, fall back to the largest source
+  // overall so the control is still meaningful.
+  const selectedRecordCounts = [
+    ...sources.filter((s) => selectedConnectorIds.includes(s.connector_id)).map((s) => s.records_count),
+    ...webCrawls.filter((s) => selectedWebIds.includes(s.source_id)).map((s) => s.records_count),
+    ...uploadedDocs.filter((s) => selectedFileIds.includes(s.source_id)).map((s) => s.records_count),
+  ];
+  const allRecordCounts = [
+    ...sources.map((s) => s.records_count),
+    ...webCrawls.map((s) => s.records_count),
+    ...uploadedDocs.map((s) => s.records_count),
+  ];
+  const recordCountPool = (selectedRecordCounts.length ? selectedRecordCounts : allRecordCounts)
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const docCeiling = recordCountPool.length ? Math.max(...recordCountPool) : 50;
+  const effMaxDocs = Math.min(maxDocs, docCeiling);
   const normalizedLanguageQuery = languageQuery.trim();
   const filteredLanguages = LANGUAGE_OPTIONS.filter((lang) =>
     lang.toLowerCase().includes(normalizedLanguageQuery.toLowerCase())
@@ -118,7 +137,7 @@ export default function GeneratePage() {
         connector_ids: selectedConnectorIds,
         web_source_ids: selectedWebIds,
         file_source_ids: selectedFileIds,
-        max_docs_per_source: allDocs ? 0 : maxDocs,
+        max_docs_per_source: allDocs ? 0 : effMaxDocs,
         max_questions_per_doc: maxQuestionsPerDoc,
         target_language: targetLanguage,
         filters: {},
@@ -282,18 +301,27 @@ export default function GeneratePage() {
                   <input
                     type="range"
                     min={1}
-                    max={50}
-                    value={maxDocs}
+                    max={docCeiling}
+                    value={effMaxDocs}
                     onChange={(e) => setMaxDocs(Number(e.target.value))}
                     className="flex-1 accent-violet-600"
                   />
-                  <span className="text-sm font-semibold text-violet-700 w-8 text-right">{maxDocs}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={docCeiling}
+                    value={effMaxDocs}
+                    onChange={(e) => setMaxDocs(Math.max(1, Math.min(docCeiling, Number(e.target.value) || 1)))}
+                    className="w-24 px-2 py-1 text-sm font-semibold text-violet-700 text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
                 </div>
               )}
               <p className="text-xs text-gray-400 mt-1">
                 {allDocs
                   ? `All documents across ${totalSelected} selected source${totalSelected !== 1 ? "s" : ""}`
-                  : `Up to ${maxDocs * totalSelected} documents total across ${totalSelected} selected source${totalSelected !== 1 ? "s" : ""}`}
+                  : `Up to ${effMaxDocs} per source — max ${docCeiling.toLocaleString()} available${
+                      selectedRecordCounts.length ? " in the selected source(s)" : " across all sources"
+                    }`}
               </p>
             </div>
 
@@ -437,11 +465,11 @@ export default function GeneratePage() {
                 value={`${selectedFileIds.length}`}
                 muted
               />
-              <Row label="Docs per source" value={allDocs ? "All" : String(maxDocs)} />
-              <Row label="Total docs (max)" value={allDocs ? "All" : String(maxDocs * Math.max(totalSelected, 1))} />
+              <Row label="Docs per source" value={allDocs ? "All" : String(effMaxDocs)} />
+              <Row label="Total docs (max)" value={allDocs ? "All" : String(effMaxDocs * Math.max(totalSelected, 1))} />
               <Row label="Questions per doc" value={String(maxQuestionsPerDoc)} />
               <Row label="Language" value={targetLanguage} />
-              <Row label="Est. total questions" value={allDocs ? "varies" : String(maxDocs * Math.max(totalSelected, 1) * maxQuestionsPerDoc)} />
+              <Row label="Est. total questions" value={allDocs ? "varies" : String(effMaxDocs * Math.max(totalSelected, 1) * maxQuestionsPerDoc)} />
               <Row label="Golden set" value={goldenSetVersion} />
             </div>
 

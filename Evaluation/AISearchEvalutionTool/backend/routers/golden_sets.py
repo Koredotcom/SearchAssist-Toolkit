@@ -378,6 +378,22 @@ def download_template(app_id: str):
     )
 
 
+def _record_title(tc: dict) -> str:
+    """Source record title for a test case.
+
+    Generated cases store it directly in ``record_title``. For uploaded sets it
+    may instead live as a ``recordTitle`` entry in ``reference_match_spec`` —
+    fall back to that so both paths surface a title.
+    """
+    title = (tc.get("record_title") or "").strip()
+    if title:
+        return title
+    for spec in tc.get("reference_match_spec") or []:
+        if isinstance(spec, dict) and str(spec.get("field", "")).lower() == "recordtitle":
+            return str(spec.get("value") or "").strip()
+    return ""
+
+
 @router.get("/{version}/test-cases", response_model=list[TestCaseResponse])
 def get_test_cases(app_id: str, version: str):
     if not get_app(app_id):
@@ -399,6 +415,7 @@ def get_test_cases(app_id: str, version: str):
             "expected_behavior": r.get("expected_behavior", "ANSWER"),
             "question_type": r.get("question_type"),
             "difficulty": r.get("difficulty"),
+            "record_title": _record_title(r),
             "reference_doc_ids": r.get("reference_doc_ids", []),
             "human_validated": bool(r.get("human_validated")),
             "status": r.get("status", "active"),
@@ -492,6 +509,7 @@ def export_golden_set(app_id: str, version: str):
         "Case ID",
         "Question Type",
         "Difficulty",
+        "Record Title",
         "Reference Doc IDs",
         "Status",
         "Decision",
@@ -499,7 +517,7 @@ def export_golden_set(app_id: str, version: str):
         "Rationale",
     ]
     headers = base_headers + [k.replace("_", " ").title() for k in all_custom_keys]
-    base_widths = [60, 50, 18, 8, 18, 10, 50, 12, 12, 25, 70]
+    base_widths = [60, 50, 18, 8, 18, 10, 40, 50, 12, 12, 25, 70]
     all_widths = base_widths + [25] * len(all_custom_keys)
 
     ws.append(headers)
@@ -521,6 +539,7 @@ def export_golden_set(app_id: str, version: str):
             tc.get("case_id"),
             tc.get("question_type"),
             tc.get("difficulty"),
+            _record_title(tc),
             ref_ids,
             tc.get("status"),
             tc.get("decision"),

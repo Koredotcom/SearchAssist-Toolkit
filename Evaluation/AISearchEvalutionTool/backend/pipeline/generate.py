@@ -53,6 +53,7 @@ def _process_doc(
     for tc in raw_cases:
         tc["golden_set_version"] = golden_set_version
         tc["app_id"] = app_id
+        tc["record_title"] = title
         metadata = tc.get("generation_metadata") if isinstance(tc.get("generation_metadata"), dict) else {}
         metadata["target_language"] = target_language
         tc["generation_metadata"] = metadata

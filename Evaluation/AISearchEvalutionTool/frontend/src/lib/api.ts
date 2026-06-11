@@ -102,6 +102,7 @@ export interface TestCase {
   expected_behavior: string;
   question_type: string | null;
   difficulty: number | null;
+  record_title: string | null;
   reference_doc_ids: string[];
   human_validated: boolean;
   status: string;
@@ -589,6 +590,12 @@ export interface ApiKeyStatus {
   gemini_key_set: boolean;
   gemini_key_preview: string;
   gemini_base_url: string;
+  azure_key_set: boolean;
+  azure_key_preview: string;
+  azure_endpoint: string;
+  azure_deployment: string;
+  azure_api_version: string;
+  default_model: string;
   case1_threshold: number;
   case2_threshold: number;
 }
@@ -600,6 +607,11 @@ export interface AppApiKeysUpdate {
   openai_base_url?: string;
   gemini_key?: string;
   gemini_base_url?: string;
+  azure_key?: string;
+  azure_endpoint?: string;
+  azure_deployment?: string;
+  azure_api_version?: string;
+  default_model?: string;
   case1_threshold?: number;
   case2_threshold?: number;
 }
@@ -614,6 +626,13 @@ export const appApiKeysApi = {
     api.post<{ ok: boolean; response: string }>(`/apps/${appId}/api-keys/test-openai`, { key: key || null, base_url: baseUrl || null }).then((r) => r.data),
   testGemini: (appId: string, key?: string, baseUrl?: string) =>
     api.post<{ ok: boolean; response: string }>(`/apps/${appId}/api-keys/test-gemini`, { key: key || null, base_url: baseUrl || null }).then((r) => r.data),
+  testAzure: (appId: string, body: { key?: string; endpoint?: string; deployment?: string; api_version?: string }) =>
+    api.post<{ ok: boolean; response: string }>(`/apps/${appId}/api-keys/test-azure`, {
+      key: body.key || null,
+      endpoint: body.endpoint ?? null,
+      deployment: body.deployment ?? null,
+      api_version: body.api_version ?? null,
+    }).then((r) => r.data),
 };
 
 // ── Prompt Tuner ─────────────────────────────────────────────────────────────

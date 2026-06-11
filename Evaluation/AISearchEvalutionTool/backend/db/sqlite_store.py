@@ -97,6 +97,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "ALTER TABLE eval_run ADD COLUMN ai_insights_generated_at TEXT",
         # Full raw Kore.ai response per test case (for debugging / UI display)
         "ALTER TABLE eval_result ADD COLUMN search_response TEXT DEFAULT '{}'",
+        # Source record title each generated test case came from
+        "ALTER TABLE test_case ADD COLUMN record_title TEXT DEFAULT ''",
+        # App-wide default LLM (model / Azure deployment) that agents inherit
+        "ALTER TABLE app_config ADD COLUMN default_model TEXT NOT NULL DEFAULT ''",
+        # Dedicated Azure OpenAI provider (key + endpoint + deployment + api version)
+        "ALTER TABLE app_config ADD COLUMN azure_key TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE app_config ADD COLUMN azure_endpoint TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE app_config ADD COLUMN azure_deployment TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE app_config ADD COLUMN azure_api_version TEXT NOT NULL DEFAULT ''",
     ]
     for sql in migrations:
         try:
@@ -374,9 +383,23 @@ def get_llm_config(app_id: str, agent_name: str) -> dict:
             (app_id, agent_name),
         ).fetchone()
         if row:
-            return dict(row)
-        return {**DEFAULT_LLM.get(agent_name, DEFAULT_LLM["agent1"]),
-                "app_id": app_id, "agent_name": agent_name}
+            cfg = dict(row)
+        else:
+            cfg = {**DEFAULT_LLM.get(agent_name, DEFAULT_LLM["agent1"]),
+                   "app_id": app_id, "agent_name": agent_name}
+    return _apply_default_model(app_id, agent_name, cfg)
+
+
+def _apply_default_model(app_id: str, agent_name: str, cfg: dict) -> dict:
+    """Resolve an empty per-agent model by inheriting the app's default_model
+    (configured on the API Keys page), then the built-in DEFAULT_LLM model."""
+    if (cfg.get("model") or "").strip():
+        cfg["inherited"] = False
+        return cfg
+    default_model = ((get_app(app_id) or {}).get("default_model") or "").strip()
+    cfg["model"] = default_model or DEFAULT_LLM.get(agent_name, DEFAULT_LLM["agent1"])["model"]
+    cfg["inherited"] = bool(default_model)
+    return cfg
 
 
 def upsert_llm_config(app_id: str, agent_name: str, data: dict) -> dict:
@@ -602,12 +625,14 @@ def insert_test_case(tc: dict) -> None:
             """INSERT OR REPLACE INTO test_case
                (tc_id, app_id, golden_set_version, question, expected_answer,
                 expected_behavior, question_type, difficulty, answer_type,
-                reference_doc_ids, reference_match_spec, generation_metadata, rationale)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                record_title, reference_doc_ids, reference_match_spec,
+                generation_metadata, rationale)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (tc["tc_id"], tc["app_id"], tc["golden_set_version"],
              tc["question"], tc["expected_answer"],
              tc.get("expected_behavior", "ANSWER"), tc.get("question_type"),
              tc.get("difficulty"), tc.get("answer_type"),
+             tc.get("record_title", ""),
              json.dumps(tc.get("reference_doc_ids", [])),
              json.dumps(tc.get("reference_match_spec", [])),
              json.dumps(tc.get("generation_metadata", {})),
