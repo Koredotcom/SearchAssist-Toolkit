@@ -1,0 +1,36 @@
+# Secrets / local config
+.env
+backend/.env
+
+# Database
+data/
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+
+# Build artefacts
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local IDE / debug artefacts
+.claude/
+.playwright-mcp/
+.vercel/
