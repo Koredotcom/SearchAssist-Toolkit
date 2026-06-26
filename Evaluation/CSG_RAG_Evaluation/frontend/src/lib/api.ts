@@ -172,6 +172,7 @@ export interface EvalRun {
   done_cases: number;  // live count of completed rows — updates mid-run
   pass_rate: number;
   avg_chunk_rank: number | null;
+  recall_at_5: number | null;
   identity: string;
   racl_entity_ids: string[];
   answer_mode: string;

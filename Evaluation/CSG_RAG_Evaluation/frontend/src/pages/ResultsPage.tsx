@@ -85,7 +85,7 @@ export default function ResultsPage() {
 
           {/* Runs table */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
-            <table className="w-full min-w-[800px] text-sm">
+            <table className="w-full min-w-[900px] text-sm">
               <thead>
                 <tr className="bg-gray-50 text-left">
                   <th className="px-5 py-3 font-medium text-gray-500 text-xs">Run ID</th>
@@ -94,6 +94,7 @@ export default function ResultsPage() {
                   <th className="px-5 py-3 font-medium text-gray-500 text-xs">Pass Rate</th>
                   <th className="px-5 py-3 font-medium text-gray-500 text-xs">Cases</th>
                   <th className="px-5 py-3 font-medium text-gray-500 text-xs">Avg Chunk Rank</th>
+                  <th className="px-5 py-3 font-medium text-gray-500 text-xs">Recall@5</th>
                   <th className="px-5 py-3 font-medium text-gray-500 text-xs">Status</th>
                   <th className="px-5 py-3 font-medium text-gray-500 text-xs">Date</th>
                   <th className="px-5 py-3" />
@@ -216,6 +217,19 @@ function RunRow({
             run.avg_chunk_rank <= 30 ? "text-amber-700" : "text-red-700"
           )}>
             #{run.avg_chunk_rank.toFixed(1)}
+          </span>
+        ) : (
+          <span className="text-xs text-gray-300">—</span>
+        )}
+      </td>
+      <td className="px-5 py-3">
+        {run.recall_at_5 != null ? (
+          <span className={cn(
+            "font-mono text-xs font-semibold",
+            run.recall_at_5 >= 0.8 ? "text-green-700" :
+            run.recall_at_5 >= 0.5 ? "text-amber-700" : "text-red-700"
+          )}>
+            {(run.recall_at_5 * 100).toFixed(1)}%
           </span>
         ) : (
           <span className="text-xs text-gray-300">—</span>

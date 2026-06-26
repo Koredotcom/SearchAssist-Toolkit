@@ -247,6 +247,7 @@ class EvalRunResponse(BaseModel):
     done_cases: int = 0  # live count of completed eval_result rows (useful during running)
     pass_rate: float
     avg_chunk_rank: float | None = None
+    recall_at_5: float | None = None
     identity: str = ""
     racl_entity_ids: list[str] = []
     answer_mode: str = ""

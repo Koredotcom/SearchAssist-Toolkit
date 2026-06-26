@@ -855,6 +855,8 @@ def list_eval_runs(app_id: str) -> list[dict]:
         for r in rows:
             d = dict(r)
             d["racl_entity_ids"] = json.loads(d.get("racl_entity_ids") or "[]")
+            diag = json.loads(d.get("diagnostics_json") or "{}")
+            d["recall_at_5"] = (diag.get("retrieval") or {}).get("recall_at_5")
             result.append(d)
         return result
 
@@ -966,6 +968,8 @@ def get_eval_run(run_id: str) -> dict | None:
             return None
         d = dict(row)
         d["racl_entity_ids"] = json.loads(d.get("racl_entity_ids") or "[]")
+        diag = json.loads(d.get("diagnostics_json") or "{}")
+        d["recall_at_5"] = (diag.get("retrieval") or {}).get("recall_at_5")
         return d
 
 

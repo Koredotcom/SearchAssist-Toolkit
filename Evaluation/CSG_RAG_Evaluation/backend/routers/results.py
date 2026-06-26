@@ -104,6 +104,7 @@ def get_run_results(app_id: str, run_id: str):
             "answer_similarity": r.get("answer_similarity"),
             "verdict": verdict,
             "verdict_source": r.get("verdict_source"),
+            "chunk_signals": r.get("chunk_signals") or [],
         })
     return result
 
