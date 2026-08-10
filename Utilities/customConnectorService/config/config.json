@@ -2,13 +2,13 @@
     "name": "customConnector",
     "type": "customConnector",
     "authDetails": {
-      "username": "vamsi.l",
-      "password": "Kore@AI4Work",
+      "username": "YOUR_USERNAME",
+      "password": "YOUR_PASSWORD",
       "authorizationType": "BasicAuth"
     },
     "configuration": {
       "api": {
-        "contentUrl": "https://{{instance}}/api/now/table/kb_knowledge",
+        "contentUrl": "https://{{YOUR_SERVICE_NOW_DOMAIN}}/api/now/table/kb_knowledge",
         "method": "GET",
         "incrementalQuery": {
           "queryParam": "sysparm_query",
@@ -35,7 +35,7 @@
         "html":"text"
       },
       "hasMore": "rel=\"next\"",
-      "deletionUrl": "https://{{instance}}/api/now/table/sys_audit_delete",
+      "deletionUrl": "https://{{YOUR_SERVICE_NOW_DOMAIN}}/api/now/table/sys_audit_delete",
       "deletionQuery": {
         "queryParam": "sysparm_query",
         "template": "sys_created_on>={date}^tablenameINkb_knowledge",
