@@ -2,14 +2,20 @@
     "name": "customConnector",
     "type": "customConnector",
     "authDetails": {
-      "username": "YOUR_USERNAME",
-      "password": "YOUR_PASSWORD",
+      "username": "vamsi.l",
+      "password": "Kore@AI4Work",
       "authorizationType": "BasicAuth"
     },
     "configuration": {
       "api": {
-        "contentUrl": "https://{{YOUR_SERVICE_NOW_DOMAIN}}/api/now/table/kb_knowledge",
-        "method": "GET"
+        "contentUrl": "https://{{instance}}/api/now/table/kb_knowledge",
+        "method": "GET",
+        "incrementalQuery": {
+          "queryParam": "sysparm_query",
+          "template": "sys_updated_on>={date}",
+          "dateFormat": "YYYY-MM-DD HH:mm:ss",
+          "separator": "^"
+        }
       },
       "pagination": {
         "limit": "sysparm_limit",
@@ -28,6 +34,15 @@
         "sys_file_type": "sys_file_type",
         "html":"text"
       },
-      "hasMore": "rel=\"next\""
+      "hasMore": "rel=\"next\"",
+      "deletionUrl": "https://{{instance}}/api/now/table/sys_audit_delete",
+      "deletionQuery": {
+        "queryParam": "sysparm_query",
+        "template": "sys_created_on>={date}^tablenameINkb_knowledge",
+        "dateFormat": "YYYY-MM-DD HH:mm:ss",
+        "fieldsParam": "sysparm_fields",
+        "rootField": "result",
+        "idField": "documentkey"
+      }
     }
   }
