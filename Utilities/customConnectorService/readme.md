@@ -1,14 +1,14 @@
 # Custom Connector SDK
 
 ## Overview
-The **Custom Connector SDK** is designed for users who want to integrate a  custom connectors beyond the pre-built connectors in Search Assist. This SDK is built using **Node.js** and provides flexibility for extending the default functionalities of Search Assist.
+The **Custom Connector SDK** is designed for users who want to integrate custom connectors beyond the pre-built connectors in Search Assist. This SDK is built using **Node.js** and provides flexibility for extending the default functionalities of Search Assist.
+
 ## Project Structure
 
 - customConnectorService
     - .env
     - config/
         - config.json
-    
     - routes/
         - content.route.js
     - controllers/
@@ -19,7 +19,7 @@ The **Custom Connector SDK** is designed for users who want to integrate a  cust
 ## Getting Started
 
 ### Clone the Repository
-To get started with the CustomConnector SDK, clone the repository:
+To get started with the Custom Connector SDK, clone the repository:
 
 ```
 git clone git@bitbucket.org:koreteam1/searchassist-common.git
@@ -52,14 +52,12 @@ node server.js
 ## Code Changes to Use Custom Connector SDK
 To integrate your custom connector, make the following code changes:
 
-1. **config/config.json**: Contains configuration details such as API URL, authentication details, and lookup fields.Add your connector’s configuration here.
-2. **.env**: Update authorization key which is used to authorize the incoming request.
-3. **content.controller.js**: Acts as the controller for returning content from the connector,customize how data from your connector is handled and returned, ensuring the `isContentAvailable` key is part of the response.
-
-
+1. **config/config.json**: Contains configuration details such as API URL, authentication details, lookup fields, and optional incremental/deletion settings.
+2. **.env**: Update the authorization key used to authorize incoming requests.
+3. **content.controller.js**: Customize how data from your connector is handled and returned. Ensure that `isContentAvailable` is included in the response.
 
 ### Steps to Add a Custom Connector
-1. **Prepare config.json**: Create a config file containing the authentication details, API URL, lookup fields, and other necessary settings for your custom connector. Place this file in `config/config.json`.
+1. **Prepare config.json**: Create a config file containing the authentication details, API URL, lookup fields, and other necessary settings for your connector. Place this file in `config/config.json`.
 
    **Sample config.json:**
    ```json
@@ -68,46 +66,42 @@ To integrate your custom connector, make the following code changes:
      "type": "customConnector",
      "authDetails": {
        "username": "YOUR_USERNAME",
-       "password": "YOUR_PASWORD",
+       "password": "YOUR_PASSWORD",
        "authorizationType": "BasicAuth"
      },
      "configuration": {
        "api": {
-         "contentUrl": "CONTENT_URL",
+         "contentUrl": "https://api.example.com/v1/documents",
          "method": "GET"
        },
        "pagination": {
-         "limit": "sysparm_limit",
-         "offset": "sysparm_offset"
+         "limit": "limit",
+         "offset": "offset"
        },
        "lookupFields": {
-         "rootField": "result",
-         "id": "sys_id",
-         "title": "short_description",
-         "content": "text",
-         "url": "",
-         "createdOn": "sys_created_on",
-         "updatedOn": "sys_updated_on",
-         "type": "sys_class_name",
+         "rootField": "data",
+         "id": "id",
+         "title": "title",
+         "content": "body",
+         "url": "url",
+         "doc_created_on": "createdAt",
+         "doc_updated_on": "updatedAt",
+         "type": "type",
          "sys_racl": "permissions"
        },
-       "hasMore": "rel=\"next\""
+       "deletionUrl": "https://api.example.com/v1/documents/deleted"
      }
    }
    ```
 
-2. **Update .env**: Add or update the Authorization value in the `.env`. This value will be used when calling the custom connector’s API from Search Assist.
+2. **Update .env**: Add or update the `Authorization` value in `.env`. This value is used when Search Assist calls the Custom Connector SDK.
 
-3. **Update content.controller.js**: Modify the `get_content_controller` function to return content from your custom connector. Ensure that the response includes the `isContentAvailable` key to indicate whether more content is available for pagination.
+3. **Update content.controller.js**: Modify `get_content_controller` if your source requires custom handling. Ensure that the response includes `isContentAvailable`.
 
-   Note: The `isContentAvailable` key is mandatory to signal if further API calls are needed to retrieve additional content.
+   Note: `isContentAvailable` is mandatory because it tells Search Assist whether another page should be requested.
 
 ## API Endpoints
-The SDK provides two primary API endpoints:
-
-### Get Config
-This endpoint returns the connector configuration.
-
+The SDK provides these API endpoints used by Search Assist:
 
 ### Get Content
 This endpoint retrieves content based on the limit and offset parameters.
@@ -117,106 +111,116 @@ This endpoint retrieves content based on the limit and offset parameters.
 curl --location '{{protocol}}://{{hostname}}/getContent?limit=1&offset=0' \
 --header 'Authorization: ENTER YOUR AUTH KEY'
 ```
+
 #### Sample Response:
 ```json
 {
-    "result": [
+    "data": [
         {
-            "id": "06eafa3bc3ab3510d1b77aef050131d3",
-            "title": "Two-Factor Authentication for SAP Concur",
-            "content": "<p><strong><span style=\"font-size: 12pt;\">Two-Factor Authentication for SAP Concur</span></strong></p>\r\n<p> </p>\r\n<p><span style=\"font-size: 8pt;\">This is information from the SAP Concur FAQ</span></p>\r\n<p>As of October 18, 2023, all users who employ basic authentication (entering an SAP Concur username and password) when signing in at <a href=\"http://www.concursolutions.com/\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">www.concursolutions.com</a> on web or on the mobile app will be required to set up two-factor authentication (2FA) at the time of their next sign in.</p>\r\n<p>The links below are resources to help you get 2FA set up and signed in.</p>\r\n<p> </p>\r\n<p><a href=\"https://dam.sap.com/mac/app/p/pdf/asset/preview/FrhUmfQ?ltr&#61;a&amp;rc&#61;10\" target=\"_self\" rel=\"noopener noreferrer nofollow\">Two-Factor Setup Guide for End Users</a></p>\r\n<p> </p>\r\n<p><a href=\"https://dam.sap.com/mac/u/a/kA9GcJq.htm?rc&#61;10\" target=\"_self\" rel=\"noopener noreferrer nofollow\">2FA FAQs</a></p>\r\n<p> </p>\r\n<p><a href=\"https://microlearning.opensap.com/media/Signing&#43;in&#43;to&#43;SAP&#43;Concur/1_1qvk1e82\" target=\"_self\" rel=\"noopener noreferrer nofollow\">Signing In to SAP Concur Desktop With 2FA Demo Video</a> </p>\r\n<p> </p>\r\n<p><a href=\"https://microlearning.opensap.com/media/1_8rh6s6kl\" target=\"_self\" rel=\"noopener noreferrer nofollow\">Signing In to SAP Concur Mobile (iPhone Demo Video)</a></p>\r\n<p> </p>\r\n<p><a href=\"https://microlearning.opensap.com/media/1_07tka82t\" target=\"_self\" rel=\"noopener noreferrer nofollow\">Signing In to SAP Concur Mobile (Android Demo Video)</a></p>\r\n<p> </p>\r\n<div id=\"anchor1\"></div>\r\n<p><span style=\"box-sizing: border-box; text-decoration: underline;\"><strong>Why 2FA?</strong></span></p>\r\n<p>In today&#39;s digital landscape, security is of utmost concern, and we are committed to safeguarding your sensitive information and personal data. Two-Factor Authentication is a robust and proven method that significantly enhances the security of your accounts. Reputations are valuable assets, and if a security incident happens, it can tarnish an image in the eyes of customers, partners, and the general public. We know that your confidence in our ability to safeguard your data is crucial. We want to reassure you that we are investing in stronger security measures and continuously monitoring and improving our systems by bring 2FA to your accounts. There are more than <a target=\"_self\">24 billion usernames and passwords</a> on the dark web as of June 2022. Hackers are getting smarter every day and username/passwords are vulnerable to risk of unauthorized access, brute force attacks, various cyber threats, such as phishing, credential stuffing, password breaches and can be stolen by third parties. Enforcing the use of a 2FA significantly reduces the risk of unauthorized access and increases confidence that your accounts will stay safe from cyber criminals.</p>\r\n<p> </p>",
-            "url": "",
-            "type": "kb_knowledge",
-            "createdOn": "2024-01-12 13:11:58",
-            "updatedOn": "2024-01-12 13:14:30",
-            "permissions": ["xxxx"],
-            "rawData": {
-                "short_description": "Two-Factor Authentication for SAP Concur",
-                "roles": "",
-                "wiki": null,
-                "direct": "false",
-                "rating": "",
-                "description": "",
-                "generated_with_now_assist": "false",
-                "source": "",
-                "sys_updated_on": "2024-01-12 13:14:30",
-                "disable_suggesting": "false",
-                "sys_class_name": "kb_knowledge",
-                "number": "KB0010007",
-                "sys_id": "06eafa3bc3ab3510d1b77aef050131d3",
-                "use_count": "0",
-                "sys_updated_by": "cswartz",
-                "flagged": "false",
-                "disable_commenting": "false",
-                "sys_created_on": "2024-01-12 13:11:58",
-                "sys_domain": {
-                    "link": "https://ven06090.service-now.com/api/now/table/sys_user_group/global",
-                    "value": "global"
-                },
-                "valid_to": "2100-01-01",
-                "retired": "",
-                "workflow_state": "published",
-                "text": "<p><strong><span style=\"font-size: 12pt;\">Two-Factor Authentication for SAP Concur</span></strong></p>\r\n<p> </p>\r\n<p><span style=\"font-size: 8pt;\">This is information from the SAP Concur FAQ</span></p>\r\n<p>As of October 18, 2023, all users who employ basic authentication (entering an SAP Concur username and password) when signing in at <a href=\"http://www.concursolutions.com/\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">www.concursolutions.com</a> on web or on the mobile app will be required to set up two-factor authentication (2FA) at the time of their next sign in.</p>\r\n<p>The links below are resources to help you get 2FA set up and signed in.</p>\r\n<p> </p>\r\n<p><a href=\"https://dam.sap.com/mac/app/p/pdf/asset/preview/FrhUmfQ?ltr&#61;a&amp;rc&#61;10\" target=\"_self\" rel=\"noopener noreferrer nofollow\">Two-Factor Setup Guide for End Users</a></p>\r\n<p> </p>\r\n<p><a href=\"https://dam.sap.com/mac/u/a/kA9GcJq.htm?rc&#61;10\" target=\"_self\" rel=\"noopener noreferrer nofollow\">2FA FAQs</a></p>\r\n<p> </p>\r\n<p><a href=\"https://microlearning.opensap.com/media/Signing&#43;in&#43;to&#43;SAP&#43;Concur/1_1qvk1e82\" target=\"_self\" rel=\"noopener noreferrer nofollow\">Signing In to SAP Concur Desktop With 2FA Demo Video</a> </p>\r\n<p> </p>\r\n<p><a href=\"https://microlearning.opensap.com/media/1_8rh6s6kl\" target=\"_self\" rel=\"noopener noreferrer nofollow\">Signing In to SAP Concur Mobile (iPhone Demo Video)</a></p>\r\n<p> </p>\r\n<p><a href=\"https://microlearning.opensap.com/media/1_07tka82t\" target=\"_self\" rel=\"noopener noreferrer nofollow\">Signing In to SAP Concur Mobile (Android Demo Video)</a></p>\r\n<p> </p>\r\n<div id=\"anchor1\"></div>\r\n<p><span style=\"box-sizing: border-box; text-decoration: underline;\"><strong>Why 2FA?</strong></span></p>\r\n<p>In today&#39;s digital landscape, security is of utmost concern, and we are committed to safeguarding your sensitive information and personal data. Two-Factor Authentication is a robust and proven method that significantly enhances the security of your accounts. Reputations are valuable assets, and if a security incident happens, it can tarnish an image in the eyes of customers, partners, and the general public. We know that your confidence in our ability to safeguard your data is crucial. We want to reassure you that we are investing in stronger security measures and continuously monitoring and improving our systems by bring 2FA to your accounts. There are more than <a target=\"_self\">24 billion usernames and passwords</a> on the dark web as of June 2022. Hackers are getting smarter every day and username/passwords are vulnerable to risk of unauthorized access, brute force attacks, various cyber threats, such as phishing, credential stuffing, password breaches and can be stolen by third parties. Enforcing the use of a 2FA significantly reduces the risk of unauthorized access and increases confidence that your accounts will stay safe from cyber criminals.</p>\r\n<p> </p>",
-                "sys_created_by": "cswartz",
-                "display_attachments": "false",
-                "image": "",
-                "sys_view_count": "5",
-                "article_type": "text",
-                "cmdb_ci": "",
-                "author": {
-                    "link": "https://ven06090.service-now.com/api/now/table/sys_user/940d860b47932510b00ec43d026d4336",
-                    "value": "940d860b47932510b00ec43d026d4336"
-                },
-                "can_read_user_criteria": "",
-                "sys_mod_count": "2",
-                "active": "true",
-                "cannot_read_user_criteria": "",
-                "published": "2024-01-12",
-                "helpful_count": "0",
-                "sys_domain_path": "/",
-                "sys_tags": "",
-                "instrumentation_metadata": "",
-                "replacement_article": "",
-                "meta_description": "Two-Factor Authentication for SAP Concur   This is information from the SAP Concur FAQ As of October",
-                "taxonomy_topic": "",
-                "kb_knowledge_base": {
-                    "link": "https://ven06090.service-now.com/api/now/table/kb_knowledge_base/a7e8a78bff0221009b20ffffffffff17",
-                    "value": "a7e8a78bff0221009b20ffffffffff17"
-                },
-                "meta": "",
-                "view_as_allowed": "true",
-                "topic": "General",
-                "category": "",
-                "kb_category": {
-                    "link": "https://ven06090.service-now.com/api/now/table/kb_category/845732b7c3ab3510d1b77aef05013150",
-                    "value": "845732b7c3ab3510d1b77aef05013150"
-                }
-            }
+            "id": "doc-123",
+            "title": "Getting started",
+            "content": "...",
+            "url": "https://api.example.com/docs/doc-123",
+            "type": "article",
+            "doc_created_on": "2024-01-12T13:11:58.000Z",
+            "doc_updated_on": "2024-01-12T13:14:30.000Z",
+            "sys_racl": ["*"]
         }
     ],
     "isContentAvailable": false
 }
 ```
 
+### Incremental Sync
+During incremental sync, SearchAI sends `isIncremental=true` and `lastSyncTime` to `/getContent`.
+
+```bash
+curl --location '{{protocol}}://{{hostname}}/getContent?limit=30&offset=0&isIncremental=true&lastSyncTime=2025-11-19T11:46:04.830Z' \
+--header 'Authorization: ENTER YOUR AUTH KEY'
+```
+
+If your source accepts these parameters directly, no extra configuration is required. Otherwise, configure `configuration.api.incrementalQuery`:
+
+```json
+"incrementalQuery": {
+  "queryParam": "filter",
+  "template": "updatedAt>={date}",
+  "dateFormat": "YYYY-MM-DD HH:mm:ss",
+  "separator": "^"
+}
+```
+
+- **queryParam**: Source query parameter that carries the filter.
+- **template**: Source-specific filter expression. `{date}` is replaced with `lastSyncTime`.
+- **dateFormat**: Optional UTC format using `YYYY`, `MM`, `DD`, `HH`, `mm`, and `ss`. Omit it to use ISO format.
+- **separator**: Optional separator used when appending the filter to an existing query.
+
+Keep source-specific syntax inside `template`; no controller change is needed.
+
+### Get Deleted Items
+After an incremental sync, SearchAI calls this endpoint with `lastSyncTime`, `limit`, and `offset`.
+
+#### Request
+```bash
+curl --location '{{protocol}}://{{hostname}}/getDeletedItems?lastSyncTime=2025-11-19T11:46:04.830Z&limit=30&offset=0' \
+--header 'Authorization: ENTER YOUR AUTH KEY'
+```
+
+#### Response (required by SearchAI)
+```json
+{
+  "ids": ["doc-123", "doc-456"],
+  "isContentAvailable": false
+}
+```
+
+Set `deletionUrl` in `config.json` to your source deleted-items API. If `deletionUrl` is omitted, the SDK returns an empty list.
+
+If your source API already returns `{ "ids": [...], "isContentAvailable": true|false }`, no additional configuration is required.
+
+If your source returns raw rows, configure `deletionQuery`:
+
+```json
+"deletionQuery": {
+  "queryParam": "filter",
+  "template": "deletedAt>={date}",
+  "dateFormat": "YYYY-MM-DD HH:mm:ss",
+  "fieldsParam": "fields",
+  "rootField": "items",
+  "idField": "documentId"
+}
+```
+
+- **queryParam**: Source query parameter that carries the delete filter.
+- **template**: Source-specific filter expression. `{date}` is replaced with `lastSyncTime`.
+- **dateFormat**: Optional UTC date format. Omit it to use ISO format.
+- **fieldsParam**: Optional parameter used to request only the id field.
+- **rootField**: Response property containing deleted rows.
+- **idField**: Property containing the deleted document id.
+
+The deleted ids must match the ids returned by `/getContent`. For raw response rows, the SDK infers `isContentAvailable` from whether the returned page is full.
+
 ### Parameters:
 - **limit**: The number of records to retrieve.
 - **offset**: The starting point for the records.
+- **isIncremental**: Indicates an incremental `/getContent` request.
+- **lastSyncTime**: ISO timestamp of the last successful sync.
 
-Note: For both endpoints, the Authorization header is mandatory. It should contain the Base64-encoded value of the authorization key set in the `.env` file.
+Note: For all endpoints, the Authorization header is mandatory. It should contain the Base64-encoded value of the authorization key set in the `.env` file.
 
 ## Testing the SDK
 
-1. **Install Dependencies**: Make sure all required dependencies are installed.
+1. **Install Dependencies**:
    ```bash
    npm install
    ```
 
-2. **Run the Server**: Start your server to test the new LLM integration.
+2. **Run the Server**:
    ```bash
    node server.js
    ```
 
-3. **Send a Test Request**: Use an API client (like Postman) to send a request to your endpoint and verify that the integration with Claude is working as expected.
-## Conclusion
-The CustomConnector SDK provides a flexible way to integrate custom connectors into the Search Assist platform.This README provides a structured approach to integrating a custom connector, ensuring that all necessary changes are clearly outlined and explained. For further documentation or issues, feel free to consult the repository.
+3. **Send Test Requests**: Use an API client such as Postman to test `/getContent` and, when enabled, `/getDeletedItems`.
 
+## Conclusion
+The Custom Connector SDK provides a flexible way to integrate custom connectors into the Search Assist platform. Configure your API, field mappings, incremental query, and deletion query according to your source system.

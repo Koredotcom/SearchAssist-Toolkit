@@ -4,11 +4,11 @@ const path = require('path');
  
  async function  readConfig(){
     const filePath = path.join(__dirname, '..','config/config.json');
-    console.log('in read config',filePath)
+    // console.log('in read config',filePath)
     try {
     const data = await fs.readFile(filePath, 'utf8')
     const jsonData = JSON.parse(data);
-    console.log(jsonData)
+    // console.log(jsonData)
     return jsonData;
     } catch (error) {
     // JSON parse error
