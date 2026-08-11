@@ -1,16 +1,36 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { sourcesApi, generationApi, llmApi } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { sourcesApi, generationApi, llmApi, goldenSetsApi } from "@/lib/api";
 import type { ContentSource, Job } from "@/lib/api";
 import {
   Zap, Database, ChevronRight, ChevronDown, Loader2, CheckCircle, XCircle,
-  Lock, AlertTriangle, Square, AlertCircle, Globe, File,
+  Lock, AlertTriangle, Square, AlertCircle, Globe, File, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const LANGUAGE_OPTIONS = [
+  "English", "Spanish", "French", "German", "Italian", "Portuguese", "Dutch",
+  "Chinese (Simplified)", "Chinese (Traditional)", "Japanese", "Korean",
+  "Hindi", "Bengali", "Urdu", "Punjabi", "Gujarati", "Marathi", "Tamil",
+  "Telugu", "Kannada", "Malayalam", "Odia", "Assamese", "Nepali", "Sinhala",
+  "Arabic", "Hebrew", "Persian", "Turkish", "Russian", "Ukrainian", "Polish",
+  "Czech", "Slovak", "Hungarian", "Romanian", "Bulgarian", "Serbian",
+  "Croatian", "Bosnian", "Slovenian", "Macedonian", "Albanian", "Greek",
+  "Swedish", "Norwegian", "Danish", "Finnish", "Icelandic", "Estonian",
+  "Latvian", "Lithuanian", "Irish", "Welsh", "Basque", "Catalan", "Galician",
+  "Malay", "Indonesian", "Filipino", "Thai", "Vietnamese", "Burmese",
+  "Khmer", "Lao", "Mongolian", "Kazakh", "Uzbek", "Kyrgyz", "Tajik",
+  "Azerbaijani", "Armenian", "Georgian", "Swahili", "Amharic", "Somali",
+  "Yoruba", "Igbo", "Hausa", "Zulu", "Xhosa", "Afrikaans", "Sesotho",
+  "Shona", "Kinyarwanda", "Malagasy", "Latin", "Esperanto", "Haitian Creole",
+  "Luxembourgish", "Maltese", "Maori", "Samoan", "Tongan", "Fijian",
+  "Inuktitut", "Cherokee", "Quechua", "Aymara", "Guarani",
+].sort((a, b) => a.localeCompare(b));
+
 export default function GeneratePage() {
   const { appId } = useParams<{ appId: string }>();
+  const qc = useQueryClient();
 
   const [selectedConnectorIds, setSelectedConnectorIds] = useState<string[]>([]);
   const [selectedWebIds, setSelectedWebIds] = useState<string[]>([]);
@@ -18,8 +38,13 @@ export default function GeneratePage() {
   const [maxDocs, setMaxDocs] = useState(10);
   const [allDocs, setAllDocs] = useState(false);
   const [maxQuestionsPerDoc, setMaxQuestionsPerDoc] = useState(5);
+  const [targetLanguage, setTargetLanguage] = useState("English");
+  const [languageQuery, setLanguageQuery] = useState("");
+  const [languageOpen, setLanguageOpen] = useState(false);
   const [goldenSetVersion, setGoldenSetVersion] = useState("v1.0.0");
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [freezeSavedVersion, setFreezeSavedVersion] = useState<string | null>(null);
+  const [freezeError, setFreezeError] = useState<string | null>(null);
 
   const { data: sources = [] } = useQuery({
     queryKey: ["sources", appId],
@@ -44,6 +69,13 @@ export default function GeneratePage() {
   const totalSelected =
     selectedConnectorIds.length + selectedWebIds.length + selectedFileIds.length;
   const totalAvailable = sources.length + webCrawls.length + uploadedDocs.length;
+  const normalizedLanguageQuery = languageQuery.trim();
+  const filteredLanguages = LANGUAGE_OPTIONS.filter((lang) =>
+    lang.toLowerCase().includes(normalizedLanguageQuery.toLowerCase())
+  );
+  const canUseCustomLanguage =
+    normalizedLanguageQuery.length > 0 &&
+    !LANGUAGE_OPTIONS.some((lang) => lang.toLowerCase() === normalizedLanguageQuery.toLowerCase());
 
   const { data: llmConfigs = [] } = useQuery({
     queryKey: ["llm-configs", appId],
@@ -60,6 +92,12 @@ export default function GeneratePage() {
   const { data: jobs = [] } = useQuery({
     queryKey: ["gen-jobs", appId],
     queryFn: () => generationApi.listJobs(appId!),
+    enabled: !!appId,
+  });
+
+  const { data: goldenSets = [] } = useQuery({
+    queryKey: ["golden-sets", appId],
+    queryFn: () => goldenSetsApi.list(appId!),
     enabled: !!appId,
   });
 
@@ -82,6 +120,7 @@ export default function GeneratePage() {
         file_source_ids: selectedFileIds,
         max_docs_per_source: allDocs ? 0 : maxDocs,
         max_questions_per_doc: maxQuestionsPerDoc,
+        target_language: targetLanguage,
         filters: {},
       }),
     onSuccess: (job: Job) => setActiveJobId(job.job_id),
@@ -89,6 +128,17 @@ export default function GeneratePage() {
 
   const freezeMutation = useMutation({
     mutationFn: (version: string) => generationApi.freeze(appId!, version),
+    onMutate: () => {
+      setFreezeError(null);
+      setFreezeSavedVersion(null);
+    },
+    onSuccess: (_data, version) => {
+      setFreezeSavedVersion(version);
+      qc.invalidateQueries({ queryKey: ["golden-sets", appId] });
+    },
+    onError: (err: { response?: { data?: { detail?: string } }; message?: string }) => {
+      setFreezeError(err.response?.data?.detail ?? err.message ?? "Failed to save golden set.");
+    },
   });
 
   const stopMutation = useMutation({
@@ -101,6 +151,8 @@ export default function GeneratePage() {
 
   const isRunning = activeJob?.status === "running";
   const isDone = activeJob?.status === "complete";
+  const currentGoldenSet = goldenSets.find((g) => g.version === goldenSetVersion);
+  const isFrozen = Boolean(currentGoldenSet?.frozen_at || freezeSavedVersion === goldenSetVersion);
 
   return (
     <div className="space-y-6">
@@ -287,6 +339,80 @@ export default function GeneratePage() {
               />
               <p className="text-xs text-gray-400 mt-1">Semver string for this golden set batch</p>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Test Case Language
+              </label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLanguageOpen((v) => !v);
+                    setLanguageQuery("");
+                  }}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                >
+                  <span className="truncate">{targetLanguage}</span>
+                  <ChevronDown className={cn("w-4 h-4 text-gray-400 transition-transform", languageOpen && "rotate-180")} />
+                </button>
+                {languageOpen && (
+                  <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                    <div className="relative p-2 border-b border-gray-100">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                      <input
+                        autoFocus
+                        value={languageQuery}
+                        onChange={(e) => setLanguageQuery(e.target.value)}
+                        placeholder="Search languages..."
+                        className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      />
+                    </div>
+                    <div className="max-h-60 overflow-y-auto py-1">
+                      {canUseCustomLanguage && (
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setTargetLanguage(normalizedLanguageQuery);
+                            setLanguageOpen(false);
+                            setLanguageQuery("");
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm text-violet-700 bg-violet-50 hover:bg-violet-100 font-medium"
+                        >
+                          Use "{normalizedLanguageQuery}"
+                        </button>
+                      )}
+                      {filteredLanguages.length === 0 && !canUseCustomLanguage ? (
+                        <div className="px-3 py-2 text-sm text-gray-400">No languages found</div>
+                      ) : (
+                        filteredLanguages.map((lang) => (
+                          <button
+                            key={lang}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setTargetLanguage(lang);
+                              setLanguageOpen(false);
+                              setLanguageQuery("");
+                            }}
+                            className={cn(
+                              "w-full text-left px-3 py-2 text-sm hover:bg-violet-50",
+                              lang === targetLanguage ? "text-violet-700 bg-violet-50 font-medium" : "text-gray-700"
+                            )}
+                          >
+                            {lang}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                Questions, expected answers, and rationales will be generated in this language.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -314,6 +440,7 @@ export default function GeneratePage() {
               <Row label="Docs per source" value={allDocs ? "All" : String(maxDocs)} />
               <Row label="Total docs (max)" value={allDocs ? "All" : String(maxDocs * Math.max(totalSelected, 1))} />
               <Row label="Questions per doc" value={String(maxQuestionsPerDoc)} />
+              <Row label="Language" value={targetLanguage} />
               <Row label="Est. total questions" value={allDocs ? "varies" : String(maxDocs * Math.max(totalSelected, 1) * maxQuestionsPerDoc)} />
               <Row label="Golden set" value={goldenSetVersion} />
             </div>
@@ -356,18 +483,39 @@ export default function GeneratePage() {
 
           {/* Save option (previously "Freeze") */}
           {isDone && activeJob && !(activeJob.result?.stopped_early as boolean) && (
-            <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
-              <p className="text-sm font-medium text-violet-900 mb-1">Ready to save for evaluation?</p>
-              <p className="text-xs text-violet-700 mb-3">
-                Saving locks this golden set so it can be used for evaluation runs. You can still view it in the Draft state on the Golden Sets page.
+            <div className={cn(
+              "rounded-xl p-4 border",
+              isFrozen ? "bg-green-50 border-green-200" : "bg-violet-50 border-violet-200"
+            )}>
+              <p className={cn(
+                "text-sm font-medium mb-1",
+                isFrozen ? "text-green-900" : "text-violet-900"
+              )}>
+                {isFrozen ? "Saved for evaluation" : "Ready to save for evaluation?"}
               </p>
+              <p className={cn(
+                "text-xs mb-3",
+                isFrozen ? "text-green-700" : "text-violet-700"
+              )}>
+                {isFrozen
+                  ? `${goldenSetVersion} is locked and can now be used for evaluation runs.`
+                  : "Saving locks this golden set so it can be used for evaluation runs. You can still view it in the Draft state on the Golden Sets page."}
+              </p>
+              {freezeError && (
+                <p className="text-xs text-red-600 mb-2">{freezeError}</p>
+              )}
               <button
                 onClick={() => freezeMutation.mutate(goldenSetVersion)}
-                disabled={freezeMutation.isPending}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50"
+                disabled={freezeMutation.isPending || isFrozen}
+                className={cn(
+                  "w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg disabled:opacity-70",
+                  isFrozen
+                    ? "bg-green-600 text-white cursor-default"
+                    : "bg-violet-600 text-white hover:bg-violet-700"
+                )}
               >
-                <Lock className="w-3.5 h-3.5" />
-                {freezeMutation.isPending ? "Saving..." : `Save & Lock ${goldenSetVersion}`}
+                {isFrozen ? <CheckCircle className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                {freezeMutation.isPending ? "Saving..." : isFrozen ? `Saved & Locked ${goldenSetVersion}` : `Save & Lock ${goldenSetVersion}`}
               </button>
             </div>
           )}

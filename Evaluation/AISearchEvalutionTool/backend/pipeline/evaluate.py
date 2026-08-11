@@ -11,18 +11,23 @@ import uuid
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from agents.filter_generator import build_source_filter, generate_meta_filters
+from agents.filter_generator import build_field_filters, build_source_filter, generate_meta_filters
 from db.database import (
     create_eval_run, finish_eval_run, get_active_test_cases,
     get_completed_tc_ids, get_doc_source_type, get_eval_thresholds,
     is_stop_requested, update_job, upsert_eval_result,
 )
+from judge.extract_scorer import score_extract_chunks, top_k_chunks_payload
 from judge.judge import judge_result
 from judge.metrics import (
     answer_similarity, chunks_matched_by_spec, derive_verdict, detect_case,
-    expected_doc_rank, first_matched_chunk, first_matched_chunk_rank,
-    judge_configured, qualified_chunks_count, question_answer_relevance,
-    recall_at_k,
+    doc_retrieved_for_mode, expected_doc_rank, expects_reference_document,
+    CHUNK_SCORING_QUALIFIED,
+    extract_scoring_chunks,
+    first_matched_chunk, first_matched_chunk_rank,
+    judge_configured, merge_retrieval_failure_category,
+    qualified_chunks_count, question_answer_relevance,
+    recall_at_k, recall_at_k_from_chunks,
 )
 from koreai.search import query_rag
 
@@ -148,10 +153,16 @@ def run_evaluation(
     sample_mode: str = "first",
     filter_mode: str = "none",
     filter_prompt: str | None = None,
+    filter_fields: list[str] | None = None,
     enable_racl: bool = False,
     user_email: str | None = None,
     answer_mode_override: str | None = None,
     question_types: list[str] | None = None,
+    judge_mode: str = "auto",
+    case1_threshold: float | None = None,
+    case2_threshold: float | None = None,
+    top_k_pass: int | None = None,
+    chunk_scoring_mode: str | None = None,
 ) -> dict[str, Any]:
     # Apply per-run answer mode override if provided
     if answer_mode_override:
@@ -162,10 +173,24 @@ def run_evaluation(
 
     logger.info(
         "Eval | Starting evaluation | app=%s version=%s rag_version=%s run_id=%s "
-        "max_cases=%s sample_mode=%s filter_mode=%s racl=%s answer_mode=%s",
+        "max_cases=%s sample_mode=%s filter_mode=%s racl=%s answer_mode=%s "
+        "judge_mode=%s c1_threshold=%s c2_threshold=%s top_k_pass=%s chunk_scoring=%s",
         app_id, golden_set_version, rag_version, run_id,
         max_cases, sample_mode, filter_mode, enable_racl, app.get("answer_mode"),
+        judge_mode, case1_threshold, case2_threshold, top_k_pass, chunk_scoring_mode,
     )
+
+    # ── Validate judge_mode against actual configuration ────────────────
+    if judge_mode == "force_on" and not judge_configured(app):
+        msg = (
+            "Verdict configuration requires the LLM judge, but no API key is "
+            "configured for the judge agent's provider. Either set a key on "
+            "the API Keys page, switch the judge agent's model on Prompts & "
+            "Models, or change Judge mode to 'auto' / 'off'."
+        )
+        logger.warning("Eval | %s | run_id=%s", msg, run_id)
+        update_job(job_id, "failed", error=msg)
+        return {}
 
     try:
         test_cases = get_active_test_cases(app_id, golden_set_version)
@@ -226,11 +251,17 @@ def run_evaluation(
                 app_id=app_id,
                 filter_mode=filter_mode,
                 filter_prompt=filter_prompt,
+                filter_fields=filter_fields,
             )
             return _evaluate_one(
                 run_id, tc, app,
                 meta_filters=meta_filters,
                 user_email=racl_user,
+                judge_mode=judge_mode,
+                case1_threshold_override=case1_threshold,
+                case2_threshold_override=case2_threshold,
+                top_k_pass_override=top_k_pass,
+                chunk_scoring_mode_override=chunk_scoring_mode,
             ), tc
 
         with ThreadPoolExecutor(max_workers=MAX_EVAL_WORKERS) as executor:
@@ -345,15 +376,26 @@ def _resolve_meta_filters(
     app_id: str,
     filter_mode: str,
     filter_prompt: str | None,
+    filter_fields: list[str] | None = None,
 ) -> list[dict]:
     """Resolve metaFilters for a single test case based on the configured mode.
 
-    Priority:
-      1. auto_source  — look up sys_content_type from source_document table
-      2. custom_prompt — LLM-generated filters from question
-      3. per-row      — sys_content_type stored in the test case's generation_metadata
-                        (set when the Excel sheet has a sys_content_type column)
+    Modes:
+      field_filters — use values from the test case's own fields (generation_metadata /
+                      custom_fields) for the field names selected by the user.
+                      Only applies filters for fields that have a non-empty value on
+                      this specific test case.
+      custom_prompt — LLM-generated filters per question.
+      none          — no filters.
     """
+    if filter_mode == "field_filters":
+        fields = filter_fields or []
+        if not fields:
+            return []
+        result = build_field_filters(tc, fields)
+        logger.debug("Eval | tc=%s field_filters=%s → %d rules", tc["tc_id"], fields, len(result))
+        return result
+
     if filter_mode == "auto_source":
         ref_docs = tc.get("reference_doc_ids") or []
         if not ref_docs:
@@ -385,6 +427,11 @@ def _evaluate_one(
     app: dict,
     meta_filters: list[dict] | None = None,
     user_email: str | None = None,
+    judge_mode: str = "auto",
+    case1_threshold_override: float | None = None,
+    case2_threshold_override: float | None = None,
+    top_k_pass_override: int | None = None,
+    chunk_scoring_mode_override: str | None = None,
 ) -> dict | None:
     expected_behavior = tc.get("expected_behavior", "ANSWER")
     banned_topics = app.get("banned_topics") or []
@@ -397,8 +444,28 @@ def _evaluate_one(
         match_spec = [{"field": "docId", "value": d} for d in legacy_ref_ids]
 
     case_id = detect_case(tc)
-    has_judge = judge_configured(app)
-    thresholds = get_eval_thresholds(app["app_id"])
+
+    # Resolve the effective verdict knobs for this run. judge_mode='auto' falls
+    # back to actual configuration; 'force_off' skips the judge even when keys
+    # are present; 'force_on' is validated upstream and treated as 'auto' here.
+    if judge_mode == "force_off":
+        has_judge = False
+    else:
+        has_judge = judge_configured(app)
+
+    app_thresholds = get_eval_thresholds(app["app_id"])
+    case1_threshold = (
+        case1_threshold_override
+        if case1_threshold_override is not None
+        else app_thresholds["case1_threshold"]
+    )
+    case2_threshold = (
+        case2_threshold_override
+        if case2_threshold_override is not None
+        else app_thresholds["case2_threshold"]
+    )
+    from judge.metrics import TOP_K_PASS as _DEFAULT_TOP_K
+    top_k_pass = top_k_pass_override if top_k_pass_override is not None else _DEFAULT_TOP_K
 
     for attempt, delay in enumerate(RETRY_DELAYS, 1):
         try:
@@ -409,11 +476,23 @@ def _evaluate_one(
             retrieved_ids = rag.get("cited_doc_ids") or []
             rag_answer = rag.get("answer") or ""
             chunks = rag.get("chunk_signals", []) or []
+            _answer_mode = app.get("answer_mode", "answer_generation")
+            is_extract = _answer_mode == "extract_only"
+            chunk_scoring_mode = (
+                chunk_scoring_mode_override
+                if chunk_scoring_mode_override in ("qualified_only", "raw")
+                else CHUNK_SCORING_QUALIFIED
+            )
+            scoring_chunks = (
+                extract_scoring_chunks(chunks, chunk_scoring_mode) if is_extract else chunks
+            )
 
             # Resolve which retrieved docs satisfy the match spec. For pure-docId
             # specs the result equals the spec values that appear in retrieved_ids;
             # for recordUrl / recordTitle / custom specs, this expands via chunks.
-            effective_ref_ids = chunks_matched_by_spec(chunks, match_spec) if match_spec else []
+            effective_ref_ids = (
+                chunks_matched_by_spec(scoring_chunks, match_spec) if match_spec else []
+            )
             # Fallback if there are no chunks (just cited_doc_ids): use direct docId
             # values from the spec
             if not effective_ref_ids and match_spec:
@@ -421,35 +500,63 @@ def _evaluate_one(
 
             # ── Non-LLM metrics — always computed ───────────────────────────
             rank = expected_doc_rank(retrieved_ids, effective_ref_ids)
-            chunk_rank = first_matched_chunk_rank(chunks, match_spec) if match_spec else None
-            recall = recall_at_k(retrieved_ids, effective_ref_ids) if effective_ref_ids else {}
+            chunk_rank = (
+                first_matched_chunk_rank(scoring_chunks, match_spec) if match_spec else None
+            )
+            if not chunk_rank and is_extract and effective_ref_ids and not match_spec:
+                # Doc-only golden rows: first qualified chunk with expected docId
+                ref = set(effective_ref_ids)
+                for i, ch in enumerate(scoring_chunks):
+                    if ch.get("docId") in ref:
+                        chunk_rank = i + 1
+                        break
+            if is_extract and effective_ref_ids:
+                recall = recall_at_k_from_chunks(
+                    scoring_chunks, effective_ref_ids, match_spec or None,
+                )
+            else:
+                recall = recall_at_k(retrieved_ids, effective_ref_ids) if effective_ref_ids else {}
             # Retrieval scoring signals (per-chunk)
             qualified_count = qualified_chunks_count(chunks)
-            matched_chunk = first_matched_chunk(chunks, match_spec) if match_spec else None
+            matched_chunk = (
+                first_matched_chunk(scoring_chunks, match_spec) if match_spec else None
+            )
             matched_scores = {
                 "vector":     (matched_chunk or {}).get("vector_score"),
                 "keyword":    (matched_chunk or {}).get("keyword_score"),
                 "positional": (matched_chunk or {}).get("positional_score"),
                 "combined":   (matched_chunk or {}).get("score"),
             } if matched_chunk else {}
+
             similarity = (
                 answer_similarity(rag_answer, tc.get("expected_answer"))
-                if tc.get("expected_answer") else None
+                if (tc.get("expected_answer") and not is_extract) else None
             )
-            # Q↔Answer relevance — used for Cases 1 & 3 in answer_generation mode
-            # without a judge (Case 3 maps to case-1 semantics: no ground-truth answer).
-            _answer_mode = app.get("answer_mode", "answer_generation")
             qa_relevance = (
                 question_answer_relevance(tc.get("question"), rag_answer)
-                if (not has_judge and _answer_mode == "answer_generation" and case_id in (1, 3))
+                if (not has_judge and not is_extract and case_id in (1, 3))
                 else None
             )
 
-            # ── Optional LLM judge ──────────────────────────────────────────
+            # ── LLM scoring ─────────────────────────────────────────────────
             judge_scores: dict | None = None
             failure_category: str | None = None
             judge_rationale: str | None = None
-            if has_judge:
+            extract_rationale: str | None = None
+
+            if is_extract and judge_configured(app):
+                logger.debug("Eval | Extract scorer | tc_id=%s attempt=%d", tc_id, attempt)
+                extract_obj = score_extract_chunks(
+                    question=tc["question"],
+                    expected_answer=tc.get("expected_answer") or "",
+                    chunk_signals=scoring_chunks,
+                    app_id=app["app_id"],
+                    top_k=top_k_pass,
+                )
+                judge_scores = extract_obj["scores"]
+                extract_rationale = extract_obj["rationale"]
+                judge_rationale = extract_rationale
+            elif has_judge and not is_extract:
                 logger.debug("Eval | Running judge | tc_id=%s attempt=%d", tc_id, attempt)
                 verdict_obj = judge_result(
                     question=tc["question"],
@@ -465,23 +572,44 @@ def _evaluate_one(
                 failure_category = verdict_obj["failure_category"]
                 judge_rationale  = verdict_obj["judge_rationale"]
 
+            # Extract mode: pass/fail is top-K chunk rank only — never LLM judge verdict.
+            has_judge_for_verdict = has_judge and not is_extract
+            verdict_scores = dict(judge_scores or {})
+            if is_extract:
+                verdict_scores["chunk_scoring_mode"] = chunk_scoring_mode
+
             verdict, verdict_source = derive_verdict(
-                case_id=case_id, has_judge=has_judge,
-                judge_scores=judge_scores,
+                case_id=case_id, has_judge=has_judge_for_verdict,
+                judge_scores=verdict_scores,
                 expected_doc_rank_val=rank, similarity=similarity,
                 qa_relevance=qa_relevance,
-                case1_threshold=thresholds["case1_threshold"],
-                case2_threshold=thresholds["case2_threshold"],
+                case1_threshold=case1_threshold,
+                case2_threshold=case2_threshold,
                 chunk_rank=chunk_rank,
                 answer_mode=_answer_mode,
+                top_k_pass=top_k_pass,
             )
 
             # Compose stored "scores" payload — includes legacy fields the UI uses
             scores: dict = dict(judge_scores or {})
-            scores.setdefault("doc_retrieved", bool(rank))
+            scores.pop("doc_retrieved", None)  # never trust judge for retrieval
+            expects_ref = expects_reference_document(match_spec, effective_ref_ids)
+            doc_retrieved = doc_retrieved_for_mode(
+                answer_mode=_answer_mode,
+                doc_rank=rank,
+                chunk_rank=chunk_rank,
+                expects_reference=expects_ref,
+                top_k=top_k_pass,
+            )
+            scores["doc_retrieved"] = doc_retrieved
+            scores["top_k_pass"] = top_k_pass
+            if is_extract:
+                scores["top_chunks"] = top_k_chunks_payload(scoring_chunks, k=top_k_pass)
             scores["answer_mode"] = rag.get("answer_mode", app.get("answer_mode", "answer_generation"))
             scores["chunk_rank"]  = chunk_rank
             scores["qualified_chunks_count"] = qualified_count
+            if is_extract:
+                scores["chunk_scoring_mode"] = chunk_scoring_mode
             if matched_chunk:
                 scores["matched_vector_score"]     = matched_scores.get("vector")
                 scores["matched_keyword_score"]    = matched_scores.get("keyword")
@@ -492,23 +620,29 @@ def _evaluate_one(
                 scores["matched_chunk_sent_to_llm"]    = matched_chunk.get("sentToLLM")
                 scores["matched_chunk_used_in_answer"] = matched_chunk.get("usedInAnswer")
 
-            if not has_judge and failure_category is None:
-                if _answer_mode == "extract_only" and case_id in (3, 4):
-                    failure_category = "retrieval_miss" if not rank else "none"
-                elif case_id in (1, 3):
+            if is_extract and failure_category is None:
+                failure_category = "none"
+            elif not has_judge and not is_extract and failure_category is None:
+                if case_id in (1, 3):
                     # Q↔Answer relevance proxy
-                    if qa_relevance is not None and qa_relevance < thresholds["case1_threshold"]:
+                    if qa_relevance is not None and qa_relevance < case1_threshold:
                         failure_category = "off_topic"
                     else:
                         failure_category = "none"
                 elif case_id in (2, 4):
                     # Answer↔Expected similarity
-                    if similarity is not None and similarity < thresholds["case2_threshold"]:
+                    if similarity is not None and similarity < case2_threshold:
                         failure_category = "low_similarity"
                     else:
                         failure_category = "none"
                 else:
                     failure_category = "none"
+
+            failure_category = merge_retrieval_failure_category(
+                failure_category,
+                doc_retrieved=doc_retrieved,
+                expects_reference=expects_ref,
+            )
 
             # For Case 1 (no expected answer) the "similarity" field carries
             # the Q↔Answer relevance score instead.
@@ -526,6 +660,7 @@ def _evaluate_one(
                 "latency_retrieval_ms": rag.get("latency_retrieval_ms"),
                 "search_request_id": rag.get("search_request_id"),
                 "search_payload": rag.get("search_payload"),
+                "search_response": rag.get("search_response"),
                 "attempt_count": attempt,
                 # 4-case fields
                 "case_id": case_id,

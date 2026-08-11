@@ -169,6 +169,20 @@ def _resolve_match_spec(app_id: str, row_norm: dict[str, str]) -> tuple[list[dic
     return [], []
 
 
+_ALL_KNOWN_COLS = (
+    set(_DOC_ID_COLS) | set(_URL_COLS) | set(_TITLE_COLS) | _STANDARD_COLS
+    | {"sys_content_type", "docid", "recordurl", "recordtitle"}
+)
+
+
+def _extract_custom_fields(norm: dict[str, str]) -> dict[str, str]:
+    """Return any columns that are not part of the standard schema."""
+    return {
+        k: v for k, v in norm.items()
+        if k not in _ALL_KNOWN_COLS and v
+    }
+
+
 def _parse_csv(content: bytes, app_id: str) -> list[dict]:
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
@@ -188,6 +202,7 @@ def _parse_csv(content: bytes, app_id: str) -> list[dict]:
             "reference_doc_ids": ref_ids,
             "reference_match_spec": match_spec,
             "sys_content_type": norm.get("sys_content_type") or None,
+            "custom_fields": _extract_custom_fields(norm),
         })
     return rows
 
@@ -228,6 +243,7 @@ def _parse_excel(content: bytes, app_id: str) -> list[dict]:
             "reference_doc_ids": ref_ids,
             "reference_match_spec": match_spec,
             "sys_content_type": norm.get("sys_content_type") or None,
+            "custom_fields": _extract_custom_fields(norm),
         })
     wb.close()
     return cases
@@ -387,9 +403,157 @@ def get_test_cases(app_id: str, version: str):
             "human_validated": bool(r.get("human_validated")),
             "status": r.get("status", "active"),
             "decision": r.get("decision"),
+            "primary_concern": r.get("primary_concern"),
+            "rationale": r.get("rationale"),
+            "case_id": r.get("case_id"),
+            "custom_fields": r.get("custom_fields") or {},
             "scores": scores,
         })
     return result
+
+
+# ── Filter options ───────────────────────────────────────────────────────────
+
+_FILTER_FIELD_LABELS: dict[str, str] = {
+    "sys_content_type": "Source Type (sys_content_type)",
+}
+
+
+@router.get("/{version}/filter-options")
+def get_filter_options(app_id: str, version: str):
+    """Return which meta-filter fields are populated across all test cases in this golden set.
+
+    Used by the Evaluate page to show only fields that actually have data.
+    Response: {"fields": [{"name": str, "label": str, "count": int}]}
+    """
+    if not get_app(app_id):
+        raise HTTPException(404, "App not found")
+    cases = list_test_cases(app_id, version)
+    counts: dict[str, int] = {}
+    for tc in cases:
+        meta = tc.get("generation_metadata") or {}
+        if str(meta.get("sys_content_type") or "").strip():
+            counts["sys_content_type"] = counts.get("sys_content_type", 0) + 1
+        for k, v in (tc.get("custom_fields") or {}).items():
+            if k and str(v or "").strip():
+                counts[k] = counts.get(k, 0) + 1
+    fields = [
+        {
+            "name": name,
+            "label": _FILTER_FIELD_LABELS.get(name, name.replace("_", " ").title()),
+            "count": count,
+        }
+        for name, count in sorted(counts.items(), key=lambda x: -x[1])
+    ]
+    return {"fields": fields}
+
+
+# ── Export ──────────────────────────────────────────────────────────────────
+
+@router.get("/{version}/export")
+def export_golden_set(app_id: str, version: str):
+    """Stream all test cases for a golden set as a .xlsx file."""
+    if not get_app(app_id):
+        raise HTTPException(404, "App not found")
+    cases = list_test_cases(app_id, version)
+    if not cases:
+        raise HTTPException(404, "No test cases found for this golden set")
+
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        raise HTTPException(500, "openpyxl is required for export")
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Test Cases"
+
+    HDR_FILL = PatternFill(start_color="1F2937", end_color="1F2937", fill_type="solid")
+    HDR_FONT = Font(color="FFFFFF", bold=True)
+    KEEP_FILL = PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid")
+    DROP_FILL = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+    BORDER_FILL = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
+
+    # Collect all custom field keys across all test cases (preserving first-seen order)
+    all_custom_keys: list[str] = []
+    seen_custom_keys: set[str] = set()
+    for tc in cases:
+        for k in (tc.get("custom_fields") or {}).keys():
+            if k not in seen_custom_keys:
+                all_custom_keys.append(k)
+                seen_custom_keys.add(k)
+
+    base_headers = [
+        "Question",
+        "Expected Answer",
+        "Expected Behavior",
+        "Case ID",
+        "Question Type",
+        "Difficulty",
+        "Reference Doc IDs",
+        "Status",
+        "Decision",
+        "Primary Concern",
+        "Rationale",
+    ]
+    headers = base_headers + [k.replace("_", " ").title() for k in all_custom_keys]
+    base_widths = [60, 50, 18, 8, 18, 10, 50, 12, 12, 25, 70]
+    all_widths = base_widths + [25] * len(all_custom_keys)
+
+    ws.append(headers)
+    for i, cell in enumerate(ws[1], start=1):
+        cell.fill = HDR_FILL
+        cell.font = HDR_FONT
+        cell.alignment = Alignment(horizontal="left", wrap_text=True)
+        ws.column_dimensions[get_column_letter(i)].width = all_widths[i - 1]
+    ws.row_dimensions[1].height = 30
+
+    for tc in cases:
+        decision = (tc.get("decision") or "").upper()
+        ref_ids = ", ".join(tc.get("reference_doc_ids") or [])
+        custom = tc.get("custom_fields") or {}
+        row = [
+            tc.get("question"),
+            tc.get("expected_answer"),
+            tc.get("expected_behavior"),
+            tc.get("case_id"),
+            tc.get("question_type"),
+            tc.get("difficulty"),
+            ref_ids,
+            tc.get("status"),
+            tc.get("decision"),
+            tc.get("primary_concern"),
+            tc.get("rationale"),
+        ] + [custom.get(k, "") for k in all_custom_keys]
+        ws.append(row)
+        row_idx = ws.max_row
+        if decision == "KEEP":
+            fill = KEEP_FILL
+        elif decision == "DROP":
+            fill = DROP_FILL
+        elif decision == "BORDERLINE":
+            fill = BORDER_FILL
+        else:
+            fill = None
+        if fill:
+            for col_idx in range(1, len(headers) + 1):
+                ws.cell(row=row_idx, column=col_idx).fill = fill
+        ws.row_dimensions[row_idx].height = 15
+
+    ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    safe_version = version.replace("/", "-")
+    filename = f"golden-set-{safe_version}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ── Delete ──────────────────────────────────────────────────────────────────

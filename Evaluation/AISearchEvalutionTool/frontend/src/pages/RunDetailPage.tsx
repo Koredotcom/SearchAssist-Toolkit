@@ -1,13 +1,19 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { resultsApi, queryApi } from "@/lib/api";
 import type { EvalResult, QueryResponse } from "@/lib/api";
+import type { ChunkSignal } from "@/lib/chunks";
+import {
+  evalSnapshotToQueryView, normalizeQueryResponse, qualifiedChunks, qualifiedRank,
+} from "@/lib/chunks";
 import {
   ArrowLeft, ChevronDown, ChevronRight, CheckCircle, XCircle,
   ShieldAlert, AlertTriangle, Activity, Gauge, Copy, Check,
   Play, RotateCcw, Loader2, Download, FileWarning, X, Trash2,
+  Code2, Maximize2, Minimize2,
 } from "lucide-react";
+import JsonExplorer from "@/components/JsonExplorer";
 import { cn } from "@/lib/utils";
 import InsightsPanel from "@/components/InsightsPanel";
 import TrendStrip from "@/components/TrendStrip";
@@ -204,6 +210,38 @@ export default function RunDetailPage() {
     return ranks.length ? Math.round((ranks.reduce((a, b) => a + b, 0) / ranks.length) * 10) / 10 : null;
   }, [results]);
 
+  // ── Chunk-lifecycle accuracies ───────────────────────────────────────────
+  // Each test case with a reference doc has, at most, one "matched chunk"
+  // (the first chunk whose fields satisfy the test case's match spec).
+  // Kore.ai tags every chunk with three boolean flags telling us how far the
+  // chunk made it through the answer pipeline: was it qualified by retrieval
+  // scoring, was it sent to the LLM, was it used in the final answer.
+  // Compute the run-level percentages from those per-row flags.
+  const lifecycleStats = useMemo(() => {
+    const isBool = (v: unknown): v is boolean => typeof v === "boolean";
+    const rowsWithMatchedChunk = results.filter((r) =>
+      isBool(r.scores?.matched_chunk_qualified) ||
+      isBool(r.scores?.matched_chunk_sent_to_llm) ||
+      isBool(r.scores?.matched_chunk_used_in_answer)
+    );
+    const denom = rowsWithMatchedChunk.length;
+    const countTrue = (key: string) =>
+      rowsWithMatchedChunk.filter((r) => r.scores?.[key] === true).length;
+    const qualified = countTrue("matched_chunk_qualified");
+    const sentToLlm = countTrue("matched_chunk_sent_to_llm");
+    const usedInAnswer = countTrue("matched_chunk_used_in_answer");
+    const rate = (n: number) => (denom > 0 ? n / denom : null);
+    return {
+      denom,
+      qualified,
+      sentToLlm,
+      usedInAnswer,
+      retrievalAccuracy: rate(qualified),
+      sentToLlmAccuracy: rate(sentToLlm),
+      answerGenAccuracy: rate(usedInAnswer),
+    };
+  }, [results]);
+
   const questionTypes = Array.from(new Set(results.map((r) => r.question_type).filter(Boolean)));
 
   const metricAverages = useMemo(() => RUBRIC_METRICS.map((m) => {
@@ -348,6 +386,44 @@ export default function RunDetailPage() {
           color={avgChunkRank != null ? (avgChunkRank <= 10 ? "green" : avgChunkRank <= 30 ? "amber" : "red") : undefined}
         />
       </div>
+
+      {/* ── Chunk pipeline accuracy ────────────────────────────────── */}
+      {lifecycleStats.denom > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900">Chunk Pipeline Accuracy</h3>
+            <span className="text-xs text-gray-400">
+              {lifecycleStats.denom} test case{lifecycleStats.denom === 1 ? "" : "s"} with a matched chunk
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+            How far did the expected document's chunk make it down Kore.ai's pipeline? Each stage is a stricter filter — qualified ⊇ sent to LLM ⊇ used in answer.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <PipelineStatCard
+              stage="Retrieval"
+              description="Chunk passed Kore.ai's retrieval / shortlist threshold (chunkQualified=true)"
+              count={lifecycleStats.qualified}
+              denom={lifecycleStats.denom}
+              rate={lifecycleStats.retrievalAccuracy}
+            />
+            <PipelineStatCard
+              stage="Sent to LLM"
+              description="Chunk was included in the LLM's context for answer generation (sentToLLM=true)"
+              count={lifecycleStats.sentToLlm}
+              denom={lifecycleStats.denom}
+              rate={lifecycleStats.sentToLlmAccuracy}
+            />
+            <PipelineStatCard
+              stage="Answer generation"
+              description="Chunk was actually cited / used in the final answer (usedInAnswer=true)"
+              count={lifecycleStats.usedInAnswer}
+              denom={lifecycleStats.denom}
+              rate={lifecycleStats.answerGenAccuracy}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── Phase 2: Trend strip (vs previous run) ───────────────── */}
       <TrendStrip appId={appId!} runId={runId!} />
@@ -602,6 +678,8 @@ function MetricChip({ label, avg, max, color, info }: {
   );
 }
 
+type DocDisplayMode = "id" | "title" | "url";
+
 function ResultRow({
   result,
   appId,
@@ -616,6 +694,17 @@ function ResultRow({
   const passed = result.passed;
   const hasSafety = result.scores?.toxicity_detected || result.scores?.bias_detected || result.scores?.banned_topic_violation;
   const isExtract = (result.scores?.answer_mode as unknown as string) === "extract_only";
+
+  const [docMode, setDocMode] = useState<DocDisplayMode>("id");
+  const labelMap = result.doc_label_map ?? {};
+  const hasLabels = Object.values(labelMap).some((l) => l.title);
+  const hasUrls = Object.values(labelMap).some((l) => l.url);
+
+  const getDocLabel = (id: string): string => {
+    if (docMode === "title") return labelMap[id]?.title || id;
+    if (docMode === "url") return labelMap[id]?.url || id;
+    return id;
+  };
 
   return (
     <div>
@@ -772,6 +861,13 @@ function ResultRow({
               <ChunkRankBadge
                 chunkRank={typeof result.scores?.["chunk_rank"] === "number" ? result.scores["chunk_rank"] as number : null}
                 hasReference={result.reference_doc_ids.length > 0}
+                extractMode={String(result.scores?.answer_mode ?? "") === "extract_only"}
+                chunkScoringMode={String(result.scores?.chunk_scoring_mode ?? "qualified_only")}
+                qualifiedCount={
+                  typeof result.scores?.qualified_chunks_count === "number"
+                    ? result.scores.qualified_chunks_count
+                    : null
+                }
               />
 
               {/* Judge Feedback — only when judge actually ran */}
@@ -828,67 +924,115 @@ function ResultRow({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                {result.reference_doc_ids.length > 0 && (
-                  <div>
-                    <p className="font-medium text-gray-600 mb-1.5">Expected Document</p>
-                    <div className="flex flex-wrap gap-1">
-                      {result.reference_doc_ids.map((id) => {
-                        const hit = result.retrieved_doc_ids.includes(id);
-                        return (
-                          <span key={id} className={cn(
-                            "px-2 py-0.5 rounded font-mono text-xs inline-flex items-center gap-1",
-                            hit ? "bg-green-100 text-green-700" : "bg-red-50 text-red-600"
-                          )}>
-                            {hit ? "✓" : "✗"} {id}
-                          </span>
-                        );
-                      })}
+              {/* Document display — with mode toggle */}
+              {(result.reference_doc_ids.length > 0 || result.retrieved_doc_ids.length > 0) && (
+                <div className="space-y-2">
+                  {/* Toggle: only show when labels are available; applies to Retrieved Docs only */}
+                  {hasLabels && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Retrieved docs — show as</span>
+                      <div className="flex rounded border border-gray-200 overflow-hidden text-[11px]">
+                        {(["id", "title", ...(hasUrls ? ["url"] : [])] as DocDisplayMode[]).map((mode) => {
+                          const labels: Record<DocDisplayMode, string> = { id: "Doc ID", title: "Title", url: "URL" };
+                          return (
+                            <button
+                              key={mode}
+                              onClick={() => setDocMode(mode)}
+                              className={cn(
+                                "px-2 py-0.5 transition-colors",
+                                docMode === mode
+                                  ? "bg-violet-600 text-white"
+                                  : "text-gray-500 hover:bg-gray-50"
+                              )}
+                            >
+                              {labels[mode]}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
-                {result.retrieved_doc_ids.length > 0 && (
-                  <div>
-                    <p className="font-medium text-gray-600 mb-1.5">
-                      Retrieved Docs
-                      <span className={cn(
-                        "ml-1.5 text-xs font-normal",
-                        result.doc_retrieved ? "text-green-600" : "text-red-500"
-                      )}>
-                        ({result.doc_retrieved ? "✓ match" : "✗ miss"})
-                      </span>
-                      {result.retrieved_doc_ids.length > 20 && (
-                        <span className="ml-1.5 text-xs text-gray-400">
-                          — top 20 of {result.retrieved_doc_ids.length}
+                  )}
+
+                  {result.reference_doc_ids.length > 0 && (
+                    <div>
+                      <p className="font-medium text-gray-600 mb-1.5">Expected Document</p>
+                      <div className="flex flex-wrap gap-1">
+                        {result.reference_doc_ids.map((id) => {
+                          const hit = result.retrieved_doc_ids.includes(id);
+                          return (
+                            <span
+                              key={id}
+                              className={cn(
+                                "px-2 py-0.5 rounded font-mono text-xs inline-flex items-center gap-1",
+                                hit ? "bg-green-100 text-green-700" : "bg-red-50 text-red-600"
+                              )}
+                            >
+                              {hit ? "✓" : "✗"} {id}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {result.retrieved_doc_ids.length > 0 && (
+                    <div>
+                      <p className="font-medium text-gray-600 mb-1.5">
+                        Retrieved Docs
+                        <span className={cn(
+                          "ml-1.5 text-xs font-normal",
+                          result.doc_retrieved ? "text-green-600" : "text-red-500"
+                        )}>
+                          ({result.doc_retrieved ? "✓ match" : "✗ miss"})
                         </span>
-                      )}
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {result.retrieved_doc_ids.slice(0, 20).map((id) => {
-                        const isExpected = result.reference_doc_ids.includes(id);
-                        return (
-                          <span key={id} className={cn(
-                            "px-2 py-0.5 rounded font-mono text-xs",
-                            isExpected ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-                          )}>
-                            {id}
+                        {result.retrieved_doc_ids.length > 20 && (
+                          <span className="ml-1.5 text-xs text-gray-400">
+                            — top 20 of {result.retrieved_doc_ids.length}
                           </span>
-                        );
-                      })}
+                        )}
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {result.retrieved_doc_ids.slice(0, 20).map((id) => {
+                          const isExpected = result.reference_doc_ids.includes(id);
+                          const label = getDocLabel(id);
+                          return (
+                            <span
+                              key={id}
+                              title={docMode !== "id" ? id : undefined}
+                              className={cn(
+                                "px-2 py-0.5 rounded text-xs max-w-[280px] truncate",
+                                docMode === "id" ? "font-mono" : "font-sans",
+                                isExpected ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                              )}
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Search payload + live test — full width */}
-          {result.search_payload && Object.keys(result.search_payload).length > 0 && (
-            <SearchPayloadBlock payload={result.search_payload} />
+          {/* Search payload + response + live test — full width */}
+          {((result.search_payload && Object.keys(result.search_payload).length > 0) ||
+            (result.search_response && Object.keys(result.search_response).length > 0)) && (
+            <SearchPayloadBlock
+              payload={result.search_payload || undefined}
+              response={result.search_response || undefined}
+            />
           )}
 
           {/* Live test panel */}
-          <LiveTestPanel appId={appId} question={result.question} />
+          <LiveTestPanel
+            appId={appId}
+            question={result.question}
+            defaultPayload={result.search_payload ?? null}
+            storedEval={result}
+          />
         </div>
       )}
     </div>
@@ -896,33 +1040,412 @@ function ResultRow({
 }
 
 // ── Live Test Panel ────────────────────────────────────────────────────────────
-function LiveTestPanel({ appId, question }: { appId: string; question: string }) {
+type LiveTab = "answer" | "chunks" | "raw";
+
+const DEFAULT_PAYLOAD_KEYS = {
+  answerSearch: true,
+  searchResults: true,
+  includeChunksInResponse: true,
+  maxNumOfChunks: 100,
+};
+
+function buildDefaultPayload(q: string, stored: Record<string, unknown> | null): string {
+  const base = stored
+    ? { ...stored, query: q }
+    : { query: q, ...DEFAULT_PAYLOAD_KEYS };
+  return JSON.stringify(base, null, 2);
+}
+
+function LiveTestPanel({
+  appId,
+  question,
+  defaultPayload,
+  storedEval,
+}: {
+  appId: string;
+  question: string;
+  defaultPayload: Record<string, unknown> | null;
+  storedEval: EvalResult;
+}) {
+  const storedSnapshot = useMemo(
+    () =>
+      evalSnapshotToQueryView({
+        rag_response: storedEval.rag_response,
+        retrieved_doc_ids: storedEval.retrieved_doc_ids,
+        search_response: storedEval.search_response,
+        chunk_signals: storedEval.chunk_signals,
+        latency_llm_ms: storedEval.latency_llm_ms,
+        latency_retrieval_ms: storedEval.latency_retrieval_ms,
+        search_payload: storedEval.search_payload,
+        answer_mode:
+          typeof storedEval.scores?.answer_mode === "string"
+            ? storedEval.scores.answer_mode
+            : undefined,
+      }),
+    [storedEval],
+  );
+
   const [open, setOpen] = useState(false);
   const [editedQuestion, setEditedQuestion] = useState(question);
   const [isRunning, setIsRunning] = useState(false);
-  const [result, setResult] = useState<QueryResponse | null>(null);
+  const [liveResult, setLiveResult] = useState<QueryResponse | null>(null);
+  const [fromLive, setFromLive] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<LiveTab>("chunks");
+  const [viewerFullscreen, setViewerFullscreen] = useState(false);
+
+  const displayResult = fromLive && liveResult ? liveResult : storedSnapshot;
+
+  // Payload editor state
+  const [payloadOpen, setPayloadOpen] = useState(false);
+  const [payloadJson, setPayloadJson] = useState(() => buildDefaultPayload(question, defaultPayload));
+  const [payloadError, setPayloadError] = useState<string | null>(null);
+  const [payloadCopied, setPayloadCopied] = useState(false);
+
+  // Keep payload.query in sync with the question textarea
+  const syncPayloadQuestion = (newQ: string) => {
+    setPayloadJson((prev) => {
+      try {
+        const parsed = JSON.parse(prev);
+        return JSON.stringify({ ...parsed, query: newQ }, null, 2);
+      } catch {
+        return prev; // if JSON is invalid, leave it as-is
+      }
+    });
+  };
+
+  const handleQuestionChange = (newQ: string) => {
+    setEditedQuestion(newQ);
+    syncPayloadQuestion(newQ);
+  };
+
+  const handleReset = () => {
+    setEditedQuestion(question);
+    setPayloadJson(buildDefaultPayload(question, defaultPayload));
+    setPayloadError(null);
+    setLiveResult(null);
+    setFromLive(false);
+    setError(null);
+  };
+
+  const handlePayloadChange = (text: string) => {
+    setPayloadJson(text);
+    setPayloadError(null);
+    // Also sync the question textarea if query field changed and JSON is valid
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed.query === "string" && parsed.query !== editedQuestion) {
+        setEditedQuestion(parsed.query);
+      }
+    } catch { /* wait until valid */ }
+  };
 
   const handleRun = async () => {
     if (!editedQuestion.trim()) return;
+
+    // If payload editor is open, validate and parse the JSON
+    let payloadOverride: Record<string, unknown> | null = null;
+    try {
+      const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
+      payloadOverride = parsed;
+      setPayloadError(null);
+    } catch (e) {
+      setPayloadError(`Invalid JSON: ${(e as Error).message}`);
+      return;
+    }
+
     setIsRunning(true);
     setError(null);
-    setResult(null);
     try {
-      const res = await queryApi.run(appId, { question: editedQuestion.trim() });
-      setResult(res);
+      const res = await queryApi.run(appId, {
+        question: editedQuestion.trim(),
+        payload_override: payloadOverride,
+      });
+      setLiveResult(normalizeQueryResponse(res));
+      setFromLive(true);
+      setActiveTab("chunks");
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg || "Query failed. Check backend logs.");
+      const resp = (e as { response?: { status?: number; data?: { detail?: string } } })?.response;
+      const status = resp?.status;
+      const detail = resp?.data?.detail;
+      setError(
+        detail
+          ? `${status ? `[${status}] ` : ""}${detail}`
+          : "Query failed — check backend logs.",
+      );
     } finally {
       setIsRunning(false);
     }
   };
 
-  const handleReset = () => {
-    setEditedQuestion(question);
-    setResult(null);
-    setError(null);
+  const handleCopyPayload = async () => {
+    try {
+      await navigator.clipboard.writeText(payloadJson);
+      setPayloadCopied(true);
+      setTimeout(() => setPayloadCopied(false), 1500);
+    } catch { /* ignore */ }
+  };
+
+  // Check if payload has been modified from default
+  const isPayloadModified = useMemo(() => {
+    try {
+      return payloadJson !== buildDefaultPayload(editedQuestion, defaultPayload);
+    } catch {
+      return true;
+    }
+  }, [payloadJson, editedQuestion, defaultPayload]);
+
+  useEffect(() => {
+    if (!viewerFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setViewerFullscreen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [viewerFullscreen]);
+
+  const resultViewer = (fullscreen: boolean) => {
+    if (!displayResult) return null;
+    const chunksMaxH = fullscreen ? "calc(100vh - 220px)" : "24rem";
+    const chunkScoringMode = String(storedEval.scores?.chunk_scoring_mode ?? "qualified_only");
+    const useQualifiedPool =
+      displayResult.answer_mode === "extract_only" && chunkScoringMode !== "raw";
+
+    return (
+      <div className={cn(
+        "border border-gray-200 rounded-lg overflow-hidden flex flex-col",
+        fullscreen && "flex-1 min-h-0",
+      )}>
+        <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={cn(
+              "text-[11px] font-semibold px-2 py-0.5 rounded-full",
+              displayResult.is_valid_answer ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
+            )}>
+              {displayResult.is_valid_answer ? "200 OK" : "200 No Answer"}
+            </span>
+            <span className={cn(
+              "text-[11px] px-1.5 py-0.5 rounded-full font-medium",
+              displayResult.answer_mode === "extract_only"
+                ? "bg-amber-50 text-amber-700"
+                : "bg-blue-50 text-blue-700"
+            )}>
+              {displayResult.answer_mode === "extract_only" ? "Extract Only" : "Answer Generation"}
+            </span>
+            <span className={cn(
+              "text-[10px] px-1.5 py-0.5 rounded-full font-medium border",
+              fromLive
+                ? "bg-violet-50 text-violet-700 border-violet-200"
+                : "bg-gray-100 text-gray-600 border-gray-200"
+            )}>
+              {fromLive ? "Live query" : "From evaluation run"}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex gap-3 text-[11px] text-gray-400">
+              {displayResult.latency_llm_ms != null && (
+                <span>LLM <span className="font-mono text-gray-600">{Math.round(displayResult.latency_llm_ms)}ms</span></span>
+              )}
+              {displayResult.latency_retrieval_ms != null && (
+                <span>Retrieval <span className="font-mono text-gray-600">{Math.round(displayResult.latency_retrieval_ms)}ms</span></span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setViewerFullscreen((v) => !v)}
+              className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-white bg-gray-50"
+              title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
+            >
+              {fullscreen ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+              {fullscreen ? "Exit" : "Fullscreen"}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex border-b border-gray-200 bg-white shrink-0">
+          {(["answer", "chunks", "raw"] as LiveTab[]).map((tab) => {
+            const labels: Record<LiveTab, string> = {
+              answer: "Answer",
+              chunks: `Chunks (${displayResult.chunk_signals?.length ?? 0})`,
+              raw: "Raw Response",
+            };
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "px-4 py-2 text-xs font-medium border-b-2 transition-colors",
+                  activeTab === tab
+                    ? "border-violet-500 text-violet-700 bg-violet-50/50"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                )}
+              >
+                {labels[tab]}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className={cn("bg-white min-h-0", fullscreen ? "flex-1 overflow-auto" : "")}>
+          {activeTab === "answer" && (
+            <div className="p-3 space-y-3">
+              {displayResult.answer ? (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
+                  {displayResult.answer}
+                </div>
+              ) : (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-400 italic">
+                  RAG returned no answer for this query.
+                </div>
+              )}
+              {displayResult.cited_doc_ids.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-600 mb-1">
+                    Cited Documents ({displayResult.cited_doc_ids.length})
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {displayResult.cited_doc_ids.map((id) => (
+                      <span key={id} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-mono text-xs">
+                        {id}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {displayResult.result_doc_ids.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-600 mb-1">
+                    All Result Documents ({displayResult.result_doc_ids.length})
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {displayResult.result_doc_ids.map((id) => (
+                      <span key={id} className={cn(
+                        "px-2 py-0.5 rounded font-mono text-xs",
+                        displayResult.cited_doc_ids.includes(id)
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-gray-100 text-gray-500"
+                      )}>
+                        {id}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "chunks" && (
+            <div className="overflow-y-auto" style={{ maxHeight: chunksMaxH }}>
+              {(displayResult.chunk_signals?.length ?? 0) === 0 ? (
+                <div className="p-4 text-xs text-gray-400 italic text-center space-y-1">
+                  <p>No chunks in stored signals.</p>
+                  <p className="text-[10px]">Open <strong>Raw Response</strong> and search for <code className="text-gray-500">chunk_result</code>.</p>
+                </div>
+              ) : (
+                <>
+                  {displayResult.answer_mode === "extract_only" && (
+                    <p className="px-3 py-1.5 text-[10px] text-amber-700 bg-amber-50 border-b border-amber-100">
+                      {useQualifiedPool ? (
+                        <>
+                          Scoring pool: <strong>qualified only</strong> — top 5 among chunkQualified rows (
+                          {qualifiedChunks(displayResult.chunk_signals as ChunkSignal[]).length} qualified
+                          of {displayResult.chunk_signals!.length} returned).
+                        </>
+                      ) : (
+                        <>
+                          Scoring pool: <strong>raw list</strong> — top 5 by API order (
+                          {displayResult.chunk_signals!.length} chunks).
+                        </>
+                      )}
+                    </p>
+                  )}
+                  <table className="w-full text-[11px]">
+                    <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium text-gray-500">API #</th>
+                        {useQualifiedPool && (
+                          <th className="text-left px-3 py-2 font-medium text-gray-500">Q rank</th>
+                        )}
+                        <th className="text-left px-3 py-2 font-medium text-gray-500">Doc ID</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-500">Title</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-500">Score</th>
+                        <th className="text-center px-3 py-2 font-medium text-gray-500">Qualified</th>
+                        <th className="text-center px-3 py-2 font-medium text-gray-500">Sent to LLM</th>
+                        <th className="text-center px-3 py-2 font-medium text-gray-500">Used in Answer</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {(displayResult.chunk_signals as ChunkSignal[]).map((c, i) => {
+                        const qRank = qualifiedRank(displayResult.chunk_signals as ChunkSignal[], i);
+                        const inScoringPool = useQualifiedPool
+                          ? qRank != null && qRank <= 5
+                          : displayResult.answer_mode === "extract_only"
+                            ? i < 5
+                            : i < 5;
+                        return (
+                        <tr key={i} className={cn(
+                          "hover:bg-gray-50",
+                          inScoringPool ? "bg-violet-50/30" : "",
+                          useQualifiedPool && c.chunkQualified !== true
+                            ? "opacity-50"
+                            : "",
+                          c.usedInAnswer ? "bg-green-50/40" : ""
+                        )}>
+                          <td className="px-3 py-1.5 text-gray-400 font-mono">{i + 1}</td>
+                          {useQualifiedPool && (
+                            <td className="px-3 py-1.5 font-mono text-violet-700">
+                              {qRank ?? "—"}
+                            </td>
+                          )}
+                          <td className="px-3 py-1.5 font-mono text-gray-600 max-w-[140px] truncate" title={c.docId ?? ""}>
+                            {c.docId ?? "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-gray-600 max-w-[180px] truncate" title={c.recordTitle ?? ""}>
+                            {c.recordTitle ?? "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-mono text-gray-700">
+                            {c.score != null ? c.score.toFixed(4) : "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-center">
+                            <FlagDot value={c.chunkQualified} />
+                          </td>
+                          <td className="px-3 py-1.5 text-center">
+                            <FlagDot value={c.sentToLLM} />
+                          </td>
+                              <td className="px-3 py-1.5 text-center">
+                                <FlagDot value={c.usedInAnswer} highlight />
+                              </td>
+                            </tr>
+                        );
+                      })}
+                        </tbody>
+                      </table>
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === "raw" && (
+            Object.keys(displayResult.raw_response ?? {}).length > 0 ? (
+              <JsonExplorer
+                data={displayResult.raw_response ?? {}}
+                theme="dark"
+                maxHeight={fullscreen ? "calc(100vh - 200px)" : "520px"}
+              />
+            ) : (
+              <div className="p-4 text-xs text-gray-400 italic text-center">
+                No raw response stored. Run Query or expand Search Request &amp; Response above.
+              </div>
+            )
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -935,7 +1458,9 @@ function LiveTestPanel({ appId, question }: { appId: string; question: string })
           {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           <Play className="w-3 h-3" />
           Test Query Live
-          <span className="text-gray-400 font-normal ml-1">(edit &amp; run against RAG)</span>
+          <span className="text-gray-400 font-normal ml-1">
+            (shows evaluation data below; Run Query for a fresh call)
+          </span>
         </button>
       </div>
 
@@ -945,97 +1470,162 @@ function LiveTestPanel({ appId, question }: { appId: string; question: string })
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-medium text-gray-600">Query</label>
-              {editedQuestion !== question && (
+              {(editedQuestion !== question || isPayloadModified) && (
                 <button
                   onClick={handleReset}
                   className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
                 >
-                  <RotateCcw className="w-3 h-3" /> Reset
+                  <RotateCcw className="w-3 h-3" /> Reset all
                 </button>
               )}
             </div>
             <textarea
               value={editedQuestion}
-              onChange={(e) => setEditedQuestion(e.target.value)}
+              onChange={(e) => handleQuestionChange(e.target.value)}
               rows={3}
               className="w-full text-xs p-2.5 border border-gray-200 rounded-lg bg-white resize-none focus:outline-none focus:ring-2 focus:ring-violet-500 font-sans"
             />
           </div>
 
-          <button
-            onClick={handleRun}
-            disabled={isRunning || !editedQuestion.trim()}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isRunning ? (
-              <><Loader2 className="w-3 h-3 animate-spin" /> Running...</>
-            ) : (
-              <><Play className="w-3 h-3" /> Run Query</>
+          {/* ── Payload editor ────────────────────────────────────── */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-50">
+              <button
+                onClick={() => setPayloadOpen((o) => !o)}
+                className="flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-gray-900"
+              >
+                {payloadOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                <Code2 className="w-3.5 h-3.5 text-gray-500" />
+                Request Payload
+                {isPayloadModified && (
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                    modified
+                  </span>
+                )}
+              </button>
+              {payloadOpen && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setPayloadJson(buildDefaultPayload(editedQuestion, defaultPayload));
+                      setPayloadError(null);
+                    }}
+                    className="text-[11px] text-gray-400 hover:text-gray-700"
+                    title="Reset payload to default"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={handleCopyPayload}
+                    className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 px-2 py-0.5 rounded border border-gray-200 bg-white"
+                  >
+                    {payloadCopied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+                    {payloadCopied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {payloadOpen && (
+              <div>
+                <textarea
+                  value={payloadJson}
+                  onChange={(e) => handlePayloadChange(e.target.value)}
+                  rows={14}
+                  spellCheck={false}
+                  className={cn(
+                    "w-full text-[11px] p-3 bg-gray-900 text-gray-100 font-mono resize-y focus:outline-none leading-relaxed",
+                    payloadError ? "border-t-2 border-red-500" : ""
+                  )}
+                />
+                {payloadError && (
+                  <div className="px-3 py-1.5 bg-red-50 border-t border-red-200 text-xs text-red-700 font-mono">
+                    {payloadError}
+                  </div>
+                )}
+                <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-200 text-[11px] text-gray-400">
+                  Edit any field — will be sent as-is to Kore.ai. The <code className="text-gray-600">query</code> field stays in sync with the Query box above.
+                </div>
+              </div>
             )}
-          </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRun}
+              disabled={isRunning || !editedQuestion.trim() || !!payloadError}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isRunning ? (
+                <><Loader2 className="w-3 h-3 animate-spin" /> Running...</>
+              ) : (
+                <><Play className="w-3 h-3" /> Run Query</>
+              )}
+            </button>
+            {payloadOpen && isPayloadModified && !payloadError && (
+              <span className="text-[11px] text-amber-600 flex items-center gap-1">
+                <Code2 className="w-3 h-3" /> Using custom payload
+              </span>
+            )}
+          </div>
 
           {/* Error */}
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-              {error}
+            <div className="rounded-lg border border-red-200 overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border-b border-red-200">
+                <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                <span className="text-xs font-semibold text-red-700">Request Failed</span>
+              </div>
+              <pre className="p-3 bg-white text-xs text-red-800 whitespace-pre-wrap break-all leading-relaxed max-h-40 overflow-y-auto font-mono">
+                {error}
+              </pre>
             </div>
           )}
 
-          {/* Live response */}
-          {result && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-600">Live Response</span>
-                <span className={cn(
-                  "text-xs px-1.5 py-0.5 rounded-full font-medium",
-                  result.answer_mode === "extract_only"
-                    ? "bg-amber-50 text-amber-700"
-                    : "bg-blue-50 text-blue-700"
-                )}>
-                  {result.answer_mode === "extract_only" ? "📄 Extract Only" : "⚡ Answer Generation"}
-                </span>
-                <div className="flex gap-3 text-xs text-gray-400 ml-auto">
-                  {result.latency_llm_ms != null && (
-                    <span>LLM: {Math.round(result.latency_llm_ms)}ms</span>
-                  )}
-                  {result.latency_retrieval_ms != null && (
-                    <span>Retrieval: {Math.round(result.latency_retrieval_ms)}ms</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Answer box */}
-              {result.answer ? (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
-                  {result.answer}
-                </div>
-              ) : (
-                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-400 italic">
-                  RAG returned no answer for this query.
-                </div>
-              )}
-
-              {/* Cited docs */}
-              {result.cited_doc_ids.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-gray-600 mb-1">
-                    Cited Documents ({result.cited_doc_ids.length})
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {result.cited_doc_ids.map((id) => (
-                      <span key={id} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-mono text-xs">
-                        {id}
-                      </span>
-                    ))}
+          {/* Response viewer — evaluation snapshot or latest live query */}
+          {displayResult ? (
+            <>
+              {resultViewer(false)}
+              {viewerFullscreen && (
+                <div
+                  className="fixed inset-0 z-[90] flex flex-col bg-gray-950/95 backdrop-blur-sm p-3 md:p-5"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Query result fullscreen"
+                >
+                  <div className="flex flex-col flex-1 min-h-0 max-w-[1400px] w-full mx-auto bg-white rounded-xl shadow-2xl overflow-hidden">
+                    {resultViewer(true)}
                   </div>
+                  <p className="text-center text-[10px] text-gray-500 mt-2 shrink-0">
+                    Press <kbd className="px-1 py-0.5 rounded bg-gray-800 text-gray-400">Esc</kbd> to exit
+                  </p>
                 </div>
               )}
-            </div>
+            </>
+          ) : (
+            <p className="text-xs text-gray-400 italic">
+              No evaluation response stored for this row. Click Run Query to call Kore.ai live.
+            </p>
           )}
         </div>
       )}
     </div>
   );
+}
+
+function FlagDot({ value, highlight = false }: { value: boolean | null | undefined; highlight?: boolean }) {
+  if (value === true) {
+    return (
+      <span className={cn(
+        "inline-block w-2 h-2 rounded-full",
+        highlight ? "bg-green-500" : "bg-teal-400"
+      )} title="true" />
+    );
+  }
+  if (value === false) {
+    return <span className="inline-block w-2 h-2 rounded-full bg-gray-200" title="false" />;
+  }
+  return <span className="text-gray-300">—</span>;
 }
 
 function RetrievalMetricsBlock({ result }: { result: EvalResult }) {
@@ -1104,55 +1694,92 @@ function RetrievalMetricsBlock({ result }: { result: EvalResult }) {
   );
 }
 
-function ChunkRankBadge({ chunkRank, hasReference }: { chunkRank: number | null; hasReference: boolean }) {
+function ChunkRankBadge({
+  chunkRank,
+  hasReference,
+  extractMode = false,
+  chunkScoringMode = "qualified_only",
+  qualifiedCount = null,
+}: {
+  chunkRank: number | null;
+  hasReference: boolean;
+  extractMode?: boolean;
+  chunkScoringMode?: string;
+  qualifiedCount?: number | null;
+}) {
   if (!hasReference) return null;
+  const topK = 5;
+  const qualifiedPool = extractMode && chunkScoringMode !== "raw";
+  const title = extractMode
+    ? qualifiedPool
+      ? "Qualified chunk rank (pass = rank ≤ 5 among chunkQualified rows)"
+      : "Chunk rank in raw list (pass = rank ≤ 5 in API order)"
+    : "Chunk position in retrieval list";
   return (
     <div>
-      <p className="font-medium text-gray-600 mb-1.5">Chunk Position (out of 100)</p>
+      <p className="font-medium text-gray-600 mb-1.5">{title}</p>
+      {extractMode && qualifiedPool && qualifiedCount != null && (
+        <p className="text-[11px] text-gray-500 mb-1.5">
+          {qualifiedCount} chunk{qualifiedCount !== 1 ? "s" : ""} marked qualified by Kore.ai
+        </p>
+      )}
       {chunkRank !== null ? (
         <span className={cn(
           "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border",
-          chunkRank <= 10
-            ? "bg-green-50 border-green-200 text-green-800"
-            : chunkRank <= 30
-            ? "bg-amber-50 border-amber-200 text-amber-800"
-            : "bg-red-50 border-red-200 text-red-800"
+          extractMode
+            ? chunkRank <= topK
+              ? "bg-green-50 border-green-200 text-green-800"
+              : "bg-red-50 border-red-200 text-red-800"
+            : chunkRank <= 10
+              ? "bg-green-50 border-green-200 text-green-800"
+              : chunkRank <= 30
+                ? "bg-amber-50 border-amber-200 text-amber-800"
+                : "bg-red-50 border-red-200 text-red-800"
         )}>
           <span className="text-base leading-none">#</span>
           {chunkRank}
-          <span className="font-normal text-gray-500">/ 100</span>
-          <span className="ml-1 font-normal">
-            {chunkRank <= 10 ? "— top 10%" : chunkRank <= 30 ? "— top 30%" : "— low rank"}
+          <span className="font-normal text-gray-500">
+            {extractMode
+              ? qualifiedPool
+                ? ` among qualified (top ${topK} = pass)`
+                : ` in raw list (top ${topK} = pass)`
+              : " / 100"}
           </span>
         </span>
       ) : (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-100 border border-red-300 text-red-800">
-          Not found in top 100 chunks
+          {extractMode
+            ? qualifiedPool
+              ? "Not found among qualified chunks"
+              : "Not found in raw chunk list"
+            : "Not found in top 100 chunks"}
         </span>
       )}
     </div>
   );
 }
 
-function SearchPayloadBlock({ payload }: { payload: Record<string, unknown> }) {
+function SearchPayloadBlock({
+  payload, response,
+}: {
+  payload?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+}) {
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const pretty = useMemo(() => JSON.stringify(payload, null, 2), [payload]);
+  const hasPayload = payload && Object.keys(payload).length > 0;
+  const hasResponse = response && Object.keys(response).length > 0;
+  const [tab, setTab] = useState<"request" | "response">(
+    hasPayload ? "request" : "response"
+  );
 
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(pretty);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const metaFilters = (payload as { metaFilters?: unknown }).metaFilters;
-  const customData = (payload as { customData?: { userContext?: { userId?: string } } }).customData;
+  const metaFilters = (payload as { metaFilters?: unknown } | undefined)?.metaFilters;
+  const customData = (payload as { customData?: { userContext?: { userId?: string } } } | undefined)?.customData;
   const userId = customData?.userContext?.userId;
   const filterCount = Array.isArray(metaFilters) ? metaFilters.length : 0;
+  const responseBytes = useMemo(
+    () => (response ? JSON.stringify(response).length : 0),
+    [response],
+  );
 
   return (
     <div className="mt-4 border-t border-gray-200 pt-3">
@@ -1162,25 +1789,57 @@ function SearchPayloadBlock({ payload }: { payload: Record<string, unknown> }) {
           className="flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-gray-900"
         >
           {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-          Search Payload
+          Search Request &amp; Response
           <span className="text-gray-400 font-normal ml-1">
-            (filters: {filterCount}{userId ? `, racl: ${userId}` : ""})
+            ({hasPayload && `filters: ${filterCount}`}
+            {userId && hasPayload ? `, racl: ${userId}` : userId ? `racl: ${userId}` : ""}
+            {hasResponse && (hasPayload || userId) ? "; " : ""}
+            {hasResponse && `response: ${(responseBytes / 1024).toFixed(1)} KB`})
           </span>
         </button>
-        {open && (
-          <button
-            onClick={handleCopy}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 px-2 py-0.5 rounded border border-gray-200 bg-white"
-          >
-            {copied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
-            {copied ? "Copied" : "Copy"}
-          </button>
-        )}
       </div>
       {open && (
-        <pre className="mt-2 p-3 bg-gray-900 text-gray-100 rounded text-[11px] leading-relaxed overflow-x-auto font-mono max-h-96">
-          {pretty}
-        </pre>
+        <div className="mt-2 space-y-2">
+          {hasPayload && hasResponse && (
+            <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+              {(["request", "response"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={cn(
+                    "px-3 py-1 capitalize transition-colors",
+                    tab === t
+                      ? "bg-violet-600 text-white"
+                      : "bg-white text-gray-600 hover:bg-gray-50"
+                  )}
+                >
+                  {t === "request" ? "Request payload" : "Full response"}
+                </button>
+              ))}
+            </div>
+          )}
+          {tab === "request" && hasPayload && (
+            <JsonExplorer
+              title="Request body sent to Kore.ai"
+              data={payload!}
+              theme="light"
+              maxHeight="480px"
+            />
+          )}
+          {tab === "response" && hasResponse && (
+            <JsonExplorer
+              title="Full raw response from Kore.ai"
+              data={response!}
+              theme="light"
+              maxHeight="480px"
+            />
+          )}
+          {tab === "response" && !hasResponse && hasPayload && (
+            <p className="text-[11px] text-gray-400 italic">
+              No raw response stored for this row (run was created before raw-response capture was added).
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1224,6 +1883,70 @@ function StatCard({
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <p className="text-xs font-medium text-gray-500 mb-1">{label}</p>
       <p className={cn("text-2xl font-bold", textColor)}>{value}</p>
+    </div>
+  );
+}
+
+function PipelineStatCard({
+  stage, description, count, denom, rate,
+}: {
+  stage: string;
+  description: string;
+  count: number;
+  denom: number;
+  rate: number | null;
+}) {
+  const pct = rate != null ? rate * 100 : null;
+
+  // Tone classes are split so light + dark can be tuned independently.
+  //
+  // Light mode uses 100-shade fills with 300-shade borders and 800-shade text
+  // for a punchy-but-soft pastel — solid enough to read at a glance, not
+  // garish. We deliberately avoid the `bg-X-50/40` opacity suffix because the
+  // global dark-theme CSS in index.css already remaps the bare 50-shades, and
+  // using *-100 here keeps light vivid while letting the explicit `dark:`
+  // variants below own the dark surface tone.
+  //
+  // Dark mode uses 500-series colors at low alpha for the surface and bright
+  // 300-series colors for the foreground — keeps the cards readable on the
+  // near-black background while staying in the same hue family.
+  const tone =
+    pct == null
+      ? "border-gray-300 bg-gray-100 text-gray-700 " +
+        "dark:border-neutral-700/70 dark:bg-neutral-900/40 dark:text-neutral-300"
+      : pct >= 80
+      ? "border-emerald-300 bg-emerald-100 text-emerald-800 " +
+        "dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+      : pct >= 50
+      ? "border-amber-300 bg-amber-100 text-amber-800 " +
+        "dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+      : "border-rose-300 bg-rose-100 text-rose-800 " +
+        "dark:border-rose-500/35 dark:bg-rose-500/10 dark:text-rose-300";
+
+  const badgeTone =
+    pct == null
+      ? "text-gray-600 dark:text-neutral-400"
+      : pct >= 80
+      ? "text-emerald-800/70 dark:text-emerald-300/80"
+      : pct >= 50
+      ? "text-amber-800/70 dark:text-amber-300/80"
+      : "text-rose-800/70 dark:text-rose-300/80";
+
+  return (
+    <div className={cn(
+      "rounded-lg border p-4 flex flex-col gap-2 transition-colors",
+      tone,
+    )}>
+      <div className="flex items-baseline justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{stage}</p>
+        <span className={cn("text-[11px] font-mono", badgeTone)}>{count}/{denom}</span>
+      </div>
+      <p className="text-3xl font-bold leading-none">
+        {pct != null ? `${pct.toFixed(1)}%` : "—"}
+      </p>
+      <p className="text-[11px] leading-snug text-gray-500 dark:text-neutral-400">
+        {description}
+      </p>
     </div>
   );
 }

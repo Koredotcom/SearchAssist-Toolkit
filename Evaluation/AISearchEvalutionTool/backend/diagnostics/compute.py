@@ -93,6 +93,7 @@ def compute_run_diagnostics(run_id: str) -> dict[str, Any]:
         "by_question_type":    _compute_by_qtype(results),
         "by_failure_category": _bucket_count(results, lambda r: r.get("failure_category") or "none"),
         "retrieval":           _compute_retrieval(results),
+        "chunk_lifecycle":     _compute_chunk_lifecycle(results),
         "judge_metric_avgs":   _compute_judge_avgs(results),
         "weakest_judge_metric": None,  # filled in below
         "latency_ms":          _compute_latency(results),
@@ -251,6 +252,63 @@ def _compute_retrieval(results: list[dict]) -> dict[str, Any]:
         "avg_doc_rank":           _safe_avg(doc_ranks),
         "median_doc_rank":        _safe_median(doc_ranks),
         **recall,
+    }
+
+
+def _compute_chunk_lifecycle(results: list[dict]) -> dict[str, Any]:
+    """Pipeline accuracy across the Kore.ai chunk lifecycle.
+
+    Each test case has, at most, ONE "matched chunk" — the first chunk whose
+    fields satisfy the test case's reference_match_spec. Three boolean flags
+    from Kore.ai tell us how far that chunk made it down the pipeline:
+
+        chunkQualified  → got past Kore.ai's internal scoring threshold
+                          (a.k.a. the "shortlist" / "retrieval" stage).
+        sentToLLM       → was included in the LLM context for answer generation.
+        usedInAnswer    → the LLM actually cited / used it in its answer.
+
+    Accuracy for each stage = (# cases where that flag is True) /
+    (# cases that had a matched chunk to begin with). Cases without a
+    reference doc (case 1 / 2) are excluded from the denominator — there is
+    no expected chunk to track. We also report a top-line ``has_matched_chunk``
+    count so callers can see the funnel depth.
+    """
+    cases_with_ref = [
+        r for r in results
+        if (r.get("reference_doc_ids") or [])
+    ]
+    matched_rows = [
+        r for r in cases_with_ref
+        if (r.get("scores") or {}).get("matched_chunk_qualified") is not None
+        or (r.get("scores") or {}).get("matched_chunk_sent_to_llm") is not None
+        or (r.get("scores") or {}).get("matched_chunk_used_in_answer") is not None
+    ]
+
+    def _count_true(rows: list[dict], key: str) -> int:
+        return sum(
+            1 for r in rows
+            if (r.get("scores") or {}).get(key) is True
+        )
+
+    qualified   = _count_true(matched_rows, "matched_chunk_qualified")
+    sent_llm    = _count_true(matched_rows, "matched_chunk_sent_to_llm")
+    used_answer = _count_true(matched_rows, "matched_chunk_used_in_answer")
+
+    denom = len(matched_rows)
+    def _rate(numer: int) -> float | None:
+        if denom == 0:
+            return None
+        return round(numer / denom, 4)
+
+    return {
+        "cases_with_reference":  len(cases_with_ref),
+        "cases_with_matched_chunk": denom,
+        "retrieval_qualified":   qualified,
+        "sent_to_llm":           sent_llm,
+        "used_in_answer":        used_answer,
+        "retrieval_accuracy":    _rate(qualified),
+        "sent_to_llm_accuracy":  _rate(sent_llm),
+        "answer_gen_accuracy":   _rate(used_answer),
     }
 
 

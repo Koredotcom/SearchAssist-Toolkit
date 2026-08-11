@@ -1,4 +1,6 @@
 import axios from "axios";
+import type { ChunkSignal } from "@/lib/chunks";
+export type { ChunkSignal } from "@/lib/chunks";
 
 // In production set VITE_API_URL to your backend base (e.g. https://api.yourhost.com/api).
 // In dev the Vite proxy forwards /api → http://localhost:8001, so no env var is needed.
@@ -106,6 +108,10 @@ export interface TestCase {
   human_validated: boolean;
   status: string;
   decision: string | null;
+  primary_concern: string | null;
+  rationale: string | null;
+  case_id: number | null;
+  custom_fields: Record<string, string>;
   scores: Record<string, number> | null;
 }
 
@@ -125,6 +131,11 @@ export interface EvalRun {
   avg_chunk_rank: number | null;
 }
 
+export interface DocLabel {
+  title: string | null;
+  url: string | null;
+}
+
 export interface EvalResult {
   tc_id: string;
   question: string;
@@ -142,6 +153,9 @@ export interface EvalResult {
   latency_retrieval_ms: number | null;
   doc_retrieved: boolean;
   search_payload?: Record<string, unknown> | null;
+  search_response?: Record<string, unknown> | null;
+  chunk_signals?: ChunkSignal[];
+  doc_label_map?: Record<string, DocLabel>;
   // 4-case evaluation fields
   case_id: number | null;
   expected_doc_rank: number | null;
@@ -202,6 +216,7 @@ export const generationApi = {
     file_source_ids?: string[];
     max_docs_per_source: number;
     max_questions_per_doc: number;
+    target_language: string;
     filters: Record<string, unknown>;
   }) => api.post<Job>(`/apps/${appId}/generation/start`, data).then((r) => r.data),
   getJob: (appId: string, jobId: string) =>
@@ -214,8 +229,37 @@ export const generationApi = {
     api.post(`/apps/${appId}/generation/jobs/${jobId}/stop`).then((r) => r.data),
 };
 
-export type FilterMode = "none" | "auto_source" | "custom_prompt";
+export type FilterMode = "none" | "field_filters" | "custom_prompt";
 export type ScriptLang = "python" | "js";
+
+export type JudgeMode = "auto" | "force_on" | "force_off";
+
+/** Extract-only: which chunk rows count for rank / pass / Recall@K. */
+export type ChunkScoringMode = "qualified_only" | "raw";
+
+export interface SavedEvaluateSettings {
+  selectedVersion: string;
+  ragVersion: string;
+  limitCases: boolean;
+  maxCases: number;
+  sampleMode: "first" | "random";
+  filterMode: FilterMode;
+  filterFields: string[];
+  enableRacl: boolean;
+  userEmail: string;
+  answerModeOverride: AnswerMode | null;
+  selectedQTypes: string[];
+  judgeMode: JudgeMode;
+  case1Threshold: number | null;
+  case2Threshold: number | null;
+  topKPass: number | null;
+  chunkScoringMode: ChunkScoringMode;
+}
+
+export interface SavedEvaluateSettingsResponse {
+  settings: SavedEvaluateSettings | null;
+  updated_at: string | null;
+}
 
 export const evaluationApi = {
   start: (appId: string, data: {
@@ -225,10 +269,16 @@ export const evaluationApi = {
     sample_mode: "first" | "random";
     filter_mode: FilterMode;
     filter_prompt: string | null;
+    filter_fields: string[] | null;
     enable_racl: boolean;
     user_email: string | null;
     answer_mode_override: AnswerMode | null;
     question_types: string[] | null;
+    judge_mode?: JudgeMode;
+    case1_threshold?: number | null;
+    case2_threshold?: number | null;
+    top_k_pass?: number | null;
+    chunk_scoring_mode?: ChunkScoringMode | null;
   }) => api.post<Job>(`/apps/${appId}/evaluation/start`, data).then((r) => r.data),
   getJob: (appId: string, jobId: string) =>
     api.get<Job>(`/apps/${appId}/evaluation/jobs/${jobId}`).then((r) => r.data),
@@ -240,6 +290,82 @@ export const evaluationApi = {
     api.post<{ output: unknown; error: string | null }>(`/apps/${appId}/evaluation/test-mapper`, data).then((r) => r.data),
   testFilterPrompt: (appId: string, data: { question: string; prompt_text?: string | null }) =>
     api.post<{ raw_response: string | null; error: string | null }>(`/apps/${appId}/evaluation/test-filter-prompt`, data).then((r) => r.data),
+  getSettings: (appId: string) =>
+    api.get<SavedEvaluateSettingsResponse>(`/apps/${appId}/evaluation/settings`).then((r) => r.data),
+  saveSettings: (appId: string, settings: SavedEvaluateSettings) =>
+    api.put<{ ok: boolean }>(`/apps/${appId}/evaluation/settings`, { settings }).then((r) => r.data),
+};
+
+// ── Performance test ────────────────────────────────────────────────────────
+
+export type PerfStopMode = "iterations" | "duration";
+
+export interface PerfRun {
+  run_id: string;
+  app_id: string;
+  golden_set_version: string;
+  concurrency: number;
+  stop_mode: PerfStopMode;
+  iterations: number | null;
+  duration_s: number | null;
+  ramp_up_s: number;
+  status: "running" | "complete" | "failed" | "stopped";
+  started_at: string;
+  finished_at: string | null;
+  total_requests: number;
+  success_count: number;
+  error_count: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
+  avg_ms: number | null;
+  max_ms: number | null;
+  error_message: string | null;
+}
+
+export interface PerfResult {
+  run_id: string;
+  seq: number;
+  tc_id: string | null;
+  status_code: number | null;
+  latency_ms: number;
+  error: string | null;
+  started_at: string;
+}
+
+export interface PerfTestStartRequest {
+  golden_set_version: string;
+  concurrency: number;
+  stop_mode: PerfStopMode;
+  iterations?: number | null;
+  duration_s?: number | null;
+  ramp_up_s: number;
+}
+
+export interface PerfStartResponse extends Job {
+  run_id: string;
+}
+
+export const perfTestApi = {
+  start: (appId: string, body: PerfTestStartRequest) =>
+    api.post<PerfStartResponse>(`/apps/${appId}/perf-test/start`, body).then((r) => r.data),
+  listJobs: (appId: string) =>
+    api.get<Job[]>(`/apps/${appId}/perf-test/jobs`).then((r) => r.data),
+  getJob: (appId: string, jobId: string) =>
+    api.get<Job>(`/apps/${appId}/perf-test/jobs/${jobId}`).then((r) => r.data),
+  stop: (appId: string, jobId: string) =>
+    api.post<{ ok: boolean }>(`/apps/${appId}/perf-test/jobs/${jobId}/stop`).then((r) => r.data),
+  listRuns: (appId: string) =>
+    api.get<PerfRun[]>(`/apps/${appId}/perf-test/runs`).then((r) => r.data),
+  getRun: (appId: string, runId: string) =>
+    api.get<PerfRun>(`/apps/${appId}/perf-test/runs/${runId}`).then((r) => r.data),
+  getResults: (appId: string, runId: string, limit = 500, offset = 0) =>
+    api.get<{ run_id: string; results: PerfResult[]; limit: number; offset: number }>(
+      `/apps/${appId}/perf-test/runs/${runId}/results`,
+      { params: { limit, offset } },
+    ).then((r) => r.data),
+  delete: (appId: string, runId: string) =>
+    api.delete<{ ok: boolean; run_id: string }>(`/apps/${appId}/perf-test/runs/${runId}`).then((r) => r.data),
 };
 
 export interface QueryRequest {
@@ -247,6 +373,7 @@ export interface QueryRequest {
   meta_filters?: Record<string, unknown>[];
   user_email?: string | null;
   answer_mode_override?: string | null;
+  payload_override?: Record<string, unknown> | null;
 }
 
 export interface QueryResponse {
@@ -254,9 +381,12 @@ export interface QueryResponse {
   is_valid_answer: boolean;
   cited_doc_ids: string[];
   result_doc_ids: string[];
+  chunk_signals?: ChunkSignal[];
   answer_mode: string;
   latency_llm_ms: number | null;
   latency_retrieval_ms: number | null;
+  search_payload?: Record<string, unknown>;
+  raw_response?: Record<string, unknown>;
 }
 
 export const queryApi = {
@@ -286,6 +416,12 @@ export const goldenSetsApi = {
     ).then((r) => r.data);
   },
   templateUrl: (appId: string) => `/api/apps/${appId}/golden-sets/template`,
+  exportUrl: (appId: string, version: string) =>
+    `/api/apps/${appId}/golden-sets/${encodeURIComponent(version)}/export`,
+  filterOptions: (appId: string, version: string) =>
+    api.get<{ fields: { name: string; label: string; count: number }[] }>(
+      `/apps/${appId}/golden-sets/${encodeURIComponent(version)}/filter-options`,
+    ).then((r) => r.data),
   getDeleteImpact: (appId: string, version: string) =>
     api.get<GoldenSetDeleteImpact>(
       `/apps/${appId}/golden-sets/${encodeURIComponent(version)}/delete-impact`,
@@ -359,6 +495,16 @@ export interface RunDiagnostics {
     recall_at_3: number | null;
     recall_at_5: number | null;
     recall_at_10: number | null;
+  };
+  chunk_lifecycle?: {
+    cases_with_reference: number;
+    cases_with_matched_chunk: number;
+    retrieval_qualified: number;
+    sent_to_llm: number;
+    used_in_answer: number;
+    retrieval_accuracy: number | null;
+    sent_to_llm_accuracy: number | null;
+    answer_gen_accuracy: number | null;
   };
   judge_metric_avgs: Record<string, number | null>;
   weakest_judge_metric: string | null;
@@ -453,6 +599,9 @@ export interface ApiKeyStatus {
   openai_key_set: boolean;
   openai_key_preview: string;
   openai_base_url: string;
+  gemini_key_set: boolean;
+  gemini_key_preview: string;
+  gemini_base_url: string;
   case1_threshold: number;
   case2_threshold: number;
 }
@@ -462,6 +611,8 @@ export interface AppApiKeysUpdate {
   anthropic_base_url?: string;
   openai_key?: string;
   openai_base_url?: string;
+  gemini_key?: string;
+  gemini_base_url?: string;
   case1_threshold?: number;
   case2_threshold?: number;
 }
@@ -474,4 +625,83 @@ export const appApiKeysApi = {
     api.post<{ ok: boolean; response: string }>(`/apps/${appId}/api-keys/test-anthropic`, { key: key || null, base_url: baseUrl || null }).then((r) => r.data),
   testOpenAI: (appId: string, key?: string, baseUrl?: string) =>
     api.post<{ ok: boolean; response: string }>(`/apps/${appId}/api-keys/test-openai`, { key: key || null, base_url: baseUrl || null }).then((r) => r.data),
+  testGemini: (appId: string, key?: string, baseUrl?: string) =>
+    api.post<{ ok: boolean; response: string }>(`/apps/${appId}/api-keys/test-gemini`, { key: key || null, base_url: baseUrl || null }).then((r) => r.data),
+};
+
+// ── Prompt Tuner ─────────────────────────────────────────────────────────────
+
+export interface TunableAgent {
+  agent_name: string;
+  description: string;
+}
+
+export interface PromptTunerRunSummary {
+  run_id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  golden_set_version: string;
+  rag_version: string;
+  total_cases: number;
+  failure_count: number;
+}
+
+export interface FailureSample {
+  tc_id: string;
+  question: string;
+  expected_answer?: string | null;
+  generated_answer?: string | null;
+  failure_category?: string | null;
+  judge_rationale?: string | null;
+  expected_doc_rank?: number | null;
+  question_type?: string | null;
+  case_id?: number | null;
+}
+
+export interface PromptTunerFailuresResponse {
+  run_id: string;
+  agent_name: string;
+  total_failures: number;
+  returned: number;
+  failures: FailureSample[];
+}
+
+export interface PromptTunerFineTuneRequest {
+  agent_name: string;
+  current_prompt?: string | null;
+  run_id?: string | null;
+  failures?: FailureSample[] | null;
+  max_samples?: number;
+  user_notes?: string | null;
+}
+
+export interface PromptTunerFineTuneResponse {
+  agent_name: string;
+  model: string;
+  llm_slot?: string | null;
+  current_prompt: string;
+  improved_prompt: string;
+  summary_of_changes: string;
+  failure_patterns: string[];
+  samples_used: number;
+  raw_response: string;
+}
+
+export const promptTunerApi = {
+  listAgents: (appId: string) =>
+    api.get<{ agents: TunableAgent[] }>(`/apps/${appId}/prompt-tuner/agents`).then((r) => r.data.agents),
+  listRuns: (appId: string) =>
+    api.get<{ runs: PromptTunerRunSummary[] }>(`/apps/${appId}/prompt-tuner/runs`).then((r) => r.data.runs),
+  getFailures: (appId: string, runId: string, agentName: string, limit = 20) =>
+    api.get<PromptTunerFailuresResponse>(
+      `/apps/${appId}/prompt-tuner/runs/${runId}/failures`,
+      { params: { agent_name: agentName, limit } },
+    ).then((r) => r.data),
+  fineTune: (appId: string, body: PromptTunerFineTuneRequest) =>
+    api.post<PromptTunerFineTuneResponse>(
+      `/apps/${appId}/prompt-tuner/finetune`,
+      body,
+      { timeout: 180_000 },
+    ).then((r) => r.data),
 };

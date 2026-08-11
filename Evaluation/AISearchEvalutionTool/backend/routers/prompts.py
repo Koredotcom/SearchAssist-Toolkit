@@ -5,7 +5,17 @@ from agents.prompts import DEFAULT_PROMPTS
 
 router = APIRouter(prefix="/apps/{app_id}/prompts", tags=["prompts"])
 
-VALID_AGENTS = {"agent1", "agent2", "agent3", "judge"}
+VALID_AGENTS = {
+    "agent1", "agent2", "agent3", "judge",
+    "filter_generator", "filter_mapper", "insights",
+    "answer_generator",
+}
+
+TUNABLE_AGENTS = {
+    "agent1", "agent2", "agent3", "judge",
+    "filter_generator", "insights",
+    "answer_generator",
+}
 
 
 @router.get("", response_model=list[PromptConfigResponse])
