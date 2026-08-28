@@ -25,5 +25,8 @@
         "url": "<MONGO URL>",
         "dbName": "<DB NAME>",
         "collectionName": "<COLLECTION NAME>"
-    }
+    },
+    "model_type": "openai",
+    "max_concurrent_requests_for_search_api": 2,
+    "max_concurrent_requests_for_evaluation": 2
 }
