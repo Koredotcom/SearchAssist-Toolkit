@@ -1,10 +1,17 @@
+import os
 from pymongo import MongoClient
 import numpy as np
-from config.configManager import ConfigManager
+
 from datetime import datetime
 
-config_manager = ConfigManager()
-config = config_manager.get_config()
+# Use environment variables for MongoDB (no file-based config)
+config = {
+    "MongoDB": {
+        "url": os.getenv("MONGO_URL", "<MONGO_URL>"),
+        "dbName": os.getenv("DB_NAME", "<DB_NAME>"),
+        "collectionName": os.getenv("COLLECTION_NAME", "<COLLECTION_NAME>")
+    }
+}
 
 
 

@@ -1,11 +1,17 @@
+import os
 import pandas as pd
 from pymongo import MongoClient
-from config.configManager import ConfigManager
-import os
+
 import numpy as np
 
-config_manager = ConfigManager()
-config = config_manager.get_config()
+# Use environment variables for MongoDB (no file-based config)
+config = {
+    "MongoDB": {
+        "url": os.getenv("MONGO_URL", "<MONGO_URL>"),
+        "dbName": os.getenv("DB_NAME", "<DB_NAME>"),
+        "collectionName": os.getenv("COLLECTION_NAME", "<COLLECTION_NAME>")
+    }
+}
 
 
 def fetch_last_5_testsets():
@@ -15,7 +21,6 @@ def fetch_last_5_testsets():
         db = client[config["MongoDB"]["dbName"]]
         collection = db[config["MongoDB"]["collectionName"]]
     except Exception as e:
-        print(f"An error occurred: {e}")
         raise Exception(f"Error in connecting to MongoDB. {e}") 
        
     try:
@@ -38,7 +43,6 @@ def fetch_last_5_testsets():
             df.to_excel(os.path.join(relative_output_dir, f"{time}.xlsx"), index=False)
         return list(records)
     except Exception as e:
-        print(f"An error occurred: {e}")
         raise Exception(f"Error in fetching records from MongoDB. {e}")
 
 # calculate the z-score for a given metric
@@ -76,8 +80,7 @@ def detect_significant_change(latest_record, records, threshold=2):
                 'std_dev': std_dev,
                 'z_score': z_score
             }
-            print("Significant change detected!")
-            print(f"{metric}: {z_score}")
+
 
     return significant, changes
 
