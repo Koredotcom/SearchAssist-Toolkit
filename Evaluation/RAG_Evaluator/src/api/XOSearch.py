@@ -61,7 +61,10 @@ class AnswerProcessor:
         if not center_panel:
             return "No Answer Found"
         snippet_content = center_panel.get('data', [{}])[0].get('snippet_content', [{}])
-        answer_string = " ".join(content.get('answer_fragment', "No Answer Found") for content in snippet_content) if snippet_content else "No Answer Found"
+        if type(snippet_content) is not list:
+            answer_string = snippet_content
+        else:
+            answer_string = " ".join(content.get('answer_fragment', "No Answer Found") for content in snippet_content) if snippet_content else "No Answer Found"        
         return answer_string
 
 
