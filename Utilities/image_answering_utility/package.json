@@ -1,0 +1,35 @@
+{
+  "name": "pdf-processor",
+  "version": "1.0.0",
+  "description": "PDF processing service",
+  "main": "src/api/server.js",
+  "scripts": {
+    "setup": "npm install && node src/scripts/install-mongodb.js && node src/scripts/init-mongodb.js",
+    "start": "node src/api/server.js",
+    "dev": "nodemon src/api/server.js",
+    "init-mongodb": "node src/scripts/init-mongodb.js",
+    "install-mongodb": "node src/scripts/install-mongodb.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.750.0",
+    "@aws-sdk/s3-request-presigner": "^3.750.0",
+    "aws-sdk": "^2.1692.0",
+    "axios": "^1.7.9",
+    "bull": "^4.16.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "extract-zip": "^2.0.1",
+    "form-data": "^4.0.2",
+    "fs-extra": "^11.3.0",
+    "ioredis": "^5.5.0",
+    "mongodb": "^5.0.0",
+    "mongoose": "^7.0.0",
+    "p-limit": "^6.2.0",
+    "pdf2pic": "^2.2.4",
+    "proper-lockfile": "^4.1.2",
+    "winston": "^3.x"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
