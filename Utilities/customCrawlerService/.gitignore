@@ -1,0 +1,13 @@
+.venv/
+.env
+.env.bak*
+*.bak
+__pycache__/
+*.pyc
+
+# Local run artifacts: warmed Chrome profiles (contain cf_clearance cookies),
+# callback spool, and captured Findly callback payloads from mock runs.
+data/profiles/
+data/spool/
+tools/callback_inbox/
+data/noVNC/
