@@ -1,0 +1,14 @@
+# Pinned for Python 3.13.
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.4
+# Keep in sync with the Findly venv Playwright major.line used in production.
+# Older 1.49.x launches Chrome with AcceptCHFrame disabled (automation tell) and
+# without --enable-unsafe-swiftshader (WebGL broken under Xvfb).
+playwright==1.60.0
+# 2.x required: 1.0.x depends on pkg_resources (removed in 3.13) and lacks Stealth.
+playwright-stealth==2.0.3
+httpx==0.28.1
+aiofiles==24.1.0
+python-dotenv==1.0.1
+websockify==0.13.0
