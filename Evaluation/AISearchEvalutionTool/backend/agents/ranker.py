@@ -6,7 +6,7 @@ from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from db.database import get_active_prompt
-from agents.llm_client import call_llm
+from agents.llm_client import call_llm_json, parse_json_loose
 from agents.prompts import AGENT3_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -36,20 +36,19 @@ def _rank_batch(
         for tc in batch
     ]
     user_msg = f"Score these {len(batch)} test cases:\n\n{json.dumps(payload, indent=2)}"
-    raw = call_llm(app_id, "agent3", system_prompt, user_msg)
+    raw = call_llm_json(app_id, "agent3", system_prompt, user_msg)
 
-    try:
-        results = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning("Agent3 | JSON parse failed for batch #%d — attempting bracket extraction", batch_idx + 1)
-        s, e = raw.find("["), raw.rfind("]") + 1
-        if s == -1 or e == 0:
-            logger.error("Agent3 | Could not extract JSON for batch #%d | raw[:200]=%s", batch_idx + 1, raw[:200])
-            results = []
-        else:
-            results = json.loads(raw[s:e])
+    parsed = parse_json_loose(raw, expect="array", agent_name=f"Agent3:batch#{batch_idx + 1}")
+    if isinstance(parsed, dict):
+        for key in ("results", "scores", "data", "test_cases"):
+            if isinstance(parsed.get(key), list):
+                parsed = parsed[key]
+                break
+    results: list[dict[str, Any]] = parsed if isinstance(parsed, list) else []
+    if not isinstance(parsed, (list, dict)):
+        logger.error("Agent3 | No usable JSON for batch #%d", batch_idx + 1)
 
-    decisions = {r.get("decision", "?") for r in results}
+    decisions = {r.get("decision", "?") for r in results if isinstance(r, dict)}
     logger.debug("Agent3 | Batch #%d done | returned=%d decisions=%s", batch_idx + 1, len(results), decisions)
     return results
 

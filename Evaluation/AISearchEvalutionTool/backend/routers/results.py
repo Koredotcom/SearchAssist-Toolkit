@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 import json
 import logging
@@ -66,6 +68,15 @@ def get_run_results(app_id: str, run_id: str):
             passed = verdict == "pass"
         else:
             passed = _is_pass(scores, expected_behavior)
+        # Build docId → {title, url} from stored chunk_signals (deduped by docId)
+        doc_label_map: dict[str, dict] = {}
+        for chunk in r.get("chunk_signals") or []:
+            doc_id = chunk.get("docId")
+            if doc_id and doc_id not in doc_label_map:
+                doc_label_map[doc_id] = {
+                    "title": chunk.get("recordTitle"),
+                    "url": chunk.get("recordUrl"),
+                }
         result.append({
             "tc_id": r["tc_id"],
             "question": r["question"],
@@ -83,6 +94,9 @@ def get_run_results(app_id: str, run_id: str):
             "latency_retrieval_ms": r.get("latency_retrieval_ms"),
             "doc_retrieved": scores.get("doc_retrieved", False),
             "search_payload": r.get("search_payload") or {},
+            "search_response": r.get("search_response") or {},
+            "chunk_signals": r.get("chunk_signals") or [],
+            "doc_label_map": doc_label_map,
             # 4-case fields
             "case_id": r.get("case_id"),
             "expected_doc_rank": r.get("expected_doc_rank"),
@@ -314,9 +328,52 @@ def _avg(arr: list[float]) -> float | None:
     return round(sum(arr) / len(arr), 1) if arr else None
 
 
+def _is_extract_run(rows: list[dict]) -> bool:
+    return any((r.get("scores") or {}).get("answer_mode") == "extract_only" for r in rows)
+
+
+def _extract_verdict_label(
+    verdict: str | None,
+    chunk_rank: int | None,
+    *,
+    top_k: int = 5,
+    chunk_scoring_mode: str = "qualified_only",
+) -> str:
+    """Human-readable extract-mode verdict (chunk in top-K of scoring pool)."""
+    qualified_only = chunk_scoring_mode != "raw"
+    pool = "qualified" if qualified_only else "raw"
+    rank_word = "qualified rank" if qualified_only else "rank"
+    if verdict == "pass":
+        rank_note = f", {rank_word} {chunk_rank}" if chunk_rank is not None else ""
+        return f"PASS — expected match in top {top_k} {pool} chunks{rank_note}"
+    if verdict == "fail":
+        if chunk_rank is None:
+            return f"FAIL — expected match not in top {top_k} {pool} chunks"
+        if chunk_rank > top_k:
+            return (
+                f"FAIL — expected match at {rank_word} {chunk_rank} "
+                f"(not in top {top_k} {pool})"
+            )
+        return f"FAIL — see failure category"
+    return "N/A — no reference document (Cases 1 & 2)"
+
+
+def _top_chunks_preview(scores: dict, max_chars: int = 8000) -> str:
+    parts: list[str] = []
+    for ch in scores.get("top_chunks") or []:
+        if not isinstance(ch, dict):
+            continue
+        rank = ch.get("rank", "?")
+        doc = ch.get("docId", "")
+        text = (ch.get("chunkText") or "").strip()
+        parts.append(f"[{rank}] docId={doc}\n{text}")
+    joined = "\n\n---\n\n".join(parts)
+    return joined[:max_chars] if joined else ""
+
+
 @router.get("/{run_id}/export")
 def export_run(app_id: str, run_id: str):
-    """Stream a 4-sheet .xlsx: Summary, Results (colour-coded), Retrieval, Glossary."""
+    """Stream .xlsx: Summary, Results, Retrieval, Glossary."""
     if not get_app(app_id):
         raise HTTPException(404, "App not found")
     rows = get_eval_results(run_id)
@@ -435,7 +492,7 @@ def export_run(app_id: str, run_id: str):
     _h(ws, ws.max_row)
     for cat, n in sorted(failure_breakdown.items(), key=lambda x: -x[1]):
         labels = {
-            "retrieval_miss":  "Retrieval miss — correct document not retrieved",
+            "retrieval_miss":  "Retrieval miss — expected doc not in search API results",
             "off_topic":       "Off-topic — answer not relevant to the question",
             "low_similarity":  "Low similarity — answer differs from expected",
             "retrieval_error": "Retrieval error — RAG API error",
@@ -498,37 +555,38 @@ def export_run(app_id: str, run_id: str):
 
     # ── Sheet 2: Results (colour-coded) ────────────────────────────────
     results = wb.create_sheet("Results")
+    extract_export = _is_extract_run(rows)
 
     col_headers = [
-        # Question
         "Question",
         "Expected Answer",
-        "RAG Generated Answer",
-        # Verdict
-        "Verdict",
-        "Verdict Source\n(how the verdict was decided)",
+        (
+            "Top 5 Chunk Texts\n(from Advance Search retrieval)"
+            if extract_export
+            else "RAG Generated Answer"
+        ),
+        (
+            "Verdict\n(pass = expected match in top 5 scoring chunks)"
+            if extract_export
+            else "Verdict"
+        ),
+        *([] if extract_export else ["Verdict Source\n(how the verdict was decided)"]),
         "Failure Category",
-        # Retrieval
         "Evaluation Case\n(1–4)",
         "Expected Doc Retrieved?\n(Yes / No)",
         "Expected Doc Rank\n(position in results, 1=top)",
         "Chunk Rank\n(chunk-level position)",
         "Qualified Chunks\n(chunks scored by Kore.ai)",
-        # Matched chunk lifecycle
         "Matched Chunk — Search Qualified?\n(entered Kore.ai scoring)",
         "Matched Chunk — Sent to LLM?\n(used to build the answer)",
         "Matched Chunk — Used in Answer?\n(cited in final response)",
-        # Chunk retrieval scores
         "Matched Vector Score\n(semantic similarity, 0–1)",
         "Matched Keyword Score\n(keyword match, 0–1)",
         "Matched Positional Score",
         "Matched Combined Score",
-        # Answer quality
         "Answer Similarity\n(0=different, 1=identical)",
-        # Latency
         "LLM Latency (ms)",
         "Retrieval Latency (ms)",
-        # Judge rubric
         "Groundedness\n(1–5: answer supported by docs)",
         "Query Relevance\n(1–5: answers the question)",
         "Ground Truth Relevance\n(1–5: matches expected answer)",
@@ -536,14 +594,19 @@ def export_run(app_id: str, run_id: str):
         "Fluency\n(1–5: grammatical quality)",
         "Completeness\n(1–5: covers all aspects)",
         "Paraphrasing\n(1–5: rephrased not copied)",
-        "GPT Similarity\n(1–5: overall text match)",
-        # Safety
-        "Toxicity Detected?",
-        "Bias Detected?",
-        "Banned Topic Violation?",
-        # Judge reasoning
-        "Judge Rationale\n(LLM explanation of scores)",
+        "GPT Similarity\n(0–100: semantic match to expected)",
     ]
+    if not extract_export:
+        col_headers.extend([
+            "Toxicity Detected?",
+            "Bias Detected?",
+            "Banned Topic Violation?",
+        ])
+    col_headers.append(
+        "Extract Scorer Rationale\n(chunk-based LLM scores)"
+        if extract_export
+        else "Judge Rationale\n(LLM explanation of scores)"
+    )
 
     results.append(col_headers)
     for cell in results[1]:
@@ -555,12 +618,29 @@ def export_run(app_id: str, run_id: str):
     for r in rows:
         scores  = r.get("scores") or {}
         verdict = r.get("verdict")
+        answer_col = (
+            _top_chunks_preview(scores) if extract_export else r.get("rag_response")
+        )
+        top_k = int(scores.get("top_k_pass") or 5)
+        verdict_col = (
+            _extract_verdict_label(
+                verdict,
+                scores.get("chunk_rank"),
+                top_k=top_k,
+                chunk_scoring_mode=str(scores.get("chunk_scoring_mode") or "qualified_only"),
+            )
+            if extract_export
+            else verdict
+        )
         row_data = [
             r.get("question"),
             r.get("expected_answer"),
-            r.get("rag_response"),
-            verdict,
-            r.get("verdict_source"),
+            answer_col,
+            verdict_col,
+        ]
+        if not extract_export:
+            row_data.append(r.get("verdict_source"))
+        row_data.extend([
             r.get("failure_category"),
             r.get("case_id"),
             "Yes" if scores.get("doc_retrieved") else "No",
@@ -578,11 +658,14 @@ def export_run(app_id: str, run_id: str):
             r.get("latency_llm_ms"),
             r.get("latency_retrieval_ms"),
             *[scores.get(k) for k in _RUBRIC_KEYS],
-            _bool_label(scores.get("toxicity_detected")),
-            _bool_label(scores.get("bias_detected")),
-            _bool_label(scores.get("banned_topic_violation")),
-            r.get("judge_rationale"),
-        ]
+        ])
+        if not extract_export:
+            row_data.extend([
+                _bool_label(scores.get("toxicity_detected")),
+                _bool_label(scores.get("bias_detected")),
+                _bool_label(scores.get("banned_topic_violation")),
+            ])
+        row_data.append(r.get("judge_rationale"))
         results.append(row_data)
 
         # Colour-code the row
@@ -592,18 +675,19 @@ def export_run(app_id: str, run_id: str):
             for col_idx in range(1, len(col_headers) + 1):
                 results.cell(row=row_idx, column=col_idx).fill = fill
 
-    # Column widths
+    # Column widths (must match len(col_headers))
     col_widths = [
-        55, 50, 65,          # question / expected / generated
-        10, 32, 20,          # verdict / source / failure
-        8,  10, 14, 12, 12,  # case / doc_retrieved / rank / chunk_rank / qualified
-        14, 14, 14,          # lifecycle flags
-        14, 14, 14, 14,      # scores
-        14, 14, 14,          # similarity / latencies
-        12, 12, 14, 12, 12, 12, 12, 12,  # rubric
-        12, 12, 14,          # safety
-        60,                  # rationale
+        55, 50, 65,
+        42, *([] if extract_export else [32]), 20,
+        8,  10, 14, 12, 12,
+        14, 14, 14,
+        14, 14, 14, 14,
+        14, 14, 14,
+        12, 12, 14, 12, 12, 12, 12, 12,
     ]
+    if not extract_export:
+        col_widths.extend([12, 12, 14])
+    col_widths.append(60)
     for i, w in enumerate(col_widths, start=1):
         results.column_dimensions[get_column_letter(i)].width = w
     results.freeze_panes = "A2"
@@ -679,7 +763,7 @@ def export_run(app_id: str, run_id: str):
     _g_row(glossary, "Verdict",
            "Final result for this test case: 'pass' (green) or 'fail' (red). "
            "Blank means no verdict was possible (e.g. Case 1 without a judge or embeddings).\n"
-           "Cases 3 & 4 (retrieval): PASS if the expected document chunk is in the top 5 retrieved chunks. "
+           "Cases 3 & 4 (extract): PASS if the expected chunk is in the top 5 chunkQualified rows. "
            "Cases 1 & 2 (non-retrieval): PASS based on LLM judge scores or semantic similarity.",
            "pass / fail / blank")
     _g_row(glossary, "Verdict Source",
@@ -688,7 +772,7 @@ def export_run(app_id: str, run_id: str):
            "Text description")
     _g_row(glossary, "Failure Category",
            "Root cause of failure when verdict is 'fail':\n"
-           "  • retrieval_miss — the correct document was not retrieved\n"
+           "  • retrieval_miss — expected document not in Advance Search results (API-derived, not judge)\n"
            "  • off_topic — the answer is not relevant to the question\n"
            "  • low_similarity — answer differs too much from expected\n"
            "  • toxic / biased / banned_topic — safety policy violation\n"
@@ -727,16 +811,16 @@ def export_run(app_id: str, run_id: str):
            "documents. 1 means it was the top result. Blank means not found.",
            "Integer ≥ 1 or blank")
     _g_row(glossary, "Chunk Rank",
-           "Position of the first matching chunk (not document) in the chunk-level "
-           "retrieval list. Lower is better.",
+           "Position of the first matching chunk among chunkQualified=True rows only "
+           "(extract mode). Lower is better; must be ≤5 to pass.",
            "Integer ≥ 1 or blank")
     _g_row(glossary, "Qualified Chunks",
            "Number of chunks that passed Kore.ai's internal scoring threshold and "
            "were eligible to be sent to the LLM.",
            "Integer")
     _g_row(glossary, "Recall@K (1 / 3 / 5 / 10)",
-           "1 if the expected document appeared in the top-K retrieved documents, "
-           "0 if not. E.g. Recall@5 = 1 means the correct doc was in the top 5.",
+           "Extract mode: 1 if the expected chunk appeared in the top-K qualified chunks. "
+           "Answer generation: top-K cited documents.",
            "0 or 1")
     glossary.append(["", "", ""])
 

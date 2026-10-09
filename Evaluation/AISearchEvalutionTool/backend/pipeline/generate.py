@@ -30,19 +30,32 @@ def _process_doc(
     total_docs: int,
     lock: threading.Lock,
     max_questions_per_doc: int = 5,
+    target_language: str = "English",
 ) -> list[dict[str, Any]]:
     """Run Agent 1 + Agent 2 for a single document (runs in a thread)."""
     doc_id = doc.get("doc_id", "?")
     title = doc.get("title", "?")
-    logger.info("Pipeline | Processing doc '%s' (id=%s) | max_questions=%d", title, doc_id, max_questions_per_doc)
+    logger.info(
+        "Pipeline | Processing doc '%s' (id=%s) | max_questions=%d language=%s",
+        title, doc_id, max_questions_per_doc, target_language,
+    )
 
     upsert_source_document(doc)
     extraction = summarize_document(doc, app_id)
-    raw_cases = generate_test_cases(extraction, doc, app_id, max_questions=max_questions_per_doc)
+    raw_cases = generate_test_cases(
+        extraction,
+        doc,
+        app_id,
+        max_questions=max_questions_per_doc,
+        target_language=target_language,
+    )
 
     for tc in raw_cases:
         tc["golden_set_version"] = golden_set_version
         tc["app_id"] = app_id
+        metadata = tc.get("generation_metadata") if isinstance(tc.get("generation_metadata"), dict) else {}
+        metadata["target_language"] = target_language
+        tc["generation_metadata"] = metadata
 
     with lock:
         completed_counter[0] += 1
@@ -66,15 +79,16 @@ def run_generation(
     job_id: str,
     web_source_ids: list[str] | None = None,
     file_source_ids: list[str] | None = None,
+    target_language: str = "English",
 ) -> dict[str, Any]:
     app_id = app["app_id"]
     web_source_ids = web_source_ids or []
     file_source_ids = file_source_ids or []
     logger.info(
         "Pipeline | Generation started | app=%s version=%s max_docs=%d max_q_per_doc=%d "
-        "connectors=%s web_sources=%s file_sources=%s",
+        "language=%s connectors=%s web_sources=%s file_sources=%s",
         app_id, golden_set_version, max_docs_per_source, max_questions_per_doc,
-        connector_ids, web_source_ids, file_source_ids,
+        target_language, connector_ids, web_source_ids, file_source_ids,
     )
 
     try:
@@ -121,10 +135,14 @@ def run_generation(
 
         # ── Web crawls (sys_content_type='web', scoped by extractionSourceId) ──
         for src_id in web_source_ids:
-            web_filters = {**filters, "sys_content_type": "web", "extractionSourceId": src_id}
+            # Kore.ai's content condition API filters only trained index fields.
+            # extractionSourceId is returned as top-level metadata, so fetch web
+            # records by sys_content_type and apply the source-id match client-side.
+            web_filters = {**filters, "sys_content_type": "web"}
             web_docs = list(fetch_documents(
                 app, filters=web_filters,
                 extraction_type=None,
+                source_id=src_id,
                 max_docs=max_docs_per_source,
             ))
             logger.info("Pipeline | Web source %s → %d pages", src_id, len(web_docs))
@@ -132,10 +150,11 @@ def run_generation(
 
         # ── Uploaded files (sys_content_type='file', scoped by extractionSourceId) ──
         for src_id in file_source_ids:
-            file_filters = {**filters, "sys_content_type": "file", "extractionSourceId": src_id}
+            file_filters = {**filters, "sys_content_type": "file"}
             file_docs = list(fetch_documents(
                 app, filters=file_filters,
                 extraction_type=None,
+                source_id=src_id,
                 max_docs=max_docs_per_source,
             ))
             logger.info("Pipeline | File source %s → %d documents", src_id, len(file_docs))
@@ -204,7 +223,7 @@ def run_generation(
                 executor.submit(
                     _process_doc, doc, app_id, golden_set_version,
                     job_id, completed_counter, len(valid_docs), lock,
-                    max_questions_per_doc,
+                    max_questions_per_doc, target_language,
                 ): doc
                 for doc in valid_docs
             }

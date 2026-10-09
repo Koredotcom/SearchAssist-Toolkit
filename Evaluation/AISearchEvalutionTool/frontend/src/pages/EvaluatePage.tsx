@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { goldenSetsApi, evaluationApi, appsApi } from "@/lib/api";
-import type { Job, AnswerMode, FilterMode } from "@/lib/api";
-import { FlaskConical, Loader2, CheckCircle, XCircle, ChevronRight, Filter, UserCircle, Zap, FileText, Square, Info, ChevronDown, ChevronUp } from "lucide-react";
+import { goldenSetsApi, evaluationApi, appsApi, appApiKeysApi } from "@/lib/api";
+import type {
+  Job, AnswerMode, FilterMode, JudgeMode, ChunkScoringMode, SavedEvaluateSettings,
+} from "@/lib/api";
+import { FlaskConical, Loader2, CheckCircle, XCircle, ChevronRight, Filter, UserCircle, Zap, FileText, Square, Info, ChevronDown, ChevronUp, Scale, Sparkles, SlidersHorizontal, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function EvaluatePage() {
@@ -15,6 +17,7 @@ export default function EvaluatePage() {
   const [sampleMode, setSampleMode] = useState<"first" | "random">("first");
   // Advanced filters
   const [filterMode, setFilterMode] = useState<FilterMode>("none");
+  const [filterFields, setFilterFields] = useState<string[]>([]);
   const [enableRacl, setEnableRacl] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   // Answer mode: null = inherit from app config, otherwise an explicit override for this run
@@ -22,6 +25,13 @@ export default function EvaluatePage() {
   // Question type filter: empty = all types
   const [selectedQTypes, setSelectedQTypes] = useState<string[]>([]);
   const [showCasesPanel, setShowCasesPanel] = useState(false);
+  // Verdict configuration overrides (per-run)
+  const [showVerdictPanel, setShowVerdictPanel] = useState(false);
+  const [judgeMode, setJudgeMode] = useState<JudgeMode>("auto");
+  const [case1Threshold, setCase1Threshold] = useState<number | null>(null);
+  const [case2Threshold, setCase2Threshold] = useState<number | null>(null);
+  const [topKPass, setTopKPass] = useState<number | null>(null);
+  const [chunkScoringMode, setChunkScoringMode] = useState<ChunkScoringMode>("qualified_only");
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -48,11 +58,108 @@ export default function EvaluatePage() {
     enabled: !!appId,
   });
 
+  // Filter field options for the selected golden set (only needed in field_filters mode)
+  const { data: filterOptions } = useQuery({
+    queryKey: ["filter-options", appId, selectedVersion],
+    queryFn: () => goldenSetsApi.filterOptions(appId!, selectedVersion),
+    enabled: !!appId && !!selectedVersion && filterMode === "field_filters",
+    staleTime: 30_000,
+  });
+  const availableFilterFields = filterOptions?.fields ?? [];
+
+  // App-level thresholds (used as the placeholder/default for overrides)
+  const { data: apiKeyStatus } = useQuery({
+    queryKey: ["app-api-keys", appId],
+    queryFn: () => appApiKeysApi.get(appId!),
+    enabled: !!appId,
+  });
+  const appCase1 = apiKeyStatus?.case1_threshold ?? 0.5;
+  const appCase2 = apiKeyStatus?.case2_threshold ?? 0.5;
+  const judgeKeySet =
+    apiKeyStatus?.anthropic_key_set || apiKeyStatus?.openai_key_set || apiKeyStatus?.gemini_key_set;
+  const effectiveCase1 = case1Threshold ?? appCase1;
+  const effectiveCase2 = case2Threshold ?? appCase2;
+  const effectiveTopK = topKPass ?? 5;
+  const verdictOverrideCount =
+    (judgeMode !== "auto" ? 1 : 0) +
+    (case1Threshold !== null ? 1 : 0) +
+    (case2Threshold !== null ? 1 : 0) +
+    (topKPass !== null ? 1 : 0) +
+    (effectiveAnswerMode === "extract_only" && chunkScoringMode !== "qualified_only" ? 1 : 0);
+
   const { data: jobs = [] } = useQuery({
     queryKey: ["eval-jobs", appId],
     queryFn: () => evaluationApi.listJobs(appId!),
     enabled: !!appId,
   });
+
+  // ── Auto-saved settings ────────────────────────────────────────────
+  // Hydrate on first load, then debounce-save the full state on any change.
+  const hydratedRef = useRef(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { data: savedSettings } = useQuery({
+    queryKey: ["evaluate-settings", appId],
+    queryFn: () => evaluationApi.getSettings(appId!),
+    enabled: !!appId,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (hydratedRef.current || !savedSettings) return;
+    const s = savedSettings.settings;
+    if (!s) {
+      hydratedRef.current = true;
+      return;
+    }
+    setSelectedVersion(s.selectedVersion ?? "");
+    setRagVersion(s.ragVersion ?? "latest");
+    setLimitCases(!!s.limitCases);
+    setMaxCases(typeof s.maxCases === "number" ? s.maxCases : 10);
+    setSampleMode(s.sampleMode ?? "first");
+    setFilterMode(s.filterMode ?? "none");
+    setFilterFields(Array.isArray(s.filterFields) ? s.filterFields : []);
+    setEnableRacl(!!s.enableRacl);
+    setUserEmail(s.userEmail ?? "");
+    setAnswerModeOverride(s.answerModeOverride ?? null);
+    setSelectedQTypes(Array.isArray(s.selectedQTypes) ? s.selectedQTypes : []);
+    setJudgeMode(s.judgeMode ?? "auto");
+    setCase1Threshold(s.case1Threshold ?? null);
+    setCase2Threshold(s.case2Threshold ?? null);
+    setTopKPass(s.topKPass ?? null);
+    setChunkScoringMode(s.chunkScoringMode ?? "qualified_only");
+    hydratedRef.current = true;
+  }, [savedSettings]);
+
+  const saveSettingsMutation = useMutation({
+    mutationFn: (s: SavedEvaluateSettings) => evaluationApi.saveSettings(appId!, s),
+    onMutate: () => setSaveStatus("saving"),
+    onSuccess: () => {
+      setSaveStatus("saved");
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), 1500);
+    },
+    onError: () => setSaveStatus("idle"),
+  });
+
+  useEffect(() => {
+    if (!appId || !hydratedRef.current) return;
+    const snapshot: SavedEvaluateSettings = {
+      selectedVersion, ragVersion, limitCases, maxCases, sampleMode,
+      filterMode, filterFields, enableRacl, userEmail,
+      answerModeOverride, selectedQTypes,
+      judgeMode, case1Threshold, case2Threshold, topKPass, chunkScoringMode,
+    };
+    const handle = setTimeout(() => saveSettingsMutation.mutate(snapshot), 500);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    appId, selectedVersion, ragVersion, limitCases, maxCases, sampleMode,
+    filterMode, filterFields, enableRacl, userEmail,
+    answerModeOverride, selectedQTypes,
+    judgeMode, case1Threshold, case2Threshold, topKPass, chunkScoringMode,
+  ]);
 
   const { data: activeJob } = useQuery({
     queryKey: ["eval-job", appId, activeJobId],
@@ -85,10 +192,17 @@ export default function EvaluatePage() {
         sample_mode: sampleMode,
         filter_mode: filterMode,
         filter_prompt: null,
+        filter_fields: filterMode === "field_filters" && filterFields.length > 0 ? filterFields : null,
         enable_racl: enableRacl,
         user_email: enableRacl && userEmail.trim() ? userEmail.trim() : null,
         answer_mode_override: answerModeOverride,
         question_types: selectedQTypes.length > 0 ? selectedQTypes : null,
+        judge_mode: judgeMode,
+        case1_threshold: case1Threshold,
+        case2_threshold: case2Threshold,
+        top_k_pass: topKPass,
+        chunk_scoring_mode:
+          effectiveAnswerMode === "extract_only" ? chunkScoringMode : null,
       }),
     onSuccess: (job: Job) => setActiveJobId(job.job_id),
   });
@@ -100,11 +214,21 @@ export default function EvaluatePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Evaluate</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Run evaluation against a frozen golden set
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Evaluate</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Run evaluation against a frozen golden set
+          </p>
+        </div>
+        <div className="text-xs text-gray-400 pt-1.5 min-w-[80px] text-right">
+          {saveStatus === "saving" && (
+            <span className="inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Saving…</span>
+          )}
+          {saveStatus === "saved" && (
+            <span className="inline-flex items-center gap-1 text-green-600"><Check className="w-3 h-3" />Saved</span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -167,8 +291,8 @@ export default function EvaluatePage() {
                       noJudge: "Q↔Answer relevance ≥ threshold (semantic)",
                     },
                     eo: {
-                      rule: "Expected doc chunk found in top-5 retrieved chunks",
-                      note: "Pure retrieval check — chunk rank ≤ 5 = pass",
+                      rule: "Expected chunk in top-K scoring pool (see Verdict Configuration)",
+                      note: "Qualified-only or raw chunk list — pass if match rank ≤ top-K",
                     },
                   },
                   {
@@ -180,8 +304,8 @@ export default function EvaluatePage() {
                       noJudge: "Answer↔Expected similarity ≥ threshold (semantic)",
                     },
                     eo: {
-                      rule: "Expected doc chunk found in top-5 retrieved chunks",
-                      note: "Pure retrieval check — chunk rank ≤ 5 = pass",
+                      rule: "Expected chunk in top-K scoring pool (see Verdict Configuration)",
+                      note: "Qualified-only or raw chunk list — pass if match rank ≤ top-K",
                     },
                   },
                 ] as const).map(({ id, label, inputs, ag, eo }) => {
@@ -454,7 +578,7 @@ export default function EvaluatePage() {
                   mode: "extract_only" as AnswerMode,
                   icon: FileText,
                   title: "Extraction",
-                  desc: "Returns top extracted text snippets — no LLM answer generation",
+                  desc: "answerSearch=false — retrieval only; pass = expected chunk in top-K; chunk LLM scores optional",
                   color: "amber",
                 },
               ]).map(({ mode, icon: Icon, title, desc, color }) => {
@@ -499,6 +623,213 @@ export default function EvaluatePage() {
             </div>
           </div>
 
+          {/* ── Verdict Configuration ───────────────────────── */}
+          <div className="pt-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setShowVerdictPanel((v) => !v)}
+              className="flex items-center justify-between w-full text-left group mb-3"
+            >
+              <div className="flex items-center gap-2">
+                <Scale className="w-4 h-4 text-violet-500" />
+                <h3 className="text-sm font-semibold text-gray-800 group-hover:text-gray-900">
+                  Verdict Configuration
+                </h3>
+                {verdictOverrideCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded-full font-semibold">
+                    {verdictOverrideCount} override{verdictOverrideCount > 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+              {showVerdictPanel
+                ? <ChevronUp className="w-4 h-4 text-gray-400" />
+                : <ChevronDown className="w-4 h-4 text-gray-400" />}
+            </button>
+
+            {showVerdictPanel && (
+              <div className="space-y-5">
+                {/* Judge mode */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+                      <p className="text-xs font-semibold text-gray-700">Judge mode</p>
+                    </div>
+                    {judgeMode !== "auto" && (
+                      <button
+                        onClick={() => setJudgeMode("auto")}
+                        className="text-[11px] text-gray-400 hover:text-gray-600 underline"
+                      >
+                        Reset to auto
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mb-2">
+                    Controls whether the LLM judge scores each answer.
+                    {!judgeKeySet && (
+                      <span className="block text-amber-600 mt-1">
+                        No LLM API key found for any provider — judge can't run, falls back to semantic similarity.
+                      </span>
+                    )}
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      { id: "auto",       label: "Auto",       desc: "Judge if API key is configured" },
+                      { id: "force_on",   label: "Always on",  desc: "Require LLM judge — fails if no key" },
+                      { id: "force_off",  label: "Never",      desc: "Skip judge, semantic only" },
+                    ] as const).map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setJudgeMode(m.id)}
+                        className={cn(
+                          "text-left p-2.5 rounded-lg border-2 transition-all",
+                          judgeMode === m.id
+                            ? "border-violet-400 bg-violet-50"
+                            : "border-gray-100 hover:border-gray-200 bg-white"
+                        )}
+                      >
+                        <p className={cn(
+                          "text-xs font-semibold",
+                          judgeMode === m.id ? "text-violet-700" : "text-gray-600"
+                        )}>{m.label}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">{m.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Thresholds — only meaningful when judge isn't running */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-violet-500" />
+                    <p className="text-xs font-semibold text-gray-700">Semantic-similarity thresholds</p>
+                    <span className="text-[10px] text-gray-400">
+                      (used when judge is off or unavailable)
+                    </span>
+                  </div>
+
+                  <ThresholdRow
+                    label="Case 1 / 3 — Q ↔ Answer relevance"
+                    helpText="Cases without an expected answer pass when relevance ≥ threshold."
+                    value={effectiveCase1}
+                    isOverride={case1Threshold !== null}
+                    appDefault={appCase1}
+                    onChange={(v) => setCase1Threshold(v)}
+                    onReset={() => setCase1Threshold(null)}
+                  />
+                  <ThresholdRow
+                    label="Case 2 / 4 — Answer ↔ Expected similarity"
+                    helpText="Cases with an expected answer pass when similarity ≥ threshold."
+                    value={effectiveCase2}
+                    isOverride={case2Threshold !== null}
+                    appDefault={appCase2}
+                    onChange={(v) => setCase2Threshold(v)}
+                    onReset={() => setCase2Threshold(null)}
+                  />
+                </div>
+
+                {/* Top-K — retrieval verdict threshold (extract_only mode) */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-violet-500" />
+                      <p className="text-xs font-semibold text-gray-700">Retrieval top-K pass threshold</p>
+                    </div>
+                    {topKPass !== null && (
+                      <button
+                        onClick={() => setTopKPass(null)}
+                        className="text-[11px] text-gray-400 hover:text-gray-600 underline"
+                      >
+                        Reset to 5
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mb-2">
+                    For <strong>extract_only</strong> (Cases 3 &amp; 4): pass if the expected match is in the top {effectiveTopK}{" "}
+                    {chunkScoringMode === "qualified_only" ? "qualified" : "raw"} chunks — same rule as Recall@{effectiveTopK}.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={effectiveTopK}
+                      onChange={(e) => setTopKPass(Math.max(1, Math.min(50, Number(e.target.value))))}
+                      className="w-20 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    />
+                    <input
+                      type="range"
+                      min={1}
+                      max={20}
+                      value={Math.min(effectiveTopK, 20)}
+                      onChange={(e) => setTopKPass(Number(e.target.value))}
+                      className="flex-1 accent-violet-600"
+                    />
+                  </div>
+                </div>
+
+                {effectiveAnswerMode === "extract_only" && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700 mb-2">Chunk scoring pool</p>
+                    <p className="text-[11px] text-gray-400 mb-2">
+                      Choose which rows from Advance Search count for rank, pass/fail, and Recall@K.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {([
+                        {
+                          id: "qualified_only" as const,
+                          label: "Qualified only",
+                          desc: "Only chunkQualified=true rows (Kore.ai retrieval pool). Default.",
+                        },
+                        {
+                          id: "raw" as const,
+                          label: "Raw chunk list",
+                          desc: "All chunk_result rows in API order (positions 1…N).",
+                        },
+                      ]).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setChunkScoringMode(opt.id)}
+                          className={cn(
+                            "text-left p-3 rounded-lg border transition-colors",
+                            chunkScoringMode === opt.id
+                              ? "border-violet-400 bg-violet-50"
+                              : "border-gray-100 hover:border-gray-200 bg-white",
+                          )}
+                        >
+                          <p className={cn(
+                            "text-xs font-semibold",
+                            chunkScoringMode === opt.id ? "text-violet-700" : "text-gray-600",
+                          )}>
+                            {opt.label}
+                          </p>
+                          <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">{opt.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {verdictOverrideCount > 0 && (
+                  <button
+                    onClick={() => {
+                      setJudgeMode("auto");
+                      setCase1Threshold(null);
+                      setCase2Threshold(null);
+                      setTopKPass(null);
+                      setChunkScoringMode("qualified_only");
+                    }}
+                    className="text-xs text-gray-500 hover:text-gray-700 underline"
+                  >
+                    Clear all verdict overrides
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* ── Advanced filters / RACL ──────────────────────── */}
           <div className="pt-2 border-t border-gray-100">
             <div className="flex items-center gap-2 mb-3">
@@ -510,9 +841,21 @@ export default function EvaluatePage() {
             <div className="space-y-2 mb-4">
               <p className="text-xs font-medium text-gray-600">Meta-filter strategy</p>
               {([
-                { id: "none" as FilterMode,          label: "No filters",       desc: "Send queries to RAG without any metaFilter" },
-                { id: "auto_source" as FilterMode,   label: "Auto from source", desc: "Auto-attach sys_content_type filter based on each test case's source connector" },
-                { id: "custom_prompt" as FilterMode, label: "Custom prompt",    desc: "Use the Filter Generator LLM to produce metaFilters per question (configure prompt & mapper in Prompts & Models)" },
+                {
+                  id: "none" as FilterMode,
+                  label: "No filters",
+                  desc: "Only the question is sent — no metaFilter is attached to the RAG query",
+                },
+                {
+                  id: "field_filters" as FilterMode,
+                  label: "Filters",
+                  desc: "Apply filters from the golden set columns — choose which fields to include below",
+                },
+                {
+                  id: "custom_prompt" as FilterMode,
+                  label: "Custom prompt",
+                  desc: "Use the Filter Generator LLM to produce metaFilters per question (configure prompt & mapper in Prompts & Models)",
+                },
               ]).map((m) => (
                 <label
                   key={m.id}
@@ -528,7 +871,10 @@ export default function EvaluatePage() {
                     name="filter-mode"
                     value={m.id}
                     checked={filterMode === m.id}
-                    onChange={() => setFilterMode(m.id)}
+                    onChange={() => {
+                      setFilterMode(m.id);
+                      if (m.id !== "field_filters") setFilterFields([]);
+                    }}
                     className="mt-0.5 accent-violet-600"
                   />
                   <div className="flex-1">
@@ -538,6 +884,57 @@ export default function EvaluatePage() {
                 </label>
               ))}
             </div>
+
+            {/* Field picker — shown when "Filters" mode is active */}
+            {filterMode === "field_filters" && (
+              <div className="mb-4 rounded-lg border border-violet-100 bg-violet-50/40 p-3 space-y-2">
+                {!selectedVersion ? (
+                  <p className="text-xs text-gray-400 italic">Select a golden set above to see available filter fields.</p>
+                ) : availableFilterFields.length === 0 ? (
+                  <p className="text-xs text-amber-700 italic">
+                    No filterable columns found in this golden set.
+                    Add a <code className="text-xs bg-amber-100 px-1 rounded">sys_content_type</code> column or custom columns to the sheet before uploading.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-xs font-medium text-gray-700">
+                      Pick which fields to apply as metaFilters.
+                      Filters are only applied to test cases that have a value for that field.
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {availableFilterFields.map((f) => {
+                        const active = filterFields.includes(f.name);
+                        return (
+                          <button
+                            key={f.name}
+                            type="button"
+                            onClick={() =>
+                              setFilterFields((prev) =>
+                                active ? prev.filter((x) => x !== f.name) : [...prev, f.name]
+                              )
+                            }
+                            className={cn(
+                              "flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border transition-colors",
+                              active
+                                ? "border-violet-500 bg-violet-100 text-violet-800"
+                                : "border-gray-200 bg-white text-gray-600 hover:border-violet-300"
+                            )}
+                          >
+                            <span>{f.label}</span>
+                            <span className={cn("text-[10px] px-1 rounded", active ? "text-violet-500" : "text-gray-400")}>
+                              {f.count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {filterFields.length === 0 && (
+                      <p className="text-xs text-amber-600 pt-1">Select at least one field — otherwise no filters will be applied.</p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
 
             {filterMode === "custom_prompt" && (
               <div className="mb-4">
@@ -620,8 +1017,11 @@ export default function EvaluatePage() {
                 label="Filter mode"
                 value={
                   filterMode === "none" ? "None"
-                  : filterMode === "auto_source" ? "Auto from source"
-                  : "Custom prompt"
+                  : filterMode === "field_filters"
+                    ? filterFields.length > 0
+                      ? `Fields: ${filterFields.join(", ")}`
+                      : "Filters (no fields selected)"
+                    : "Custom prompt"
                 }
               />
               <Row
@@ -631,6 +1031,18 @@ export default function EvaluatePage() {
               <Row
                 label="RACL"
                 value={enableRacl ? (userEmail.trim() || "(missing email)") : "Off"}
+              />
+              <Row
+                label="Judge mode"
+                value={
+                  judgeMode === "force_on" ? "Always on" :
+                  judgeMode === "force_off" ? "Never" :
+                  judgeKeySet ? "Auto (on)" : "Auto (off — no key)"
+                }
+              />
+              <Row
+                label="Thresholds"
+                value={`C1:${effectiveCase1.toFixed(2)} · C2:${effectiveCase2.toFixed(2)} · top-K:${effectiveTopK}`}
               />
             </div>
 
@@ -808,6 +1220,52 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between">
       <span className="text-gray-500">{label}</span>
       <span className="font-medium text-gray-800">{value}</span>
+    </div>
+  );
+}
+
+function ThresholdRow({
+  label, helpText, value, isOverride, appDefault, onChange, onReset,
+}: {
+  label: string;
+  helpText: string;
+  value: number;
+  isOverride: boolean;
+  appDefault: number;
+  onChange: (v: number) => void;
+  onReset: () => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs font-medium text-gray-700">{label}</p>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono font-semibold text-violet-700">
+            {value.toFixed(2)}
+          </span>
+          {isOverride ? (
+            <button
+              onClick={onReset}
+              className="text-[11px] text-gray-400 hover:text-gray-600 underline"
+              title={`Reset to app default (${appDefault.toFixed(2)})`}
+            >
+              Reset
+            </button>
+          ) : (
+            <span className="text-[10px] text-gray-300">app default</span>
+          )}
+        </div>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-violet-600"
+      />
+      <p className="text-[11px] text-gray-400 mt-0.5">{helpText}</p>
     </div>
   );
 }

@@ -47,7 +47,7 @@ const FUNNEL_STEPS: Array<{
   { key: "expected_doc_top10",  label: "Expected doc in top 10",  hint: "Reference doc ranked ≤10 (Cases 3/4)" },
   { key: "expected_doc_top5",   label: "Expected doc in top 5",   hint: "Reference doc ranked ≤5" },
   { key: "expected_doc_top1",   label: "Expected doc = #1",       hint: "Reference doc ranked first" },
-  { key: "expected_chunk_top5", label: "Expected chunk in top 5", hint: "Matching chunk ranked ≤5 (stricter)" },
+  { key: "expected_chunk_top5", label: "Expected chunk in top 5 qualified", hint: "Matching chunk at qualified rank ≤5" },
   { key: "answered",            label: "RAG returned answer",     hint: "Non-empty answer produced" },
   { key: "verdict_pass",        label: "Verdict: pass",           hint: "Final verdict was pass" },
 ];

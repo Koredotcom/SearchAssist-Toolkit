@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from typing import Any
+import json
 
 from db.database import get_active_prompt
-from agents.llm_client import call_llm
+from agents.llm_client import call_llm_json, parse_json_loose
 from agents.prompts import AGENT2_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -34,21 +34,20 @@ def generate_test_cases(
     doc: dict[str, Any],
     app_id: str,
     max_questions: int = 5,
+    target_language: str = "English",
 ) -> list[dict[str, Any]]:
-    """Generate up to max_questions diverse, answerable test cases for a document."""
+    """Generate up to max_questions diverse, content-specific test cases for a document."""
     max_questions = max(1, min(max_questions, 5))
     doc_id = extraction["doc_id"]
     doc_title = extraction.get("doc_title", "?")
 
     logger.info(
-        "Agent2 | Generating %d test case(s) for doc '%s' (id=%s)",
-        max_questions, doc_title, doc_id,
+        "Agent2 | Generating up to %d %s test case(s) for doc '%s' (id=%s)",
+        max_questions, target_language, doc_title, doc_id,
     )
 
     prompt_row = get_active_prompt(app_id, "agent2")
     system_prompt = prompt_row["prompt_text"] if prompt_row else AGENT2_PROMPT
-
-    selected_types = TYPE_PRIORITY[:max_questions]
 
     extraction_summary = json.dumps({
         "doc_id": doc_id,
@@ -60,48 +59,67 @@ def generate_test_cases(
         "numeric_facts": extraction.get("numeric_facts", []),
     }, indent=2)
 
-    full_content = (doc.get("content") or "")[:6000]
+    # Give Agent 2 enough source text to choose distinctive details, not just
+    # generic questions from the extraction summary.
+    full_content = (doc.get("content") or "")[:30000]
 
     user_msg = (
-        f"Generate exactly {max_questions} answerable test case(s) for the document below.\n\n"
-        f"PREFERRED QUESTION TYPES (one per type, in this order):\n"
-        + "\n".join(f"  {i+1}. {t}" for i, t in enumerate(selected_types))
-        + f"\n\nQUESTION TYPE DEFINITIONS:\n{TYPE_DESCRIPTIONS}\n\n"
-        "RULES:\n"
-        "- Every question MUST be fully answerable from the document content.\n"
-        "- Every test case must use a DIFFERENT question type.\n"
-        "- ALWAYS set expected_behavior to 'ANSWER'. Never generate refusal or clarification questions.\n"
-        "- For follow_up questions, base them on the entire document and answer them by synthesising key information.\n"
-        f"- CRITICAL: You MUST return exactly {max_questions} object(s). Never return fewer.\n"
-        "- FALLBACK: If a preferred type is NOT applicable to this document (no numeric data for 'boundary',\n"
-        "  no two comparable items for 'comparative', no multi-step path for 'multi_hop'), substitute it\n"
-        "  with 'factual' or 'follow_up'. Mark the substituted question_type accordingly.\n\n"
+        f"Generate up to {max_questions} HIGH-QUALITY test cases for the document below.\n\n"
+        "PICK QUALITY OVER QUANTITY:\n"
+        f"- If the document is thin on distinctive detail, generate FEWER than {max_questions} cases.\n"
+        "- Never invent a question just to hit a quota; every case must target a real, distinctive detail.\n\n"
+        f"QUESTION-TYPE GUIDANCE (use as a menu, not a checklist):\n{TYPE_DESCRIPTIONS}\n"
+        "Aim for variety across types. Lean toward factual and multi_hop when the document supports them.\n\n"
+        "CONTENT-SPECIFICITY CHECK:\n"
+        "Before writing each question, ask: 'Could this be answered by someone who never read THIS document?'\n"
+        "If yes, discard it and pick a more specific detail: a named entity, number, date, step, product, role, or exact condition.\n\n"
+        "HUMAN-LIKE PHRASING:\n"
+        "- lowercase, short, casual\n"
+        "- sound like a real user typing into a search box or support chat\n"
+        "- never reference the document, policy, article, guide, source title, or internal fields\n\n"
+        "EXPECTED ANSWERS:\n"
+        "- 2-4 sentences, drawn directly from the document content\n"
+        "- include the specific values that make the question unique\n"
+        "- never punt to 'see the document' or 'refer to section X'\n\n"
+        f"TARGET LANGUAGE:\n"
+        f"- Write every `question`, `expected_answer`, and `rationale` in {target_language}.\n"
+        f"- Keep schema keys and enum values in English exactly as specified.\n"
+        f"- If the source document is in another language, translate faithfully into {target_language}; do not change facts.\n"
+        f"- Preserve product names, system names, URLs, IDs, and brand terms exactly when they should not be translated.\n\n"
+        f"reference_doc_ids must be exactly: [\"{doc_id}\"]\n\n"
         f"DOCUMENT TITLE: {doc_title}\n\n"
-        f"DOCUMENT CONTENT:\n{full_content}\n\n"
+        f"DOC ID: {doc_id}\n\n"
+        f"DOCUMENT CONTENT (source of truth):\n{full_content}\n\n"
         f"DOCUMENT EXTRACTION (structured facts):\n{extraction_summary}"
     )
 
-    logger.debug("Agent2 | types=%s | doc=%s", selected_types, doc_id)
+    logger.debug("Agent2 | doc=%s content_chars=%d max_questions=%d", doc_id, len(full_content), max_questions)
 
-    raw = call_llm(app_id, "agent2", system_prompt, user_msg)
+    raw = call_llm_json(app_id, "agent2", system_prompt, user_msg)
 
-    try:
-        cases = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning("Agent2 | JSON parse failed for doc=%s — attempting bracket extraction", doc_id)
-        s, e = raw.find("["), raw.rfind("]") + 1
-        if s == -1 or e == 0:
-            logger.error("Agent2 | Could not extract JSON for doc=%s | raw[:200]=%s", doc_id, raw[:200])
-            return []
-        cases = json.loads(raw[s:e])
+    cases = parse_json_loose(raw, expect="array", agent_name=f"Agent2:{doc_id}")
+    if isinstance(cases, dict):
+        for key in ("test_cases", "cases", "questions", "data", "results"):
+            if isinstance(cases.get(key), list):
+                cases = cases[key]
+                break
+    if not isinstance(cases, list):
+        logger.error("Agent2 | Expected array, got %s for doc=%s", type(cases).__name__, doc_id)
+        return []
 
     result: list[dict[str, Any]] = []
     for case in cases:
+        if not isinstance(case, dict):
+            logger.warning("Agent2 | Skipping non-dict entry in doc=%s: %r", doc_id, case)
+            continue
         # Enforce ANSWER behavior — never let model produce REFUSE/CLARIFY
         case["expected_behavior"] = "ANSWER"
         case["tc_id"] = f"tc-{uuid.uuid4()}"
         case["app_id"] = app_id
-        case.setdefault("reference_doc_ids", [doc["doc_id"]])
+        case["reference_doc_ids"] = [doc["doc_id"]]
+        metadata = case.get("generation_metadata") if isinstance(case.get("generation_metadata"), dict) else {}
+        metadata["target_language"] = target_language
+        case["generation_metadata"] = metadata
         result.append(case)
 
     logger.info("Agent2 | Done doc '%s' | generated=%d", doc_title, len(result))

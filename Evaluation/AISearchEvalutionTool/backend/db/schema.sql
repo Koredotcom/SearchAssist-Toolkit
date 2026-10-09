@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS app_config (
     anthropic_base_url TEXT NOT NULL DEFAULT '',
     openai_key      TEXT NOT NULL DEFAULT '',
     openai_base_url TEXT NOT NULL DEFAULT '',
+    gemini_key      TEXT NOT NULL DEFAULT '',
+    gemini_base_url TEXT NOT NULL DEFAULT '',
     banned_topics   TEXT NOT NULL DEFAULT '[]',  -- JSON array of strings
     answer_mode     TEXT NOT NULL DEFAULT 'answer_generation',  -- 'answer_generation' | 'extract_only'
     case1_threshold REAL NOT NULL DEFAULT 0.5,  -- semantic Q↔Answer similarity pass threshold
@@ -145,6 +147,49 @@ CREATE TABLE IF NOT EXISTS eval_run (
     ai_insights_generated_at TEXT    -- ISO timestamp of last narrative generation
 );
 
+-- ── Per-app Evaluate-page settings (auto-saved on change) ────────────────────
+CREATE TABLE IF NOT EXISTS evaluate_settings (
+    app_id        TEXT PRIMARY KEY REFERENCES app_config(app_id) ON DELETE CASCADE,
+    settings_json TEXT NOT NULL,
+    updated_at    TEXT DEFAULT (datetime('now'))
+);
+
+-- ── Performance-test runs (Postman-style parallel calls against the RAG API) ─
+CREATE TABLE IF NOT EXISTS perf_run (
+    run_id              TEXT PRIMARY KEY,
+    app_id              TEXT NOT NULL REFERENCES app_config(app_id) ON DELETE CASCADE,
+    golden_set_version  TEXT NOT NULL,
+    concurrency         INTEGER NOT NULL,
+    stop_mode           TEXT NOT NULL,                       -- 'iterations' | 'duration'
+    iterations          INTEGER,
+    duration_s          INTEGER,
+    ramp_up_s           INTEGER NOT NULL DEFAULT 0,
+    status              TEXT NOT NULL DEFAULT 'running',     -- 'running'|'complete'|'failed'|'stopped'
+    started_at          TEXT DEFAULT (datetime('now')),
+    finished_at         TEXT,
+    total_requests      INTEGER NOT NULL DEFAULT 0,
+    success_count       INTEGER NOT NULL DEFAULT 0,
+    error_count         INTEGER NOT NULL DEFAULT 0,
+    p50_ms              REAL,
+    p95_ms              REAL,
+    p99_ms              REAL,
+    avg_ms              REAL,
+    max_ms              REAL,
+    error_message       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS perf_result (
+    run_id      TEXT NOT NULL REFERENCES perf_run(run_id) ON DELETE CASCADE,
+    seq         INTEGER NOT NULL,
+    tc_id       TEXT,
+    status_code INTEGER,
+    latency_ms  REAL NOT NULL,
+    error       TEXT,
+    started_at  TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (run_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_perf_result_run ON perf_result(run_id);
+
 -- ── Evaluation results ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS eval_result (
     run_id               TEXT NOT NULL REFERENCES eval_run(run_id) ON DELETE CASCADE,
@@ -158,7 +203,8 @@ CREATE TABLE IF NOT EXISTS eval_result (
     latency_llm_ms       INTEGER,
     latency_retrieval_ms INTEGER,
     search_request_id    TEXT,
-    search_payload       TEXT DEFAULT '{}',
+    search_payload       TEXT DEFAULT '{}',  -- request body sent to Kore.ai (JSON)
+    search_response      TEXT DEFAULT '{}',  -- full raw Kore.ai response (JSON)
     attempt_count        INTEGER DEFAULT 1,
     case_id              INTEGER,                -- 1..4 derived from test_case columns present
     expected_doc_rank    INTEGER,                -- 1-based rank of expected doc in retrieved (null if none/not found)

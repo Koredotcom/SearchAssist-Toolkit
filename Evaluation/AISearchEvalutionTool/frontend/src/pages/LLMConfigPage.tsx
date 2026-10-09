@@ -45,6 +45,14 @@ const OPENAI_MODELS = [
   "o4-mini",
 ];
 
+const GEMINI_MODELS = [
+  "gemini-2.5-pro",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-pro",
+  "gemini-1.5-flash",
+];
+
 export default function LLMConfigPage() {
   const { appId } = useParams<{ appId: string }>();
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
@@ -170,8 +178,9 @@ function AgentRow({
   const [saved, setSaved] = useState(false);
 
   const effectiveModel = customModel.trim() || model;
-  const isKnownModel = CLAUDE_MODELS.includes(effectiveModel) || OPENAI_MODELS.includes(effectiveModel);
+  const isKnownModel = CLAUDE_MODELS.includes(effectiveModel) || OPENAI_MODELS.includes(effectiveModel) || GEMINI_MODELS.includes(effectiveModel);
   const isClaudeModel = CLAUDE_MODELS.includes(effectiveModel);
+  const isGeminiModel = GEMINI_MODELS.includes(effectiveModel) || effectiveModel.startsWith("gemini-") || effectiveModel.startsWith("models/gemini-");
 
   useEffect(() => {
     if (config) {
@@ -265,6 +274,9 @@ function AgentRow({
                   <optgroup label="OpenAI">
                     {OPENAI_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
                   </optgroup>
+                  <optgroup label="Google Gemini">
+                    {GEMINI_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </optgroup>
                   <option value="__custom__">Custom / Azure…</option>
                 </select>
                 <ChevronDown className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -278,7 +290,7 @@ function AgentRow({
                   className="mt-1.5 w-full px-3 py-1.5 text-sm border border-violet-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono placeholder:text-gray-300"
                 />
               )}
-              <p className="text-xs text-gray-400 mt-1">{isClaudeModel ? "Anthropic" : "OpenAI / Azure"}</p>
+              <p className="text-xs text-gray-400 mt-1">{isClaudeModel ? "Anthropic" : isGeminiModel ? "Gemini" : "OpenAI / Azure"}</p>
             </div>
 
             {/* Temperature */}
